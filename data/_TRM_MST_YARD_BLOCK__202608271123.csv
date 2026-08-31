@@ -1,0 +1,21 @@
+"BLOCK_ID","TERMINAL_ID","BRANCH_ID","BLOCK_CODE","SLOT_COUNT","ROW_COUNT","MAX_TIER","POS_X","POS_Y","ORIENTATION","STACK_LEFT_RIGHT","STACK_ORIENTATION","STATUS","CREATEDBY","CREATEDON","MODIFIEDBY","MODIFIEDON","IS_REPAIR","IS_PRINCIPAL","IS_GRADING","IS_FULLEMPTY","ROTATION","CAPACITY_TEUS"
+20,1,1,"1B",20,6,5,2283,761,H,R,V,true,Bimo.Sarwono@meratus.com,2026-08-20 13:45:51.942,Rizqi.Azhar@meratus.com,2026-08-24 10:43:32.679,false,false,false,false,0,600
+12,1,1,"1C",13,5,5,2698,917,H,R,V,true,system,2026-05-26 01:31:23.477,Rizqi.Azhar@meratus.com,2026-08-24 10:43:36.945,false,false,false,false,0,325
+27,1,3,"2C",26,6,5,1161,1227,H,R,V,true,Rizqi.Azhar@meratus.com,2026-08-24 08:17:17.085,Rizqi.Azhar@meratus.com,2026-08-24 08:22:04.254,false,false,false,false,0,780
+1,1,3,"1B",26,6,5,351,1091,H,R,V,true,system,2026-05-21 08:54:47.238,Rizqi.Azhar@meratus.com,2026-08-24 08:22:04.254,false,false,false,false,0,780
+25,1,3,"2A",26,6,5,1164,959,H,R,V,true,Rizqi.Azhar@meratus.com,2026-08-24 08:15:37.512,Rizqi.Azhar@meratus.com,2026-08-24 08:22:04.253,false,false,false,false,0,780
+19,1,1,"2B",44,6,5,759,759,H,R,V,true,Bimo.Sarwono@meratus.com,2026-08-18 15:22:45.973,Rizqi.Azhar@meratus.com,2026-08-24 10:43:50.707,false,false,false,false,0,1320
+30,1,3,"3C",25,6,5,1978,1229,H,R,V,true,Rizqi.Azhar@meratus.com,2026-08-24 08:19:53.617,Rizqi.Azhar@meratus.com,2026-08-24 08:22:04.256,false,false,false,false,0,750
+28,1,3,"3A",25,6,5,1978,962,H,R,V,true,Rizqi.Azhar@meratus.com,2026-08-24 08:18:03.835,Rizqi.Azhar@meratus.com,2026-08-24 08:22:04.257,false,false,false,false,0,750
+26,1,3,"2B",26,6,5,1162,1090,H,R,V,true,Rizqi.Azhar@meratus.com,2026-08-24 08:16:43.266,Rizqi.Azhar@meratus.com,2026-08-24 08:22:04.261,false,false,false,false,0,780
+24,1,3,"1C",26,6,5,352,1227,H,R,V,true,Rizqi.Azhar@meratus.com,2026-08-24 08:14:51.527,Rizqi.Azhar@meratus.com,2026-08-24 08:22:04.263,false,false,false,false,0,780
+8,1,3,"1A",26,6,5,353,959,H,R,V,true,system,2026-05-25 08:38:51.082,Rizqi.Azhar@meratus.com,2026-08-24 08:22:26.839,false,false,false,false,0,780
+13,1,1,"2A",12,6,5,2285,604,H,R,V,true,system,2026-05-26 01:31:41.194,Rizqi.Azhar@meratus.com,2026-08-24 10:43:58.040,false,false,false,false,0,360
+29,1,3,"3B",25,6,5,1977,1092,H,R,V,true,Rizqi.Azhar@meratus.com,2026-08-24 08:19:02.327,Rizqi.Azhar@meratus.com,2026-08-24 08:23:14.762,false,false,false,false,0,750
+21,1,1,"2C",34,5,5,1037,926,H,R,V,true,Rizqi.Azhar@meratus.com,2026-08-20 14:27:15.139,Rizqi.Azhar@meratus.com,2026-08-24 10:44:05.926,false,false,false,false,0,850
+22,1,1,"3A",44,6,5,756,598,H,R,V,true,Rizqi.Azhar@meratus.com,2026-08-20 14:27:52.026,Rizqi.Azhar@meratus.com,2026-08-24 10:44:11.352,false,false,false,false,0,1320
+23,1,1,"3C",11,5,5,692,927,H,R,V,true,Rizqi.Azhar@meratus.com,2026-08-20 14:28:16.997,Rizqi.Azhar@meratus.com,2026-08-24 10:44:52.825,false,false,false,false,0,275
+10,1,2,B,11,11,5,244,268,H,R,V,true,system,2026-05-26 01:29:56.408,Maghvirul.Huda@meratus.com,2026-08-26 10:47:40.322,false,false,false,false,0,605
+11,1,2,C,11,11,5,242,544,H,R,V,true,system,2026-05-26 01:30:37.733,Maghvirul.Huda@meratus.com,2026-08-26 10:47:40.352,false,false,false,false,0,605
+9,1,2,A,10,6,5,619,91,V,R,H,true,system,2026-05-26 01:29:45.011,Maghvirul.Huda@meratus.com,2026-08-26 10:58:14.273,false,false,false,false,90,300
+3,1,1,"1A",10,6,5,2693,603,H,R,V,true,system,2026-05-22 02:27:18.649,Rizqi.Azhar@meratus.com,2026-08-26 17:17:19.835,false,true,false,false,0,300
