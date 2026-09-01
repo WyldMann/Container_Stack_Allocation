@@ -17,18 +17,17 @@ class Repository:
 class RemovedSlotsRepository(Repository):
 
     #[(block_id, row_no, slot_no),....]
-    def readCSVTuple(self) -> list[tuple[str,int,int]]:
+    def readCSVTuple(self) -> list[tuple[str,str,int,int]]:
         data = []
 
         # required field names as they appear in the csv
-
         block_id = "BLOCK_ID"
+        block_code = "BLOCK_CODE"
         row_no = "ROW_NO"
         slot_no = "SLOT_NO"
 
         with open(self.file_path) as csvfile:
             reader = csv.DictReader(csvfile)
             for line in reader:
-                data.append((line[block_id], int(line[row_no]), int(line[slot_no])))
+                data.append((line[block_id], line[block_code], int(line[row_no]), int(line[slot_no])))
         return data
-

@@ -75,10 +75,12 @@ class Stack:
 
 class Block:
     id: str
+    code: str
     slots: list[list[Stack]]
 
     def __init__(self,
                  BLOCK_ID: str,
+                 BLOCK_CODE: str,
                  SLOT_COUNT: str,
                  ROW_COUNT: str,
                  MAX_TIER: str,
@@ -87,15 +89,17 @@ class Block:
                  ):
 
         self.id = BLOCK_ID
+        self.code = BLOCK_CODE
         self.slots = []
         for row in range(int(ROW_COUNT)):
             stacks = []
             for slot in range(int(SLOT_COUNT)):
-                stacks.append(Stack(int(MAX_TIER), (self.id,row,slot)))
+                stacks.append(Stack(int(MAX_TIER), (self.code,row,slot)))
             self.slots.append(stacks)
         #todo: removed slots
 
     def getId(self) -> str: return self.id
+    def getCode(self) -> str: return self.code
     def getSlots(self) -> list[list[Stack]]:return self.slots
     def anomaly(self) -> list[tuple[int,int]]:
         anomalies = []
