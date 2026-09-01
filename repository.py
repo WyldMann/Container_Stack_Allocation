@@ -19,12 +19,12 @@ class RemovedSlotsRepository(Repository):
         # required field names as they appear in the csv
 
         block_id = "BLOCK_ID"
-        row_id = "ROW_ID"
+        row_no = "ROW_NO"
         slot_no = "SLOT_NO"
 
         with open(self.file_path) as csvfile:
             reader = csv.DictReader(csvfile)
             for line in reader:
-                data.append({block_id:line[block_id],row_id:line[row_id],slot_no:line[slot_no]})
+                data.append({"block_id":line[block_id],"row_no":line[row_no],"slot_no":line[slot_no]})
         return data
 
