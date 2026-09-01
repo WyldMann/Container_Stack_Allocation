@@ -58,6 +58,10 @@ class Stack:
     def score(self,container):
         return max(x.evaluate(container) for x in self.parameters)
 
+    def makeVoid(self):
+        self.maxTier = 0
+        self.containers = []
+
     def print(self):
         print(self.vacancy(), end = " ")
 
@@ -67,7 +71,7 @@ class Block:
     slots: list[list[Stack]]
 
     def __init__(self,
-                 BLOCK_CODE: str,
+                 BLOCK_ID: str,
                  SLOT_COUNT: str,
                  ROW_COUNT: str,
                  MAX_TIER: str,
@@ -75,7 +79,7 @@ class Block:
                  **kwargs
                  ):
 
-        self.id = BLOCK_CODE
+        self.id = BLOCK_ID
         self.slots = []
         for row in range(int(ROW_COUNT)):
             stacks = []
@@ -85,7 +89,7 @@ class Block:
         #todo: removed slots
 
     def getId(self) -> str: return self.id
-    def getTiers(self) -> list[list[Stack]]:return self.slots
+    def getSlots(self) -> list[list[Stack]]:return self.slots
     def anomaly(self) -> list[tuple[int,int]]:
         anomalies = []
         for x,row in enumerate(self.slots):
@@ -103,11 +107,17 @@ class Block:
 # in this scope, there's only one yard
 class Yard:
     blocks: list[Block]
-    def __init__(self,yard_block_input: list[dict[str,str]]) -> None:
+    #removed_slots_input: (block_no, row_no, slots_no)
+    def __init__(self,yard_block_input: list[dict[str,str]], removed_slots_input:list[tuple[str,int,int]]) -> None:
         self.blocks = []
         for block in yard_block_input:
             self.blocks.append(Block(**block))
 
+        for removed_slot in removed_slots_input:
+            for block in self.blocks:
+                if block.getId() == removed_slot[0]:
+                    block.getSlots()[removed_slot[1]-1][removed_slot[2]-1].makeVoid()
+                    break
 
 
         #todo parameters, containers, removed slots

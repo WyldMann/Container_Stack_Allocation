@@ -15,7 +15,9 @@ class Repository:
         return data
 
 class RemovedSlotsRepository(Repository):
-    def readCSV(self) -> list[dict[str,str]]:
+
+    #[(block_id, row_no, slot_no),....]
+    def readCSVTuple(self) -> list[tuple[str,int,int]]:
         data = []
 
         # required field names as they appear in the csv
@@ -27,6 +29,6 @@ class RemovedSlotsRepository(Repository):
         with open(self.file_path) as csvfile:
             reader = csv.DictReader(csvfile)
             for line in reader:
-                data.append({"block_id":line[block_id],"row_no":int(line[row_no]),"slot_no":int(line[slot_no])})
+                data.append((line[block_id], int(line[row_no]), int(line[slot_no])))
         return data
 
