@@ -1,5 +1,7 @@
 import csv
 
+#todo overhaul repository usage for all classes
+
 class Repository:
     def __init__(self, file_path):
         self.file_path = file_path
@@ -25,6 +27,6 @@ class RemovedSlotsRepository(Repository):
         with open(self.file_path) as csvfile:
             reader = csv.DictReader(csvfile)
             for line in reader:
-                data.append({"block_id":line[block_id],"row_no":line[row_no],"slot_no":line[slot_no]})
+                data.append({"block_id":line[block_id],"row_no":int(line[row_no]),"slot_no":int(line[slot_no])})
         return data
 
