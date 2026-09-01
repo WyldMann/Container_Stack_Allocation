@@ -31,3 +31,20 @@ class RemovedSlotsRepository(Repository):
             for line in reader:
                 data.append((line[block_id], line[block_code], int(line[row_no]) - 1, int(line[slot_no] - 1)))
         return data
+
+class YardPlanningRepository(Repository):
+
+    #[(param_id, block_id, slot, row), ... ]
+    def readCSVTuple(self) -> list[tuple[str,str,int,int]]:
+        data = []
+
+        param_id = "PARAM_ID"
+        block_id = "BLOCK_ID"
+        row = "ROW"
+        slot = "SLOT"
+
+        with open(self.file_path) as csvfile:
+            reader = csv.DictReader(csvfile)
+            for line in reader:
+                data.append((line[param_id], line[block_id], int(line[row]) - 1, int(line[slot]) - 1))
+        return data
