@@ -1,4 +1,4 @@
-from .yard import Block, Tier
+from .yard import Block, Stack
 from .container import Container
 
 #todo: think how to implement this so I can still track where a container is. without inducing class import. if too hard, fuck it. put all classes into one file.
@@ -6,5 +6,5 @@ from .container import Container
 class ContainerPlacement:
     container: Container
     block: Block
-    tier: Tier
+    tier: Stack
     heightPlacement: int

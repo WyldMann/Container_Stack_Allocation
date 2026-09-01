@@ -1,12 +1,12 @@
 """
 Warning:
-    this class must not reference Tier or it will cause circular dependency and by extension, circ. import.
+    this class must not reference Stack or it will cause circular dependency and by extension, circ. import.
 """
 
 class Container:
     id: str
 
-    #tier: Tier
+    #tier: Stack
     #tierHeight: int
 
     principal: str
@@ -34,7 +34,7 @@ class Container:
                  VESSEL_VOYAGE:str,
                  WEIGHT:str,
 
-                 #TIER: Tier,
+                 #TIER: Stack,
                  #TIERHEIGHT: int,
 
                  **kwargs

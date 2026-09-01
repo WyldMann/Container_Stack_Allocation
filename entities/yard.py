@@ -1,14 +1,14 @@
 from .container import Container
 from .parameter import Parameter
 
-class Tier:
+class Stack:
     containers: list[Container | None]
     parameters: list[Parameter]
     maxTier: int
 
     def __init__(self,
                  maxTier: int,
-                 parameters=None):
+                 parameters = None):
 
         if parameters is None:
             parameters = []
@@ -19,19 +19,19 @@ class Tier:
 
     def getContainers(self) -> list[Container | None]: return self.containers
     def getParameters(self) -> list[Parameter] | None: return self.parameters
-    def getContainer(self, tierHeight: int) -> Container | None: return self.containers[tierHeight]
+    def getContainer(self, tier: int) -> Container | None: return self.containers[tier]
 
-    def isEmpty(self,tierHeight: int) -> bool:
-        return self.containers[tierHeight] is None
+    def isEmpty(self,tier: int) -> bool:
+        return self.containers[tier] is None
 
-    def addContainer(self, container: Container, tierHeight: int):
-        if self.isEmpty(tierHeight):
-            self.containers[tierHeight] = container
+    def addContainer(self, container: Container, tier: int):
+        if self.isEmpty(tier):
+            self.containers[tier] = container
         else:
             print("Occupied")
 
-    def removeContainer(self, tierHeight: int):
-        self.containers[tierHeight] = None
+    def removeContainer(self, tier: int):
+        self.containers[tier] = None
     def addParameter(self, parameter: Parameter):
         self.parameters.append(parameter)
 
@@ -60,7 +60,7 @@ class Tier:
 
 class Block:
     id: str
-    tiers: list[list[Tier]]
+    tiers: list[list[Stack]]
 
     def __init__(self,
                  BLOCK_CODE: str,
@@ -71,14 +71,14 @@ class Block:
                  **kwargs
                  ):
         self.id = BLOCK_CODE
-        self.tiers = [[Tier(int(MAX_TIER))
+        self.tiers = [[Stack(int(MAX_TIER))
                        for slot in range(int(SLOT_COUNT))]
                       for row in range(int(ROW_COUNT))]
 
         #todo: removed tiers
 
     def getId(self) -> str: return self.id
-    def getTiers(self) -> list[list[Tier]]:return self.tiers
+    def getTiers(self) -> list[list[Stack]]:return self.tiers
     def anomaly(self) -> list[tuple[int,int]]:
         anomalies = []
         for x,row in enumerate(self.tiers):
