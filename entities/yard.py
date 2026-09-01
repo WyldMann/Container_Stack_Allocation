@@ -62,9 +62,16 @@ class Stack:
         self.maxTier = 0
         self.containers = []
 
-    def print(self):
+    def printVacancy(self):
         print(self.vacancy(), end = " ")
 
+    def printContents(self):
+        for x in self.containers:
+            if x is not None:
+                print(x, end = " ")
+            else:
+                print("None", end = " ")
+        print()
 
 class Block:
     id: str
@@ -99,7 +106,7 @@ class Block:
     def print(self):
         for slot in self.slots:
             for tier in slot:
-                tier.print()
+                tier.printVacancy()
             print()
 
 

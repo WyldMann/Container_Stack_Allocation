@@ -88,4 +88,4 @@ class Container:
     def setCoords(self, block: str, row: str, slot: str, tier: str): self.coords = [block, row, slot, tier]
 
     def __str__(self):
-        return self.id + " " + str(self.coords)
+        return self.id
