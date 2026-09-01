@@ -29,5 +29,5 @@ class RemovedSlotsRepository(Repository):
         with open(self.file_path) as csvfile:
             reader = csv.DictReader(csvfile)
             for line in reader:
-                data.append((line[block_id], line[block_code], int(line[row_no]), int(line[slot_no])))
+                data.append((line[block_id], line[block_code], int(line[row_no]) - 1, int(line[slot_no] - 1)))
         return data

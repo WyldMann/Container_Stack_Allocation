@@ -126,7 +126,7 @@ class Yard:
         for removed_slot in removed_slots_input:
             for block in self.blocks:
                 if block.getId() == removed_slot[0]:
-                    block.getSlots()[removed_slot[1]-1][removed_slot[2]-1].makeVoid()
+                    block.getSlots()[removed_slot[1]][removed_slot[2]].makeVoid()
                     break
 
 
