@@ -14,27 +14,40 @@ class Repository:
                 data.append(row)
         return data
 
+    # group list into a dict with first element as key
+    @staticmethod
+    def group_rows(data):
+        result = {}
+
+        for row in data:
+            key = row[0]
+            values = tuple(row[1:])
+
+            result.setdefault(key, []).append(values)
+
+        return result
+
 class RemovedSlotsRepository(Repository):
 
     #[(block_id, row_no, slot_no),....]
-    def readCSVTuple(self) -> list[tuple[str,str,int,int]]:
+    def readCSVTuple(self) -> list[tuple[str,int,int]]:
         data = []
 
         # required field names as they appear in the csv
         block_id = "BLOCK_ID"
-        block_code = "BLOCK_CODE"
         row_no = "ROW_NO"
         slot_no = "SLOT_NO"
 
         with open(self.file_path) as csvfile:
             reader = csv.DictReader(csvfile)
             for line in reader:
-                data.append((line[block_id], line[block_code], int(line[row_no]) - 1, int(line[slot_no] - 1)))
+                data.append((line[block_id], int(line[row_no]) - 1, int(line[slot_no]) - 1))
         return data
 
 class YardPlanningRepository(Repository):
 
     #[(param_id, block_id, slot, row), ... ]
+    # readCSVTuple().grouprows() {param_id:
     def readCSVTuple(self) -> list[tuple[str,str,int,int]]:
         data = []
 

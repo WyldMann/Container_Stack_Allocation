@@ -116,32 +116,43 @@ class Block:
 
 # in this scope, there's only one yard
 class Yard:
-    blocks: list[Block]
-    #removed_slots_input: (block_no, row_no, slots_no)
-    def __init__(self,yard_block_input: list[dict[str,str]], removed_slots_input:list[tuple[str,int,int]]) -> None:
-        self.blocks = []
-        for block in yard_block_input:
-            self.blocks.append(Block(**block))
+    blocks_by_id: dict[str,Block]
+    blocks_by_code: dict[str, Block]
+    params: dict[str,Parameter]
+
+    #block and parameters input: {"args":"values",...}
+    #removed_slots_input: [(block_id, row_no, slot_no),...]
+    #yard planning: {param_id:[block_id,row_no, slot no],...}
+    def __init__(self,yard_block_input: list[dict[str,str]], removed_slots_input:list[tuple[str,int,int]], parameters_input: list[dict[str,str]], yard_planning_input:dict[str,tuple[int,int]]) -> None:
+        self.blocks_by_id = {}
+        for inp in yard_block_input:
+            block = Block(**inp)
+            self.blocks_by_id[block.getId()] = block
+            self.blocks_by_code[block.getCode()] = block
 
         for removed_slot in removed_slots_input:
-            for block in self.blocks:
-                if block.getId() == removed_slot[0]:
-                    block.getSlots()[removed_slot[1]][removed_slot[2]].makeVoid()
-                    break
+            self.blocks_by_id[removed_slot[0]].getSlots()[removed_slot[1]][removed_slot[2]].makeVoid()
+
+        for inp in parameters_input:
+            param = Parameter(**inp)
+            self.params[param.getId()] = param
+
+        for inp in yard_planning_input:
 
 
-        #todo parameters, containers, bad data implementation
+
+        #todo parameters, containers, bad data implementation, everything again but this time with dictionary
 
     def anomalies(self) -> dict[str,list[tuple[int,int]]]:
         result = {}
-        for block in self.blocks:
-            result[block.getId()] = block.anomaly()
+        for block_id in self.blocks_by_id:
+            result[block_id] = self.blocks_by_id[block_id].anomaly()
         return result
 
     def print(self):
-        for block in self.blocks:
-            print(block.getId())
-            block.print()
+        for block_id in self.blocks_by_id:
+            print(block_id)
+            self.blocks_by_id[block_id].print()
 
 class BadYardData:
     overlapping_containers: list[tuple[Container,Container]]
