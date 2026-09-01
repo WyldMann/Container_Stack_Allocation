@@ -96,7 +96,6 @@ class Block:
             for slot in range(int(SLOT_COUNT)):
                 stacks.append(Stack(int(MAX_TIER), (self.code,row,slot)))
             self.slots.append(stacks)
-        #todo: removed slots
 
     def getId(self) -> str: return self.id
     def getCode(self) -> str: return self.code
@@ -131,7 +130,7 @@ class Yard:
                     break
 
 
-        #todo parameters, containers, removed slots
+        #todo parameters, containers, bad data implementation
 
     def anomalies(self) -> dict[str,list[tuple[int,int]]]:
         result = {}
