@@ -84,6 +84,7 @@ class Container:
     def getVessel(self) -> str: return self.vessel
     def getVoyage(self) -> str: return self.voyage
     def getWeight(self) -> float: return self.weight
+    def getCoords(self) -> list[str]: return self.coords
 
     def setCoords(self, block: str, row: str, slot: str, tier: str): self.coords = [block, row, slot, tier]
 
