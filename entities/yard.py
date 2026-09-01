@@ -139,3 +139,38 @@ class Yard:
         for block in self.blocks:
             print(block.getId())
             block.print()
+
+class BadYardData:
+    overlapping_containers: list[tuple[Container,Container]]
+    anomalous_stack: list[Stack]
+    incomplete_containers: list[Container]
+
+    def __init__(self):
+        self.overlapping_containers = []
+        self.anomalous_stack = []
+        self.incomplete_containers = []
+    def addOverlappingContainer(self, container1: Container, container2: Container):
+        self.overlapping_containers.append((container1, container2))
+    def addFlyingContainer(self, stack: Stack):
+        self.anomalous_stack.append(stack)
+    def addIncompleteContainer(self, container: Container):
+        self.incomplete_containers.append(container)
+
+    def bad_data(self) -> bool:
+        return (self.overlapping_containers != []
+                or self.anomalous_stack != []
+                or self.incomplete_containers != [])
+
+    def print(self):
+        if self.overlapping_containers:
+            print("Overlapping containers:")
+            for x in self.overlapping_containers:
+                print(x)
+        if self.anomalous_stack:
+            print("Anomalous stacks:")
+            for x in self.anomalous_stack:
+                x.printContents()
+        if self.incomplete_containers:
+            print("Incomplete containers:")
+            for x in self.incomplete_containers:
+                print(x,x.getCoords())
