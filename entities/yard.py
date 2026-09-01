@@ -64,7 +64,7 @@ class Stack:
 
 class Block:
     id: str
-    tiers: list[list[Stack]]
+    slots: list[list[Stack]]
 
     def __init__(self,
                  BLOCK_CODE: str,
@@ -74,24 +74,27 @@ class Block:
 
                  **kwargs
                  ):
-        self.id = BLOCK_CODE
-        self.tiers = [[Stack(int(MAX_TIER),(self.id,row,slot))
-                       for slot in range(int(SLOT_COUNT))]
-                      for row in range(int(ROW_COUNT))]
 
-        #todo: removed tiers
+        self.id = BLOCK_CODE
+        self.slots = []
+        for row in range(int(ROW_COUNT)):
+            stacks = []
+            for slot in range(int(SLOT_COUNT)):
+                stacks.append(Stack(int(MAX_TIER), (self.id,row,slot)))
+            self.slots.append(stacks)
+        #todo: removed slots
 
     def getId(self) -> str: return self.id
-    def getTiers(self) -> list[list[Stack]]:return self.tiers
+    def getTiers(self) -> list[list[Stack]]:return self.slots
     def anomaly(self) -> list[tuple[int,int]]:
         anomalies = []
-        for x,row in enumerate(self.tiers):
+        for x,row in enumerate(self.slots):
             for y,tier in enumerate(row):
                 anomalies.append((x,y))
         return anomalies
 
     def print(self):
-        for slot in self.tiers:
+        for slot in self.slots:
             for tier in slot:
                 tier.print()
             print()
