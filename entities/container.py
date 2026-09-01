@@ -19,6 +19,8 @@ class Container:
     vessel: str
     voyage: str
     weight: float
+    # coords = [Block, Row, Slot, Tier]
+    coords: list[str]
 
     def __init__(self,
                  CONTNO:str,
@@ -33,6 +35,11 @@ class Container:
                  VESSEL_OPERATOR:str,
                  VESSEL_VOYAGE:str,
                  WEIGHT:str,
+
+                 BLOK:str | None = None,
+                 SLOT:str | None = None,
+                 ROW:str | None = None,
+                 TIER:str | None = None,
 
                  #TIER: Stack,
                  #TIERHEIGHT: int,
@@ -52,6 +59,9 @@ class Container:
         self.vessel = VESSEL_OPERATOR
         self.voyage = VESSEL_VOYAGE
         self.weight = float(WEIGHT)
+        if BLOK is not None and SLOT is not None and ROW is not None and TIER is not None:
+            coords = [BLOK, ROW, SLOT, TIER]
+        else: coords = []
 
         """ shouldn't need tier
         # only modifies this class's tier attr.
@@ -74,3 +84,8 @@ class Container:
     def getVessel(self) -> str: return self.vessel
     def getVoyage(self) -> str: return self.voyage
     def getWeight(self) -> float: return self.weight
+
+    def setCoords(self, block: str, row: str, slot: str, tier: str): self.coords = [block, row, slot, tier]
+
+    def __str__(self):
+        return self.id + " " + str(self.coords)

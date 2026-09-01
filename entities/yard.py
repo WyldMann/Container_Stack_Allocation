@@ -5,9 +5,11 @@ class Stack:
     containers: list[Container | None]
     parameters: list[Parameter]
     maxTier: int
+    coords: tuple[str,int,int]
 
     def __init__(self,
                  maxTier: int,
+                 coords: tuple[str,int,int],
                  parameters = None):
 
         if parameters is None:
@@ -16,6 +18,7 @@ class Stack:
         self.containers = [None for x in range(maxTier)]
         self.parameters = parameters
         self.maxTier = maxTier
+        self.coords = coords
 
     def getContainers(self) -> list[Container | None]: return self.containers
     def getParameters(self) -> list[Parameter] | None: return self.parameters
@@ -27,6 +30,7 @@ class Stack:
     def addContainer(self, container: Container, tier: int):
         if self.isEmpty(tier):
             self.containers[tier] = container
+            container.setCoords(self.coords[0], str(self.coords[1]), str(self.coords[2]), str(tier))
         else:
             print("Occupied")
 
@@ -71,7 +75,7 @@ class Block:
                  **kwargs
                  ):
         self.id = BLOCK_CODE
-        self.tiers = [[Stack(int(MAX_TIER))
+        self.tiers = [[Stack(int(MAX_TIER),(self.id,row,slot))
                        for slot in range(int(SLOT_COUNT))]
                       for row in range(int(ROW_COUNT))]
 
