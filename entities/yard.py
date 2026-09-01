@@ -109,6 +109,8 @@ class Yard:
         for block in yard_block_input:
             self.blocks.append(Block(**block))
 
+        #todo parameters, containers, removed slots
+
     def anomalies(self) -> dict[str,list[tuple[int,int]]]:
         result = {}
         for block in self.blocks:
