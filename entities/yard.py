@@ -92,7 +92,6 @@ class Block:
             for y,tier in enumerate(row):
                 anomalies.append((x,y))
         return anomalies
-
     def print(self):
         for slot in self.slots:
             for tier in slot:
@@ -104,10 +103,12 @@ class Block:
 # in this scope, there's only one yard
 class Yard:
     blocks: list[Block]
-    def __init__(self,yard_block_input: list[dict[str,str]]):
+    def __init__(self,yard_block_input: list[dict[str,str]]) -> None:
         self.blocks = []
         for block in yard_block_input:
             self.blocks.append(Block(**block))
+
+
 
         #todo parameters, containers, removed slots
 
