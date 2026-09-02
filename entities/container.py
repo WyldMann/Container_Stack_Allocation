@@ -25,7 +25,7 @@ class Container:
     def __init__(self,
                  CONTNO:str,
                  PRINCIPAL:str,
-                 DMG_FLG:str,
+                 DMG_FLAG:str,
                  FULLMT:str,
                  # OPERATION_TYPE:str,
                  CONTSIZE:str,
@@ -49,7 +49,7 @@ class Container:
 
         self.id = CONTNO
         self.principal = PRINCIPAL
-        self.cont_condition = DMG_FLG
+        self.cont_condition = DMG_FLAG
         self.cont_fill = FULLMT
         #self.op_type = OPERATION_TYPE
         self.cont_size = CONTSIZE
