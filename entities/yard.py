@@ -173,18 +173,26 @@ class Yard:
             # No containers in container_input can be incomplete
             if container.isIncomplete():
                 self.bad_data.addIncompleteContainer(container)
-            else:
-                coords = container.getCoordsInt()
-                print(coords)
-                stack = self.blocks_by_code[coords[0]].getStack(coords[1],coords[2])
-                tier = coords[3]
+                continue
 
-                # disregard container if coords already occupied
-                if not stack.isEmpty(coords[3]):
-                    self.bad_data.addOverlappingContainer(container, stack.getContainer(tier))
-                else:
-                    stack.addContainer(container,tier)
-                    self.containers[container.getId()] = container
+            coordsInt = container.getCoordsInt()
+
+            # validate coords can be found. Otherwise, mark bad_data and move on
+            try:
+                stack = self.blocks_by_code[coordsInt[0]].getStack(coordsInt[1],coordsInt[2])
+                tier = coordsInt[3]
+                stackIsEmpty = stack.isEmpty(coordsInt[3])
+            except (IndexError,KeyError):
+                self.bad_data.addContainerCoordsInvalid(container)
+                continue
+
+
+            # disregard container if coords already occupied
+            if not stackIsEmpty:
+                self.bad_data.addOverlappingContainer(container, stack.getContainer(tier))
+            else:
+                stack.addContainer(container,tier)
+                self.containers[container.getId()] = container
 
         #todo: flying container implementation
     def getBadData(self) -> BadYardData: return self.bad_data
@@ -205,14 +213,14 @@ class BadYardData:
     anomalous_stack: list[Stack]
     incomplete_containers: list[Container]
     yp_out_of_range: list[tuple[str,str,int,int]]
-    container_out_of_range: list[Container]
+    container_coords_invalid: list[Container]
 
     def __init__(self):
         self.overlapping_containers = []
         self.anomalous_stack = []
         self.incomplete_containers = []
         self.yp_out_of_range = []
-        self.container_out_of_range = []
+        self.container_coords_invalid = []
 
     def addOverlappingContainer(self, container1: Container, container2: Container | None):
         print("Bad Data Detected: Overlapping Container")
@@ -225,13 +233,13 @@ class BadYardData:
     def addYPOutOfRange(self,yp_item: tuple[str,str,int,int]):
         print("Bad Data Detected: YPOutOfRange")
         self.yp_out_of_range.append(yp_item)
-    def addContainerOutOfRange(self,container:Container):
-        print("Bad Data Detected: ContainerOutOfRange")
-        self.container_out_of_range.append(container)
+    def addContainerCoordsInvalid(self,container:Container):
+        print("Bad Data Detected: Container Coordinates Invalid")
+        self.container_coords_invalid.append(container)
 
-    def printContainerOutOfRange(self):
-        print("Container Out of Range:")
-        for x in self.container_out_of_range:
+    def printContainerCoordsInvalid(self):
+        print("Container Coordinates Invalid:")
+        for x in self.container_coords_invalid:
             print(x.getId(),x.getCoords())
 
     def printYPOutOfRange(self):
@@ -259,4 +267,4 @@ class BadYardData:
             for x in self.incomplete_containers:
                 print(x,x.getCoords())
         if self.yp_out_of_range: self.printYPOutOfRange()
-        if self.container_out_of_range: self.printContainerOutOfRange()
+        if self.container_coords_invalid: self.printContainerCoordsInvalid()
