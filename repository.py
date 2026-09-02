@@ -27,6 +27,13 @@ class Repository:
 
         return result
 
+    # meant to be overridden
+    def readCSVTuple(self) -> list[tuple[str,str,int,int]]:
+        raise NotImplementedError("Subclasses must override readCSVTuple()")
+
+    def readCSVDictTuple(self):
+        return self.group_rows(self.readCSVTuple())
+
 class RemovedSlotsRepository(Repository):
 
     #[(block_id, row_no, slot_no),....]
