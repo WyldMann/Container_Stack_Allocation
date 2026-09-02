@@ -119,6 +119,7 @@ class Yard:
     blocks_by_code: dict[str, Block]
     params: dict[str,Parameter]
     bad_data: BadYardData
+    containers: dict[str,Container]
 
     #block and parameters input: {"args":"values",...}
     #removed_slots_input: [(block_id, row_no, slot_no),...]
@@ -127,11 +128,13 @@ class Yard:
                  yard_block_input: list[dict[str,str]],
                  removed_slots_input:list[tuple[str,int,int]] | None = None,
                  parameters_input: list[dict[str,str]] | None = None,
-                 yard_planning_input:dict[str,list[tuple[str,int,int]]] | None = None) -> None:
+                 yard_planning_input:dict[str,list[tuple[str,int,int]]] | None = None,
+                 container_input: list[dict[str,str]] | None = None) -> None:
 
         if removed_slots_input is None: removed_slots_input = []
         if parameters_input is None: parameters_input = []
-        if yard_planning_input is None:yard_planning_input = {}
+        if yard_planning_input is None: yard_planning_input = {}
+        if container_input is None: container_input = []
 
         self.bad_data = BadYardData()
 
@@ -164,7 +167,26 @@ class Yard:
                 except IndexError:
                     self.bad_data.addYPOutOfRange((param_id,stack[0],stack[1],stack[2]))
 
-        #todo: container and bad data implementation
+        self.containers = {}
+        for inp in container_input:
+            container = Container(**inp)
+
+            # No containers in container_input can be incomplete
+            if container.isIncomplete():
+                self.bad_data.addIncompleteContainer(container)
+            else:
+                coords = container.getCoordsInt()
+                stack = self.blocks_by_code[coords[0]].getStack(coords[1],coords[2])
+                tier = coords[3]
+
+                # disregard container if coords already occupied
+                if not stack.isEmpty(coords[3]):
+                    self.bad_data.addOverlappingContainer(container, stack.getContainer(tier))
+                else:
+                    stack.addContainer(container,tier)
+                    self.containers[container.getId()] = container
+
+        #todo: flying container implementation
     def getBadData(self) -> BadYardData: return self.bad_data
 
     def anomalies(self) -> dict[str,list[tuple[int,int]]]:
@@ -179,7 +201,7 @@ class Yard:
             self.blocks_by_id[block_id].print()
 
 class BadYardData:
-    overlapping_containers: list[tuple[Container,Container]]
+    overlapping_containers: list[tuple[Container,Container|None]]   # None type added for type check purposes. if it's None, something is wrong.
     anomalous_stack: list[Stack]
     incomplete_containers: list[Container]
     yp_out_of_range: list[tuple[str,str,int,int]]
@@ -189,7 +211,7 @@ class BadYardData:
         self.anomalous_stack = []
         self.incomplete_containers = []
         self.yp_out_of_range = []
-    def addOverlappingContainer(self, container1: Container, container2: Container):
+    def addOverlappingContainer(self, container1: Container, container2: Container | None):
         print("Bad Data Detected: Overlapping Container")
         self.overlapping_containers.append((container1, container2))
     def addFlyingContainer(self, stack: Stack):
