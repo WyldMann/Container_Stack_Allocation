@@ -18,7 +18,7 @@ class Container:
     pod: str
     vessel: str
     voyage: str
-    weight: float
+    weight: float| None
     # coords = [Block, Row, Slot, Tier]
     coords: list[str]
 
@@ -58,7 +58,7 @@ class Container:
         self.pod = POD
         self.vessel = VESSEL_OPERATOR
         self.voyage = VESSEL_VOYAGE
-        self.weight = float(WEIGHT)
+        self.weight = float(WEIGHT) if WEIGHT != '' else None
 
         if BLOK is None: BLOK = ""
         if SLOT is None: SLOT = ""
@@ -78,7 +78,7 @@ class Container:
     def getPod(self) -> str: return self.pod
     def getVessel(self) -> str: return self.vessel
     def getVoyage(self) -> str: return self.voyage
-    def getWeight(self) -> float: return self.weight
+    def getWeight(self) -> float|None: return self.weight
     def getCoords(self) -> list[str]: return self.coords
     def setCoords(self, block: str, row: str, slot: str, tier: str):
         self.coords = [block, row, slot, tier]
