@@ -23,6 +23,7 @@ class Stack:
     def getContainers(self) -> list[Container | None]: return self.containers
     def getParameters(self) -> list[Parameter] | None: return self.parameters
     def getContainer(self, tier: int) -> Container | None: return self.containers[tier]
+    def getCoords(self) -> tuple[str,int,int]: return self.coords
 
     def isEmpty(self,tier: int) -> bool:
         return self.containers[tier] is None
