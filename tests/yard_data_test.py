@@ -18,4 +18,3 @@ container_repo = Repository(container_file).readCSV()
 yard = Yard(yard_repo,removed_slot,parameter_input,yard_planning_input,container_repo)
 
 yard.print()
-yard.getBadData().printYPOutOfRange()
