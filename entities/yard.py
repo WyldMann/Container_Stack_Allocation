@@ -30,7 +30,6 @@ class Stack:
     def addContainer(self, container: Container, tier: int):
         if self.isEmpty(tier):
             self.containers[tier] = container
-            container.setCoords(self.coords[0], str(self.coords[1]), str(self.coords[2]), str(tier))
         else:
             print("Occupied")
 
@@ -176,6 +175,7 @@ class Yard:
                 self.bad_data.addIncompleteContainer(container)
             else:
                 coords = container.getCoordsInt()
+                print(coords)
                 stack = self.blocks_by_code[coords[0]].getStack(coords[1],coords[2])
                 tier = coords[3]
 
