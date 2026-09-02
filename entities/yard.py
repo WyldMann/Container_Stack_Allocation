@@ -98,6 +98,7 @@ class Block:
     def getId(self) -> str: return self.id
     def getCode(self) -> str: return self.code
     def getSlots(self) -> list[list[Stack]]:return self.slots
+    def getStack(self, row:int, slot:int) -> Stack: return self.slots[row][slot]
     def anomaly(self) -> list[tuple[int,int]]:
         anomalies = []
         for x,row in enumerate(self.slots):
