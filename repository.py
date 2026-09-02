@@ -1,4 +1,6 @@
 import csv
+from typing import Any
+
 
 #todo overhaul repository usage for all classes
 
@@ -28,7 +30,7 @@ class Repository:
         return result
 
     # meant to be overridden
-    def readCSVTuple(self) -> list[tuple[str,str,int,int]]:
+    def readCSVTuple(self) -> list[Any]:
         raise NotImplementedError("Subclasses must override readCSVTuple()")
 
     def readCSVDictTuple(self):
