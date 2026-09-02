@@ -16,3 +16,4 @@ yard_planning_input = YardPlanningRepository(yard_planning_input_file).readCSVDi
 yard = Yard(yard_repo,removed_slot,parameter_input,yard_planning_input)
 
 yard.print()
+yard.getBadData().printYPOutOfRange()
