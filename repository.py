@@ -1,5 +1,6 @@
 import csv
 from typing import Any
+from utils import strGeneralize
 
 
 #todo overhaul repository usage for all classes
@@ -13,7 +14,7 @@ class Repository:
         with open(self.file_path) as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                data.append(row)
+                data.append({key:strGeneralize(value) for key, value in row.items()})
         return data
 
     # group list into a dict with first element as key
@@ -50,7 +51,7 @@ class RemovedSlotsRepository(Repository):
         with open(self.file_path) as csvfile:
             reader = csv.DictReader(csvfile)
             for line in reader:
-                data.append((line[block_id], int(line[row_no]) - 1, int(line[slot_no]) - 1))
+                data.append((strGeneralize(line[block_id]), int(line[row_no]) - 1, int(line[slot_no]) - 1))
         return data
 
 class YardPlanningRepository(Repository):
@@ -68,5 +69,5 @@ class YardPlanningRepository(Repository):
         with open(self.file_path) as csvfile:
             reader = csv.DictReader(csvfile)
             for line in reader:
-                data.append((line[param_id], line[block_id], int(line[row]) - 1, int(line[slot]) - 1))
+                data.append((strGeneralize(line[param_id]), strGeneralize(line[block_id]), int(line[row]) - 1, int(line[slot]) - 1))
         return data
