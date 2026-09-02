@@ -60,12 +60,12 @@ class Container:
         self.voyage = VESSEL_VOYAGE
         self.weight = float(WEIGHT)
 
-        if BLOK is None: self.blok = ""
-        if SLOT is None: self.slot = ""
-        if ROW is None: self.row = ""
-        if TIER is None: self.tier = ""
+        if BLOK is None: BLOK = ""
+        if SLOT is None: SLOT = ""
+        if ROW is None: ROW = ""
+        if TIER is None: TIER = ""
 
-        else: self.coords = []
+        self.coords = [BLOK,ROW,SLOT,TIER]
 
     def getId(self) -> str: return self.id
     def getPrincipal(self) -> str: return self.principal
