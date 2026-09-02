@@ -52,7 +52,7 @@ class Stack:
         for x in self.containers:
             if x is not None:
                 if doneStacking: return True
-                else: doneStacking = True
+            else: doneStacking = True
         return False
 
     # returns tier score
@@ -67,7 +67,7 @@ class Stack:
         print(self.vacancy(), end = " ")
 
     def printOccupancy(self):
-        print(self.occupancy())
+        print(self.occupancy(), end = " ")
 
     def printContents(self):
         for x in self.containers:
@@ -105,11 +105,11 @@ class Block:
     def getCode(self) -> str: return self.code
     def getSlots(self) -> list[list[Stack]]:return self.slots
     def getStack(self, row:int, slot:int) -> Stack: return self.slots[row][slot]
-    def anomaly(self) -> list[tuple[int,int]]:
+    def anomalies(self) -> list[Stack]:
         anomalies = []
-        for x,row in enumerate(self.slots):
-            for y,tier in enumerate(row):
-                anomalies.append((x,y))
+        for slot in self.slots:
+            for stack in slot:
+                if stack.anomaly(): anomalies.append(stack)
         return anomalies
     def print(self):
         for slot in self.slots:
@@ -200,17 +200,17 @@ class Yard:
             else:
                 stack.addContainer(container,tier)
                 self.containers[container.getId()] = container
+        self.anomalyCheck()
 
         self.bad_data.print()
 
         #todo: flying container implementation
     def getBadData(self) -> BadYardData: return self.bad_data
 
-    def anomalyCheck(self) -> dict[str,list[tuple[int,int]]]:
-        result = {}
-        for block_id in self.blocks_by_id:
-            result[block_id] = self.blocks_by_id[block_id].anomaly()
-        return result
+    def anomalyCheck(self):
+        for block in self.blocks_by_id.values():
+            for stack in block.anomalies():
+                self.bad_data.addAnomalousStack(stack)
 
     def print(self):
         for block_id in self.blocks_by_id:
@@ -234,8 +234,6 @@ class BadYardData:
     def addOverlappingContainer(self, container1: Container, container2: Container | None):
         print("Bad Data Detected: Overlapping Container")
         self.overlapping_containers.append((container1, container2))
-    def addFlyingContainer(self, stack: Stack):
-        self.anomalous_stack.append(stack)
     def addIncompleteContainer(self, container: Container):
         print("Bad Data Detected: IncompleteContainer")
         self.incomplete_containers.append(container)
@@ -245,6 +243,7 @@ class BadYardData:
     def addContainerCoordsInvalid(self,container:Container):
         print("Bad Data Detected: Container Coordinates Invalid")
         self.container_coords_invalid.append(container)
+    def addAnomalousStack(self,stack: Stack): self.anomalous_stack.append(stack)
 
     def printContainerCoordsInvalid(self):
         print("\nContainer Coordinates Invalid:")
@@ -270,6 +269,7 @@ class BadYardData:
         if self.anomalous_stack:
             print("\nAnomalous stacks:")
             for x in self.anomalous_stack:
+                print(x.getCoords(),end = " ")
                 x.printContents()
         if self.incomplete_containers:
             print("\nIncomplete containers:")
