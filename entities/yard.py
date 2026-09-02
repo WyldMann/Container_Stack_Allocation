@@ -39,8 +39,6 @@ class Stack:
     def addParameter(self, parameter: Parameter):
         self.parameters.append(parameter)
 
-
-
     # returns number of empty vacancies
     def vacancy(self):
         return self.containers.count(None)
@@ -122,26 +120,43 @@ class Yard:
 
     #block and parameters input: {"args":"values",...}
     #removed_slots_input: [(block_id, row_no, slot_no),...]
-    #yard planning: {param_id:[block_id,row_no, slot no],...}
-    def __init__(self,yard_block_input: list[dict[str,str]], removed_slots_input:list[tuple[str,int,int]], parameters_input: list[dict[str,str]], yard_planning_input:dict[str,tuple[int,int]]) -> None:
+    #yard planning: {param_id:[(block_id, row_no, slot_no),[...],...],...}
+    def __init__(self,
+                 yard_block_input: list[dict[str,str]],
+                 removed_slots_input:list[tuple[str,int,int]] | None = None,
+                 parameters_input: list[dict[str,str]] | None = None,
+                 yard_planning_input:dict[str,list[tuple[str,int,int]]] | None = None) -> None:
+
+        if removed_slots_input is None: removed_slots_input = []
+        if parameters_input is None: parameters_input = []
+        if yard_planning_input is None:yard_planning_input = {}
+
+        # initialize blocks and constructs 2 dict attributes to keep track
         self.blocks_by_id = {}
+        self.blocks_by_code = {}
+
         for inp in yard_block_input:
             block = Block(**inp)
             self.blocks_by_id[block.getId()] = block
             self.blocks_by_code[block.getCode()] = block
 
+        # remove the slots as per input
         for removed_slot in removed_slots_input:
             self.blocks_by_id[removed_slot[0]].getSlots()[removed_slot[1]][removed_slot[2]].makeVoid()
 
+        # initializes and stores Parameters
+        self.params = {}
         for inp in parameters_input:
-            param = Parameter(**inp)
-            self.params[param.getId()] = param
+            param_id = Parameter(**inp)
+            self.params[param_id.getId()] = param_id
 
-        for inp in yard_planning_input:
-
-
-
-        #todo parameters, containers, bad data implementation, everything again but this time with dictionary
+        # add parameters into stacks
+        for param_id in yard_planning_input:
+            parameter = self.params[param_id]
+            #stack: (block_id, row_no, slot_no)
+            for stack in yard_planning_input[param_id]:
+                self.blocks_by_id[stack[0]].getSlots()[stack[1]][stack[2]].addParameter(parameter)
+        #todo: container and bad data implementation
 
     def anomalies(self) -> dict[str,list[tuple[int,int]]]:
         result = {}
