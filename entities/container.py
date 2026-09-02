@@ -67,15 +67,6 @@ class Container:
 
         else: self.coords = []
 
-        """ shouldn't need tier
-        # only modifies this class's tier attr.
-        # change the tier.containers outside of this class to avoid circular dependence
-        if TIER.isEmpty(TIERHEIGHT):
-            self.tier = TIER
-            self.tierHeight = TIERHEIGHT
-        else: print("Occupied")
-        """
-
     def getId(self) -> str: return self.id
     def getPrincipal(self) -> str: return self.principal
     def getContCondition(self) -> str: return self.cont_condition
