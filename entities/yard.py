@@ -146,7 +146,7 @@ class Yard:
 
         # remove the slots as per input
         for removed_slot in removed_slots_input:
-            self.blocks_by_id[removed_slot[0]].getSlots()[removed_slot[1]][removed_slot[2]].makeVoid()
+            self.blocks_by_id[removed_slot[0]].getStack(removed_slot[1],removed_slot[2]).makeVoid()
 
         # initializes and stores Parameters
         self.params = {}
@@ -160,7 +160,7 @@ class Yard:
             #stack: (block_id, row_no, slot_no)
             for stack in yard_planning_input[param_id]:
                 try:
-                    self.blocks_by_id[stack[0]].getSlots()[stack[1]][stack[2]].addParameter(parameter)
+                    self.blocks_by_id[stack[0]].getStack(stack[1],stack[2]).addParameter(parameter)
                 except IndexError:
                     self.bad_data.addYPOutOfRange((param_id,stack[0],stack[1],stack[2]))
 
