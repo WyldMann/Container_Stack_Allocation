@@ -182,14 +182,13 @@ class Yard:
                 self.bad_data.addIncompleteContainer(container)
                 continue
 
-            coordsInt = container.getCoordsInt()
-
             # validate coords can be found. Otherwise, mark bad_data and move on
             try:
+                coordsInt = container.getCoordsInt()
                 stack = self.blocks_by_code[coordsInt[0]].getStack(coordsInt[1],coordsInt[2])
                 tier = coordsInt[3]
                 stackIsEmpty = stack.isEmpty(coordsInt[3])
-            except (IndexError,KeyError):
+            except (IndexError,KeyError,ValueError):
                 self.bad_data.addContainerCoordsInvalid(container)
                 continue
 
@@ -203,8 +202,6 @@ class Yard:
         self.anomalyCheck()
 
         self.bad_data.print()
-
-        #todo: flying container implementation
     def getBadData(self) -> BadYardData: return self.bad_data
 
     def anomalyCheck(self):
