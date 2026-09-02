@@ -173,22 +173,32 @@ class BadYardData:
     overlapping_containers: list[tuple[Container,Container]]
     anomalous_stack: list[Stack]
     incomplete_containers: list[Container]
+    yp_out_of_range: list[tuple[str,str,int,int]]
 
     def __init__(self):
         self.overlapping_containers = []
         self.anomalous_stack = []
         self.incomplete_containers = []
+        self.yp_out_of_range = []
     def addOverlappingContainer(self, container1: Container, container2: Container):
         self.overlapping_containers.append((container1, container2))
     def addFlyingContainer(self, stack: Stack):
         self.anomalous_stack.append(stack)
     def addIncompleteContainer(self, container: Container):
         self.incomplete_containers.append(container)
+    def addYPOutOfRange(self,yp_item: tuple[str,str,int,int]):
+        self.yp_out_of_range.append(yp_item)
+
+    def printYPOutOfRange(self):
+        print("Yard Planning Out of Range:")
+        for yp_item in self.yp_out_of_range:
+            print("param_id:",yp_item[0],"block_id:",yp_item[1],"row:",yp_item[2] + 1, "slot:",  yp_item[3] + 1)
 
     def bad_data(self) -> bool:
         return (self.overlapping_containers != []
                 or self.anomalous_stack != []
-                or self.incomplete_containers != [])
+                or self.incomplete_containers != []
+                or self.yp_out_of_range != [])
 
     def print(self):
         if self.overlapping_containers:
@@ -203,3 +213,5 @@ class BadYardData:
             print("Incomplete containers:")
             for x in self.incomplete_containers:
                 print(x,x.getCoords())
+
+        self.printYPOutOfRange()

@@ -13,6 +13,6 @@ removed_slot = RemovedSlotsRepository(removed_slot_file).readCSVTuple()
 parameter_input = Repository(parameter_file).readCSV()
 yard_planning_input = YardPlanningRepository(yard_planning_input_file).readCSVDictTuple()
 
-yard = Yard(yard_repo,removed_slot,parameter_input)
+yard = Yard(yard_repo,removed_slot,parameter_input,yard_planning_input)
 
 yard.print()
