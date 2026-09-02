@@ -80,10 +80,16 @@ class Container:
     def getVoyage(self) -> str: return self.voyage
     def getWeight(self) -> float: return self.weight
     def getCoords(self) -> list[str]: return self.coords
-    def getCoordsInt(self) -> tuple[str,int,int,int]:
-        return self.coords[0],int(self.coords[1]),int(self.coords[2]),int(self.coords[3])
+    def setCoords(self, block: str, row: str, slot: str, tier: str):
+        self.coords = [block, row, slot, tier]
 
-    def setCoords(self, block: str, row: str, slot: str, tier: str): self.coords = [block, row, slot, tier]
+    # coordsInt changes relevant data to str/int and follows 0-based indexing instead of database's 1-based indexing
+    def getCoordsInt(self) -> tuple[str,int,int,int]:
+        return self.coords[0],int(self.coords[1]) - 1,int(self.coords[2]) - 1,int(self.coords[3]) - 1
+    def setCoordsInt(self, coordsInt: tuple[str,int,int,int]):
+        self.coords = [coordsInt[0],str(coordsInt[1] + 1),str(coordsInt[2] + 1),str(coordsInt[3] + 1)]
+
+
 
     def isIncomplete(self) -> bool: return "" in self.coords
 
