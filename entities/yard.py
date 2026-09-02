@@ -194,6 +194,8 @@ class Yard:
                 stack.addContainer(container,tier)
                 self.containers[container.getId()] = container
 
+        self.bad_data.print()
+
         #todo: flying container implementation
     def getBadData(self) -> BadYardData: return self.bad_data
 
@@ -238,12 +240,12 @@ class BadYardData:
         self.container_coords_invalid.append(container)
 
     def printContainerCoordsInvalid(self):
-        print("Container Coordinates Invalid:")
+        print("\nContainer Coordinates Invalid:")
         for x in self.container_coords_invalid:
             print(x.getId(),x.getCoords())
 
     def printYPOutOfRange(self):
-        print("Yard Planning Out of Range:")
+        print("\nYard Planning Out of Range:")
         for yp_item in self.yp_out_of_range:
             print("param_id:",yp_item[0],"block_id:",yp_item[1],"row:",yp_item[2] + 1, "slot:",  yp_item[3] + 1)
 
@@ -255,15 +257,15 @@ class BadYardData:
 
     def print(self):
         if self.overlapping_containers:
-            print("Overlapping containers:")
+            print("\nOverlapping containers:")
             for x in self.overlapping_containers:
-                print(x)
+                print(str(x[0]),str(x[1]),x[0].getCoords())
         if self.anomalous_stack:
-            print("Anomalous stacks:")
+            print("\nAnomalous stacks:")
             for x in self.anomalous_stack:
                 x.printContents()
         if self.incomplete_containers:
-            print("Incomplete containers:")
+            print("\nIncomplete containers:")
             for x in self.incomplete_containers:
                 print(x,x.getCoords())
         if self.yp_out_of_range: self.printYPOutOfRange()
