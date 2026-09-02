@@ -88,7 +88,7 @@ class Container:
 
     def setCoords(self, block: str, row: str, slot: str, tier: str): self.coords = [block, row, slot, tier]
 
-    def isIncomplete(self) -> bool: return None in self.coords
+    def isIncomplete(self) -> bool: return "" in self.coords
 
     def __str__(self):
         return self.id
