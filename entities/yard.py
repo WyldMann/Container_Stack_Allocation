@@ -42,6 +42,9 @@ class Stack:
     def vacancy(self):
         return self.containers.count(None)
 
+    def occupancy(self):
+        return self.maxTier - self.containers.count(None)
+
     # returns true if there's floating containers
     def anomaly(self):
         doneStacking = False
@@ -61,6 +64,9 @@ class Stack:
 
     def printVacancy(self):
         print(self.vacancy(), end = " ")
+
+    def printOccupancy(self):
+        print(self.occupancy())
 
     def printContents(self):
         for x in self.containers:
@@ -107,7 +113,7 @@ class Block:
     def print(self):
         for slot in self.slots:
             for tier in slot:
-                tier.printVacancy()
+                tier.printOccupancy()
             print()
 
 
@@ -199,7 +205,7 @@ class Yard:
         #todo: flying container implementation
     def getBadData(self) -> BadYardData: return self.bad_data
 
-    def anomalies(self) -> dict[str,list[tuple[int,int]]]:
+    def anomalyCheck(self) -> dict[str,list[tuple[int,int]]]:
         result = {}
         for block_id in self.blocks_by_id:
             result[block_id] = self.blocks_by_id[block_id].anomaly()
