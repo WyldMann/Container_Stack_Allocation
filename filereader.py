@@ -3,9 +3,7 @@ from typing import Any
 from utils import strGeneralize
 
 
-#todo overhaul repository usage for all classes
-
-class Repository:
+class FileReader:
     def __init__(self, file_path):
         self.file_path = file_path
 
@@ -37,7 +35,7 @@ class Repository:
     def readCSVDictTuple(self):
         return self.group_rows(self.readCSVTuple())
 
-class ContainerRepository(Repository):
+class ContainerFileReader(FileReader):
     def readCSV(self) -> list[dict[str,str]]:
         data = []
         with open(self.file_path) as csvfile:
@@ -53,7 +51,7 @@ class ContainerRepository(Repository):
 
         return data
 
-class RemovedSlotsRepository(Repository):
+class RemovedSlotsFileReader(FileReader):
 
     #[(block_id, row_no, slot_no),....]
     def readCSVTuple(self) -> list[tuple[str,int,int]]:
@@ -70,7 +68,7 @@ class RemovedSlotsRepository(Repository):
                 data.append((strGeneralize(line[block_id]), int(line[row_no]) - 1, int(line[slot_no]) - 1))
         return data
 
-class YardPlanningRepository(Repository):
+class YardPlanningFileReader(FileReader):
 
     #[(param_id, block_id, slot, row), ... ]
     # readCSVTuple().grouprows() {param_id:

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from repository import Repository, RemovedSlotsRepository, YardPlanningRepository, ContainerRepository
+from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader
 from entities import Yard
 
 yardfile = Path(__file__).parent.parent / "data"/ "_TRM_MST_YARD_BLOCK__202609030901.csv"
@@ -10,11 +10,11 @@ yard_planning_input_file =  Path(__file__).parent.parent / "data" / "_TRM_TRS_YA
 container_file = Path(__file__).parent.parent / "data" / "_TRM_TRS_TARGET_CONTAINER.csv"
 prod_container_file = Path(__file__).parent.parent / "data" / "rpt-terminalapp-010926.csv"
 
-yard_repo = Repository(yardfile).readCSV()
-removed_slot = RemovedSlotsRepository(removed_slot_file).readCSVTuple()
-parameter_input = Repository(parameter_file).readCSV()
-yard_planning_input = YardPlanningRepository(yard_planning_input_file).readCSVDictTuple()
-container_repo = ContainerRepository(prod_container_file).readCSV()
+yard_repo = FileReader(yardfile).readCSV()
+removed_slot = RemovedSlotsFileReader(removed_slot_file).readCSVTuple()
+parameter_input = FileReader(parameter_file).readCSV()
+yard_planning_input = YardPlanningFileReader(yard_planning_input_file).readCSVDictTuple()
+container_repo = ContainerFileReader(prod_container_file).readCSV()
 
 yard = Yard(yard_repo,removed_slot,parameter_input,yard_planning_input,container_repo)
 
