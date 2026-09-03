@@ -92,6 +92,8 @@ class Container:
     def getCoords(self) -> list[str]: return self.coords
     def setCoords(self, branch:str, block: str, row: str, slot: str, tier: str):
         self.coords = [branch,block, row, slot, tier]
+    def getCoordsTuple(self) -> tuple[str,str,str,str,str]:
+        return self.coords[0],self.coords[1],self.coords[2],self.coords[3],self.coords[4]
 
     # coordsInt changes relevant data to str/int and follows 0-based indexing instead of database's 1-based indexing
     def getCoordsInt(self) -> tuple[str,str,int,int,int]:
