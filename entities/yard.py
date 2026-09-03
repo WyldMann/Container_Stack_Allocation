@@ -91,10 +91,12 @@ class Stack:
 
 class Block:
     id: str
+    branch: str
     code: str
     slots: list[list[Stack]]
 
     def __init__(self,
+                 BRANCH_ID: str,
                  BLOCK_ID: str,
                  BLOCK_CODE: str,
                  SLOT_COUNT: str,
@@ -103,8 +105,8 @@ class Block:
 
                  **kwargs
                  ):
-
         self.id = BLOCK_ID
+        self.branch = BRANCH_ID
         self.code = BLOCK_CODE
         self.slots = []
         for row in range(int(ROW_COUNT)):
@@ -114,6 +116,7 @@ class Block:
             self.slots.append(stacks)
 
     def getId(self) -> str: return self.id
+    def getBranch(self) -> str: return self.branch
     def getCode(self) -> str: return self.code
     def getSlots(self) -> list[list[Stack]]:return self.slots
     def getStack(self, row:int, slot:int) -> Stack: return self.slots[row][slot]
@@ -124,17 +127,16 @@ class Block:
                 if stack.anomaly(): anomalies.append(stack)
         return anomalies
     def print(self):
+        print("ID:",self.id," Branch/Code:",self.branch + "/" + self.getCode())
         for slot in self.slots:
             for tier in slot:
                 tier.printOccupancy()
             print()
 
-
-
 # in this scope, there's only one yard
 class Yard:
     blocks_by_id: dict[str,Block]
-    blocks_by_code: dict[str, Block]
+    blocks_by_code: dict[tuple[str,str], Block] # {(BRANCH_ID,BLOCK_CODE): Block}
     params: dict[str,Parameter]
     bad_data: BadYardData
     containers: dict[str,Container]
@@ -144,9 +146,9 @@ class Yard:
     #yard planning: {param_id:[(block_id, row_no, slot_no),[...],...],...}
     def __init__(self,
                  yard_block_input: list[dict[str,str]],
-                 removed_slots_input:list[tuple[str,int,int]] | None = None,
+                 removed_slots_input: list[tuple[str,int,int]] | None = None,
                  parameters_input: list[dict[str,str]] | None = None,
-                 yard_planning_input:dict[str,list[tuple[str,int,int]]] | None = None,
+                 yard_planning_input: dict[str,list[tuple[str,int,int]]] | None = None,
                  container_input: list[dict[str,str]] | None = None) -> None:
 
         if removed_slots_input is None: removed_slots_input = []
@@ -163,7 +165,7 @@ class Yard:
         for inp in yard_block_input:
             block = Block(**inp)
             self.blocks_by_id[block.getId()] = block
-            self.blocks_by_code[block.getCode()] = block
+            self.blocks_by_code[(block.getBranch(),block.getCode())] = block
 
         # remove the slots as per input
         for removed_slot in removed_slots_input:
@@ -197,9 +199,9 @@ class Yard:
             # validate coords can be found. Otherwise, mark bad_data and move on
             try:
                 coordsInt = container.getCoordsInt()
-                stack = self.blocks_by_code[coordsInt[0]].getStack(coordsInt[1],coordsInt[2])
-                tier = coordsInt[3]
-                stackIsEmpty = stack.isEmpty(coordsInt[3])
+                stack = self.blocks_by_code[(coordsInt[0],coordsInt[1])].getStack(coordsInt[2],coordsInt[3])
+                tier = coordsInt[4]
+                stackIsEmpty = stack.isEmpty(coordsInt[4])
             except (IndexError,KeyError,ValueError):
                 self.bad_data.addContainerCoordsInvalid(container)
                 continue
@@ -227,7 +229,6 @@ class Yard:
 
     def print(self):
         for block_id in self.blocks_by_id:
-            print(block_id)
             self.blocks_by_id[block_id].print()
 
 class BadYardData:
