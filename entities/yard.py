@@ -33,6 +33,8 @@ class Stack:
             self.containers[tier] = container
         else:
             print("Occupied")
+    def replaceContainer(self, container: Container, tier: int):
+        self.containers[tier] = container
 
     def removeContainer(self, tier: int):
         self.containers[tier] = None
@@ -214,13 +216,25 @@ class Yard:
                 self.bad_data.addContainerCoordsInvalid(container)
                 continue
 
-
-            # disregard container if coords already occupied
+            # if tier is occupied, the one with most recent move_time takes highest precedence
             if not stackIsEmpty:
-                self.bad_data.addOverlappingContainer(container, stack.getContainer(tier))
+                # existing container is newer. current container is ignored
+                existing_container = stack.getContainerTrue(tier)
+                if container.getMoveTime() < existing_container.getMoveTime():
+                    old_container, new_container = container, existing_container
+                # current container is newer. remove existing_container from container dict and add current container to the container dict and the stack
+                else:
+                    old_container, new_container = existing_container, container
+                    del self.containers[existing_container.getId()]
+                    self.containers[new_container.getId()] = new_container
+
+                stack.replaceContainer(new_container,tier)
+                self.bad_data.addOverlappingContainer(old_container,new_container)
+
             else:
                 stack.addContainer(container,tier)
                 self.containers[container.getId()] = container
+
         self.anomalyCheck()
 
         self.bad_data.print()
