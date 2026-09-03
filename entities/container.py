@@ -89,7 +89,9 @@ class Container:
     def setCoordsInt(self, coordsInt: tuple[str,int,int,int]):
         self.coords = [coordsInt[0],str(coordsInt[1] + 1),str(coordsInt[2] + 1),str(coordsInt[3] + 1)]
 
-
+    # same goes for tierInt for coords[3]
+    def setTierInt(self,tierInt: int):
+        self.coords[3] = str(tierInt + 1)
 
     def isIncomplete(self) -> bool: return "" in self.coords
 
