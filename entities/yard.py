@@ -318,7 +318,7 @@ class BadYardData:
     #print in order of detection
     def print(self):
         if self.yp_out_of_range: self.printYPOutOfRange()
-        if self.container_coords_invalid: self.printContainerCoordsInvalid()
         if self.incomplete_containers: self.printIncompleteContainers()
-        if self.overlapping_containers == {}: self.printOverlappingContainers()
+        if self.container_coords_invalid: self.printContainerCoordsInvalid()
+        if self.overlapping_containers != {}: self.printOverlappingContainers()
         if self.anomalous_stacks: self.printAnomalousStacks()
