@@ -51,7 +51,7 @@ class Container:
                  #TIER: Stack,
                  #TIERHEIGHT: int,
 
-                 **kwargs
+                 **_kwargs
                  ):
 
         self.id = CONTNO
@@ -105,7 +105,7 @@ class Container:
     def setTierInt(self,tierInt: int):
         self.coords[4] = str(tierInt + 1)
 
-    def isIncomplete(self) -> bool: return "" in self.coords
+    def isIncomplete(self) -> bool: return "" in self.coords or self.id == ""
 
     def __str__(self):
         return self.id

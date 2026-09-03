@@ -113,7 +113,7 @@ class Block:
                  ROW_COUNT: str,
                  MAX_TIER: str,
 
-                 **kwargs
+                 **_kwargs
                  ):
         self.id = BLOCK_ID
         self.branch = BRANCH_ID
@@ -197,6 +197,7 @@ class Yard:
                 except IndexError:
                     self.bad_data.addYPOutOfRange((param_id,stack[0],stack[1],stack[2]))
 
+        # input containers already in the batabase
         self.containers = {}
         for inp in container_input:
             container = Container(**inp)
