@@ -304,6 +304,10 @@ class BadYardData:
         for x in self.anomalous_stacks:
             print(x.getCoords(), end = " ")
             x.printContents()
+    def printIncompleteContainers(self):
+        print("\nIncomplete containers:")
+        for x in self.incomplete_containers:
+            print(x, x.getCoords())
 
     def bad_data(self) -> bool:
         return (self.overlapping_containers != []
@@ -311,12 +315,10 @@ class BadYardData:
                 or self.incomplete_containers != []
                 or self.yp_out_of_range != [])
 
+    #print in order of detection
     def print(self):
-        if self.overlapping_containers == {}: self.printOverlappingContainers()
-        if self.anomalous_stacks: self.printAnomalousStacks()
-        if self.incomplete_containers:
-            print("\nIncomplete containers:")
-            for x in self.incomplete_containers:
-                print(x,x.getCoords())
         if self.yp_out_of_range: self.printYPOutOfRange()
         if self.container_coords_invalid: self.printContainerCoordsInvalid()
+        if self.incomplete_containers: self.printIncompleteContainers()
+        if self.overlapping_containers == {}: self.printOverlappingContainers()
+        if self.anomalous_stacks: self.printAnomalousStacks()
