@@ -122,7 +122,7 @@ class Block:
         for row in range(int(ROW_COUNT)):
             stacks = []
             for slot in range(int(SLOT_COUNT)):
-                stacks.append(Stack(int(MAX_TIER), (self.code,row,slot)))
+                stacks.append(Stack(int(MAX_TIER), (self.id,row,slot)))
             self.slots.append(stacks)
 
     def getId(self) -> str: return self.id
