@@ -15,7 +15,7 @@ class Stack:
         if parameters is None:
             parameters = []
 
-        self.containers = [None for x in range(maxTier)]
+        self.containers = [None] * maxTier
         self.parameters = parameters
         self.maxTier = maxTier
         self.coords = coords
