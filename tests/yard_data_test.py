@@ -18,5 +18,5 @@ container_repo = ContainerFileReader(prod_container_file).readCSV()
 
 yard = Yard(yard_repo,removed_slot,parameter_input,yard_planning_input,container_repo)
 
-yard.print()
+#yard.print()
 #yard.getBadData().print()
