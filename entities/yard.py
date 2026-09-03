@@ -55,6 +55,14 @@ class Stack:
             else: doneStacking = True
         return False
 
+    # use this instead if return type is definitely a container and not None
+    def getContainerTrue(self,tier:int) -> Container:
+        container = self.containers[tier]
+        if container is not None:
+            return container
+        else:
+            raise NotImplementedError
+
     # used when correcting anomaly
     def normalize(self):
             while self.anomaly():
@@ -232,7 +240,7 @@ class Yard:
             self.blocks_by_id[block_id].print()
 
 class BadYardData:
-    overlapping_containers: list[tuple[Container,Container|None]]   # None type added for type check purposes. if it's None, something is wrong.
+    overlapping_containers: list[tuple[Container,Container]]
     anomalous_stacks: list[Stack]
     incomplete_containers: list[Container]
     yp_out_of_range: list[tuple[str,str,int,int]]
@@ -248,7 +256,7 @@ class BadYardData:
     def getAnomalousStacks(self) -> list[Stack]:
         return self.anomalous_stacks
 
-    def addOverlappingContainer(self, container1: Container, container2: Container | None):
+    def addOverlappingContainer(self, container1: Container, container2: Container):
         print("Bad Data Detected: Overlapping Container")
         self.overlapping_containers.append((container1, container2))
     def addIncompleteContainer(self, container: Container):
