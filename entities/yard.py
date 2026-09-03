@@ -55,6 +55,18 @@ class Stack:
             else: doneStacking = True
         return False
 
+    # used when correcting anomaly
+    def normalize(self):
+            while self.anomaly():
+                for x in range(len(self.containers) - 1):
+
+                    # a roundabout way to swap values, without raising possible type mismatch
+                    container = self.containers[x + 1]
+                    if self.containers[x] is None and container is not None:
+                        self.containers[x] = container
+                        self.containers[x + 1] = None
+                        container.setTierInt(x)     #update container tier
+
     # returns tier score
     def score(self,container):
         return max(x.evaluate(container) for x in self.parameters)
@@ -209,6 +221,10 @@ class Yard:
             for stack in block.anomalies():
                 self.bad_data.addAnomalousStack(stack)
 
+    def fixAnomalies(self):
+        while len(self.bad_data.getAnomalousStacks()) != 0:
+            self.bad_data.popAnomalousStack().normalize()
+
     def print(self):
         for block_id in self.blocks_by_id:
             print(block_id)
@@ -216,17 +232,20 @@ class Yard:
 
 class BadYardData:
     overlapping_containers: list[tuple[Container,Container|None]]   # None type added for type check purposes. if it's None, something is wrong.
-    anomalous_stack: list[Stack]
+    anomalous_stacks: list[Stack]
     incomplete_containers: list[Container]
     yp_out_of_range: list[tuple[str,str,int,int]]
     container_coords_invalid: list[Container]
 
     def __init__(self):
         self.overlapping_containers = []
-        self.anomalous_stack = []
+        self.anomalous_stacks = []
         self.incomplete_containers = []
         self.yp_out_of_range = []
         self.container_coords_invalid = []
+
+    def getAnomalousStacks(self) -> list[Stack]:
+        return self.anomalous_stacks
 
     def addOverlappingContainer(self, container1: Container, container2: Container | None):
         print("Bad Data Detected: Overlapping Container")
@@ -240,7 +259,8 @@ class BadYardData:
     def addContainerCoordsInvalid(self,container:Container):
         print("Bad Data Detected: Container Coordinates Invalid")
         self.container_coords_invalid.append(container)
-    def addAnomalousStack(self,stack: Stack): self.anomalous_stack.append(stack)
+    def addAnomalousStack(self,stack: Stack): self.anomalous_stacks.append(stack)
+    def popAnomalousStack(self) -> Stack: return self.anomalous_stacks.pop()
 
     def printContainerCoordsInvalid(self):
         print("\nContainer Coordinates Invalid:")
@@ -252,9 +272,15 @@ class BadYardData:
         for yp_item in self.yp_out_of_range:
             print("param_id:",yp_item[0],"block_id:",yp_item[1],"row:",yp_item[2] + 1, "slot:",  yp_item[3] + 1)
 
+    def printAnomalousStacks(self):
+        print("\nAnomalous stacks:")
+        for x in self.anomalous_stacks:
+            print(x.getCoords(), end = " ")
+            x.printContents()
+
     def bad_data(self) -> bool:
         return (self.overlapping_containers != []
-                or self.anomalous_stack != []
+                or self.anomalous_stacks != []
                 or self.incomplete_containers != []
                 or self.yp_out_of_range != [])
 
@@ -263,11 +289,7 @@ class BadYardData:
             print("\nOverlapping containers:")
             for x in self.overlapping_containers:
                 print(str(x[0]),str(x[1]),x[0].getCoords())
-        if self.anomalous_stack:
-            print("\nAnomalous stacks:")
-            for x in self.anomalous_stack:
-                print(x.getCoords(),end = " ")
-                x.printContents()
+        if self.anomalous_stacks: self.printAnomalousStacks()
         if self.incomplete_containers:
             print("\nIncomplete containers:")
             for x in self.incomplete_containers:
