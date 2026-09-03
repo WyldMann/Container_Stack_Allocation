@@ -237,7 +237,6 @@ class Yard:
 
         self.anomalyCheck()
 
-        self.bad_data.print()
     def getBadData(self) -> BadYardData: return self.bad_data
 
     def anomalyCheck(self):
@@ -271,20 +270,16 @@ class BadYardData:
         return self.anomalous_stacks
 
     def addOverlappingContainer(self, container1: Container, container2: Container):
-        print("Bad Data Detected: Overlapping Container")
         coords = container1.getCoordsTuple()
         if coords in self.overlapping_containers:
             self.overlapping_containers[coords].update({container1, container2})
         else:
             self.overlapping_containers[coords] = {container1, container2}
     def addIncompleteContainer(self, container: Container):
-        print("Bad Data Detected: IncompleteContainer")
         self.incomplete_containers.append(container)
     def addYPOutOfRange(self,yp_item: tuple[str,str,int,int]):
-        print("Bad Data Detected: YPOutOfRange")
         self.yp_out_of_range.append(yp_item)
     def addContainerCoordsInvalid(self,container:Container):
-        print("Bad Data Detected: Container Coordinates Invalid")
         self.container_coords_invalid.append(container)
     def addAnomalousStack(self,stack: Stack): self.anomalous_stacks.append(stack)
     def popAnomalousStack(self) -> Stack: return self.anomalous_stacks.pop()
