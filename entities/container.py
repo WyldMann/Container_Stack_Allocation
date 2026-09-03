@@ -40,12 +40,13 @@ class Container:
                  VESSEL_VOYAGE:str,
                  WEIGHT:str,
 
+                 MOVE_TIME: str,
+
                  BRANCH:str|None = None,
                  BLOK:str | None = None,
                  SLOT:str | None = None,
                  ROW:str | None = None,
                  TIER:str | None = None,
-                 MOVE_TIME: str|None = None,
 
                  #TIER: Stack,
                  #TIERHEIGHT: int,
@@ -65,7 +66,7 @@ class Container:
         self.vessel = VESSEL_OPERATOR
         self.voyage = VESSEL_VOYAGE
         self.weight = float(WEIGHT) if WEIGHT != '' else None
-        self.move_time = parse_datetime(MOVE_TIME) if MOVE_TIME is not None else None
+        self.move_time = parse_datetime(MOVE_TIME)
 
         if BRANCH is None: BRANCH = ""
         if BLOK is None: BLOK = ""
@@ -87,7 +88,7 @@ class Container:
     def getVessel(self) -> str: return self.vessel
     def getVoyage(self) -> str: return self.voyage
     def getWeight(self) -> float|None: return self.weight
-    def getMoveTime(self) -> datetime | None: return self.move_time
+    def getMoveTime(self) -> datetime: return self.move_time
     def getCoords(self) -> list[str]: return self.coords
     def setCoords(self, branch:str, block: str, row: str, slot: str, tier: str):
         self.coords = [branch,block, row, slot, tier]
