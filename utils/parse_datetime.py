@@ -1,14 +1,17 @@
 from datetime import datetime
 
-def parse_datetime(value: str) -> datetime | None:
+def parse_datetime(value: str) -> datetime:
+    if not value or not value.strip():
+        return datetime.min
+
     formats = [
-        "%d-%m-%Y %H:%M",  # 26-08-2026 11:25
-        "%d/%m/%Y %H:%M",  # 7/8/2026 8:28
+        "%d-%m-%Y %H:%M",
+        "%d/%m/%Y %H:%M",
     ]
 
     for fmt in formats:
         try:
             return datetime.strptime(value.strip(), fmt)
         except ValueError:
-            print(str, "DateTime not recognized")
-    return None
+            continue
+    raise ValueError(f"Invalid datetime format: {value}")
