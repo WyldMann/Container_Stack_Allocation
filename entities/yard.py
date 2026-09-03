@@ -254,14 +254,14 @@ class Yard:
             self.blocks_by_id[block_id].print()
 
 class BadYardData:
-    overlapping_containers: list[tuple[Container,Container]]
+    overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]
     anomalous_stacks: list[Stack]
     incomplete_containers: list[Container]
     yp_out_of_range: list[tuple[str,str,int,int]]
     container_coords_invalid: list[Container]
 
     def __init__(self):
-        self.overlapping_containers = []
+        self.overlapping_containers = {}
         self.anomalous_stacks = []
         self.incomplete_containers = []
         self.yp_out_of_range = []
@@ -272,7 +272,11 @@ class BadYardData:
 
     def addOverlappingContainer(self, container1: Container, container2: Container):
         print("Bad Data Detected: Overlapping Container")
-        self.overlapping_containers.append((container1, container2))
+        coords = container1.getCoordsTuple()
+        if coords in self.overlapping_containers:
+            self.overlapping_containers[coords].update({container1, container2})
+        else:
+            self.overlapping_containers[coords] = {container1, container2}
     def addIncompleteContainer(self, container: Container):
         print("Bad Data Detected: IncompleteContainer")
         self.incomplete_containers.append(container)
@@ -284,6 +288,11 @@ class BadYardData:
         self.container_coords_invalid.append(container)
     def addAnomalousStack(self,stack: Stack): self.anomalous_stacks.append(stack)
     def popAnomalousStack(self) -> Stack: return self.anomalous_stacks.pop()
+
+    def printOverlappingContainers(self):
+        print("\nOverlapping Containers:")
+        for coords, containers in self.overlapping_containers.items():
+            print(coords, [str(x) for x in containers])
 
     def printContainerCoordsInvalid(self):
         print("\nContainer Coordinates Invalid:")
@@ -308,10 +317,7 @@ class BadYardData:
                 or self.yp_out_of_range != [])
 
     def print(self):
-        if self.overlapping_containers:
-            print("\nOverlapping containers:")
-            for x in self.overlapping_containers:
-                print(str(x[0]),str(x[1]),x[0].getCoords())
+        if self.overlapping_containers == {}: self.printOverlappingContainers()
         if self.anomalous_stacks: self.printAnomalousStacks()
         if self.incomplete_containers:
             print("\nIncomplete containers:")
