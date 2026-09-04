@@ -340,3 +340,13 @@ class BadYardData:
         if self.container_coords_invalid: self.printContainerCoordsInvalid()
         if self.overlapping_containers != {}: self.printOverlappingContainers()
         if self.anomalous_stacks: self.printAnomalousStacks()
+
+    def printStats(self):
+        print("Total Parameters:", (self.total_params))
+        print("Yard Planning Errors:", len(self.yp_out_of_range))
+        print("Total Containers:", self.total_containers)
+        print("Overlapping Containers:", len(self.overlapping_containers))
+        print("Incomplete Containers:", len(self.incomplete_containers))
+        print("Container Coords Invalid:", len(self.container_coords_invalid))
+        print("Anomalous Stacks:", len(self.anomalous_stacks))
+
