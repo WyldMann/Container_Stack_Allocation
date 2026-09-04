@@ -273,6 +273,18 @@ class BadYardData:
 
     def getAnomalousStacks(self) -> list[Stack]:
         return self.anomalous_stacks
+    def getOverlappingContainers(self) -> dict[tuple[str,str,str,str,str],set[Container]]:
+        return self.overlapping_containers
+    def getIncompleteContainers(self) -> list[Container]:
+        return self.incomplete_containers
+    def getYPOutOfRange(self) -> list[tuple[str,str,int,int]]:
+        return self.yp_out_of_range
+    def getContainerCoordsInvalid(self) -> list[Container]:
+        return self.container_coords_invalid
+    def getTotalParams(self) -> int:
+        return self.total_params
+    def getTotalContainers(self) -> int:
+        return self.total_containers
 
     def addOverlappingContainer(self, container1: Container, container2: Container):
         coords = container1.getCoordsTuple()
