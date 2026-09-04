@@ -113,10 +113,22 @@ class Container:
 # special container to be filled in gaps of anomalous stacks
 class DummyContainer(Container):
     #[(block_id,row,slot,tier),...]
-    coordsList:list[tuple[str,str,str,str]]
+    coordsList:set[tuple[str,str,str,str]]
 
     def __init__(self):
         super().__init__("DUMMY","","","","","","","","","","","","","","","","")
-        self.coordsList = []
+        self.coordsList = set()
     def addCoordList(self,coords:tuple[str,int,int],tier:int):
-        self.coordsList.append((coords[0], str(coords[1] + 1), str(coords[2] + 1),str(tier + 1)))
+        self.coordsList.add((coords[0], str(coords[1] + 1), str(coords[2] + 1),str(tier + 1)))
+
+    def removeCoordList(self,coords:tuple[str,str,str,str]): self.coordsList.remove(coords)
+
+    def replaceDummy(self,container:Container,blockID:str):
+        containerCoords = container.getCoords()
+        self.removeCoordList((blockID,containerCoords[2],containerCoords[3],containerCoords[4]))
+
+    def getCoordsList(self) -> set[tuple[str,str,str,str]]: return self.coordsList
+
+    def printCoordsList(self):
+        for coords in self.coordsList:
+            print(coords)

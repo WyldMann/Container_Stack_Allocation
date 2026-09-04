@@ -58,8 +58,8 @@ class Stack:
         return False
 
     def anomalyDummyFill(self,dummy: DummyContainer):
+        startStacking = False
         for x in reversed(range(len(self.containers))):
-            startStacking = False
             if self.containers[x] is not None:
                 startStacking = True
             else:
@@ -160,6 +160,7 @@ class Yard:
     params: dict[str,Parameter]
     bad_data: BadYardData
     containers: dict[str,Container]
+    dummy: DummyContainer
 
     #block and parameters input: {"args":"values",...}
     #removed_slots_input: [(block_id, row_no, slot_no),...]
@@ -177,6 +178,7 @@ class Yard:
         if container_input is None: container_input = []
 
         self.bad_data = BadYardData(sum(len(yp) for yp in yard_planning_input.values()),len(container_input))
+        self.dummy = DummyContainer()
 
         # initialize blocks and constructs 2 dict attributes to keep track
         self.blocks_by_id = {}
@@ -255,9 +257,15 @@ class Yard:
             for stack in block.anomalies():
                 self.bad_data.addAnomalousStack(stack)
 
+    # method 1: drop all flying containers
     def fixAnomalies(self):
         while len(self.bad_data.getAnomalousStacks()) != 0:
             self.bad_data.popAnomalousStack().normalize()
+
+    # method 2: fit in dummy containers
+    def fillDummyContainer(self) -> None:
+        while len(self.bad_data.getAnomalousStacks()) != 0:
+            self.bad_data.popAnomalousStack().anomalyDummyFill(self.dummy)
 
     def print(self):
         for block_id in self.blocks_by_id:
