@@ -166,7 +166,7 @@ class Yard:
         if yard_planning_input is None: yard_planning_input = {}
         if container_input is None: container_input = []
 
-        self.bad_data = BadYardData(len(yard_planning_input),len(container_input))
+        self.bad_data = BadYardData(sum(len(yp) for yp in yard_planning_input.values()),len(container_input))
 
         # initialize blocks and constructs 2 dict attributes to keep track
         self.blocks_by_id = {}
@@ -342,11 +342,11 @@ class BadYardData:
         if self.anomalous_stacks: self.printAnomalousStacks()
 
     def printStats(self):
-        print("Total Yard Planning Items:", (self.total_yp))
+        print("Total Yard Planning Items:", self.total_yp)
         print("Yard Planning Errors:", len(self.yp_out_of_range))
-        print("Total Containers:", self.total_containers)
-        print("Overlapping Containers:", len(self.overlapping_containers))
+        print("\nTotal Containers:", self.total_containers)
         print("Incomplete Containers:", len(self.incomplete_containers))
         print("Container Coords Invalid:", len(self.container_coords_invalid))
+        print("Overlapping Containers:", len(self.overlapping_containers))
         print("Anomalous Stacks:", len(self.anomalous_stacks))
 
