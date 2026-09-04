@@ -65,6 +65,7 @@ class Stack:
             else:
                 if startStacking:
                     self.containers[x] = dummy
+                    dummy.addCoordList(self.coords,x)
 
     # use this instead if return type is definitely a container and not None
     def getContainerTrue(self,tier:int) -> Container:
@@ -331,6 +332,7 @@ class BadYardData:
         for x in self.anomalous_stacks:
             print(x.getCoords(), end = " ")
             x.printContents()
+
     def printIncompleteContainers(self):
         print("\nIncomplete containers:")
         for x in self.incomplete_containers:
@@ -357,4 +359,4 @@ class BadYardData:
         print("Incomplete Containers:", len(self.incomplete_containers))
         print("Container Coords Invalid:", len(self.container_coords_invalid))
         print("Overlapping Containers:", len(self.overlapping_containers))
-        print("Anomalous Stacks:", len(self.anomalous_stacks))
+        print("\nAnomalous Stacks:", len(self.anomalous_stacks))
