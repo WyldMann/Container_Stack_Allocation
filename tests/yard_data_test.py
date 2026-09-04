@@ -20,3 +20,5 @@ yard = Yard(yard_repo,removed_slot,parameter_input,yard_planning_input,container
 
 #yard.print()
 #yard.getBadData().print()
+baddata = yard.getBadData()
+baddata.printStats()
