@@ -252,6 +252,11 @@ class Yard:
 
     def getBadData(self) -> BadYardData: return self.bad_data
 
+    def getBlockByID(self, id:str) -> Block:
+        return self.blocks_by_id[id]
+    def getBlockByCode(self, branch:str,code:str) -> Block:
+        return self.blocks_by_code[(branch,code)]
+
     def anomalyCheck(self):
         for block in self.blocks_by_id.values():
             for stack in block.anomalies():
