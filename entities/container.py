@@ -109,3 +109,8 @@ class Container:
 
     def __str__(self):
         return self.id
+
+# special container to be filled in gaps of anomalous stacks
+class DummyContainer(Container):
+    def __init__(self):
+        super().__init__("DUMMY","","","","","","","","","","","","","","","","")

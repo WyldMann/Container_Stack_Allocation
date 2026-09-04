@@ -1,4 +1,4 @@
-from .container import Container
+from .container import Container, DummyContainer
 from .parameter import Parameter
 
 class Stack:
@@ -56,6 +56,15 @@ class Stack:
                 if doneStacking: return True
             else: doneStacking = True
         return False
+
+    def anomalyDummyFill(self,dummy: DummyContainer):
+        for x in reversed(range(len(self.containers))):
+            startStacking = False
+            if self.containers[x] is not None:
+                startStacking = True
+            else:
+                if startStacking:
+                    self.containers[x] = dummy
 
     # use this instead if return type is definitely a container and not None
     def getContainerTrue(self,tier:int) -> Container:
@@ -349,4 +358,3 @@ class BadYardData:
         print("Container Coords Invalid:", len(self.container_coords_invalid))
         print("Overlapping Containers:", len(self.overlapping_containers))
         print("Anomalous Stacks:", len(self.anomalous_stacks))
-
