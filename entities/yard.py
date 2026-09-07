@@ -94,8 +94,8 @@ class Stack:
                         container.setTierInt(x)     #update container tier
 
     # returns tier score
-    def score(self,container):
-        return max(x.evaluate(container) for x in self.parameters)
+    def score(self,container) -> float | None:
+        return max(x.evaluate(container) for x in self.parameters) if self.parameters != [] else None
 
     def makeVoid(self):
         self.maxTier = 0
@@ -258,8 +258,8 @@ class Yard:
 
     def getBadData(self) -> BadYardData: return self.bad_data
 
-    def getBlockByID(self, id:str) -> Block:
-        return self.blocks_by_id[id]
+    def getBlockByID(self, block_id:str) -> Block:
+        return self.blocks_by_id[block_id]
     def getBlockByCode(self, branch:str,code:str) -> Block:
         return self.blocks_by_code[(branch,code)]
 

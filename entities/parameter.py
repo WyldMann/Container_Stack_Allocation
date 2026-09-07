@@ -103,46 +103,62 @@ class Parameter:
     def getRouteScore(self) -> int: return self.route_score
 
 
-    def evaluate(self, container: Container) -> int:
+    def evaluate(self, container: Container) -> float:
 
-        score = 0
+        totalScore = 0
+        totalParam = 0
 
         if self.principal != '':
-            if self.principal == "ALL" or self.principal == container.getPrincipal(): score += self.principal_score
+            if self.principal == "ALL" or self.principal == container.getPrincipal():
+                totalScore += self.principal_score
+                totalParam += 1
 
         if self.cont_condition != '':
-            if self.principal == "ALL" or self.cont_condition != container.getContCondition(): score += self.cont_condition_score
+            if self.principal == "ALL" or self.cont_condition != container.getContCondition():
+                totalScore += self.cont_condition_score
+                totalParam += 1
 
         if self.cont_fill != '':
-            if self.principal == "ALL" or self.cont_fill != container.getContFill(): score += self.cont_fill_score
+            if self.principal == "ALL" or self.cont_fill != container.getContFill():
+                totalScore += self.cont_fill_score
+                totalParam += 1
 
         """
         if self.op_type != '':
-            if self.principal == "ALL" or self.op_type != container.getOpType(): score += self.op_type_score
+            if self.principal == "ALL" or self.op_type != container.getOpType():
+                totalScore += self.op_type_score
+                totalParam += 1
         """
 
         if self.cont_size != '':
-            if self.principal == "ALL" or self.cont_size != container.getContSize(): score += self.cont_size_score
+            if self.principal == "ALL" or self.cont_size != container.getContSize():
+                totalScore += self.cont_size_score
+                totalParam += 1
 
         if self.cont_grade != '':
-            if self.principal == "ALL" or self.cont_grade != container.getContGrade(): score += self.cont_grade_score
+            if self.principal == "ALL" or self.cont_grade != container.getContGrade():
+                totalScore += self.cont_grade_score
+                totalParam += 1
 
         # if container.pod == "" but self.pod != ""?
         if self.pol != '' or self.pod != '':
             if ((self.pol == "ALL" or self.pol == container.getPol() or self.pol == "") and
                     (self.pod == "ALL" or self.pod == container.getPod() or self.pod == "")):
-                score += self.route_score
+                totalScore += self.route_score
+                totalParam += 1
 
         # vessel voyage
         if self.vessel != '' or self.voyage != '':
             if ((self.vessel == "ALL" or self.vessel == container.getVessel() or self.vessel == "") and
                     (self.voyage == "ALL" or self.voyage == container.getPod() or self.voyage == "")):
-                score += self.vessel_voyage_score
+                totalScore += self.vessel_voyage_score
+                totalParam += 1
 
         # weight range
         if container.getWeight() is not None:
             if self.weight_start <= container.getWeight() <= self.weight_end:
-                score += self.weight_range_score
+                totalScore += self.weight_range_score
+                totalParam += 1
 
-        return score
+        return totalScore/totalParam
 
