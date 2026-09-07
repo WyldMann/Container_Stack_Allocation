@@ -282,6 +282,26 @@ class Yard:
         for block_id in self.blocks_by_id:
             self.blocks_by_id[block_id].print()
 
+    def assignContainer(self,container: Container):
+        coords = []
+        maxScore = -float("inf")
+
+        for block in self.blocks_by_id.values():
+            for row in block.getSlots():
+                for stack in row:
+
+                    tierInt = stack.availableTierInt()
+
+                    if tierInt is None: continue
+                    currentScore = stack.score(container)
+
+                    if currentScore is None: continue
+                    elif maxScore < currentScore:
+                        maxScore = currentScore
+                        coords = stack.getCoords()
+
+        return coords
+
 class BadYardData:
     overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]
     anomalous_stacks: list[Stack]
