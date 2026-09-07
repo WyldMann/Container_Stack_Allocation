@@ -3,6 +3,9 @@ from pathlib import Path
 from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader
 from entities import Yard
 
+import matplotlib as plt
+import pandas as pd
+
 yardfile = Path(__file__).parent.parent / "data"/ "_TRM_MST_YARD_BLOCK__202609030901.csv"
 removed_slot_file = Path(__file__).parent.parent / "data" / "_TRM_MST_YARD_BLOCK_REMOVED_SLOT__202608271123.csv"
 parameter_file = Path(__file__).parent.parent / "data" / "_TRM_MST_YARD_PARAMETER__202608271123.csv"
@@ -23,8 +26,9 @@ yard = Yard(yard_repo,removed_slot,parameter_input,yard_planning_input,container
 yard.fillDummyContainer()
 yard.dummy.printCoordsList()
 
-"""
+
 baddata = yard.getBadData()
 baddata.printStats()
-print("\nUsable container data:",len(yard.containers))
-"""
+
+usableContainers = len(yard.containers)
+print("\nUsable container data:",usableContainers)
