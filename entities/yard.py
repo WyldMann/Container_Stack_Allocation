@@ -227,8 +227,6 @@ class Yard:
 
             self.addContainerInput(container)
 
-
-
         self.anomalyCheck()
 
     def getBadData(self) -> BadYardData: return self.bad_data
@@ -249,16 +247,25 @@ class Yard:
             coordsInt = container.getCoordsInt()
             stack = self.blocks_by_code[(coordsInt[0], coordsInt[1])].getStack(coordsInt[2], coordsInt[3])
             tier = coordsInt[4]
-            stackIsEmpty = stack.isTierEmpty(coordsInt[4])
+            stackIsEmpty = stack.isTierEmpty(tier)
+
+            # cont40 handling
+            stack2 = stack
+            stackIsEmpty2 = stackIsEmpty
+            if container.getContSize() == '40':
+                stack2 = self.blocks_by_code[(coordsInt[0], coordsInt[1])].getStack(coordsInt[2], coordsInt[3]+1)
+                stackIsEmpty2 = stack2.isTierEmpty(tier)
+
         except (IndexError, KeyError, ValueError):
             self.bad_data.addContainerCoordsInvalid(container)
             return
 
         # if tier is occupied, the one with most recent move_time takes highest precedence
-        if not stackIsEmpty:
-            # existing container is newer. current container is ignored
+        if not (stackIsEmpty and stackIsEmpty2):
+            # existing container is newer. current container is ignored or current container is 40 cuz i'm not handling that.
+            # todo cont40 overlap handling
             existing_container = stack.getContainerTrue(tier)
-            if container.getMoveTime() < existing_container.getMoveTime():
+            if container.getMoveTime() < existing_container.getMoveTime() and container.getContSize() == '40':
                 old_container, new_container = container, existing_container
             # current container is newer. remove existing_container from container dict and add current container to the container dict and the stack
             else:
@@ -271,6 +278,8 @@ class Yard:
 
         else:
             stack.addContainer(container, tier)
+            if container.getContSize() == '40':
+                stack2.addContainer(container, tier)
             self.containers[container.getId()] = container
 
     def addContainerByCoords(self,container: Container,coords:tuple[str,int,int,int]):
