@@ -25,11 +25,17 @@ class Stack:
     def getContainer(self, tier: int) -> Container | None: return self.containers[tier]
     def getCoords(self) -> tuple[str,int,int]: return self.coords
 
-    def isEmpty(self,tier: int) -> bool:
+    def isTierEmpty(self, tier: int) -> bool:
         return self.containers[tier] is None
 
+    def availableTierInt(self) -> int | None:
+        for tierInt, container in enumerate(self.containers):
+            if container is None:
+                return tierInt
+        return None
+
     def addContainer(self, container: Container, tier: int):
-        if self.isEmpty(tier):
+        if self.isTierEmpty(tier):
             self.containers[tier] = container
         else:
             print("Occupied")
@@ -224,7 +230,7 @@ class Yard:
                 coordsInt = container.getCoordsInt()
                 stack = self.blocks_by_code[(coordsInt[0],coordsInt[1])].getStack(coordsInt[2],coordsInt[3])
                 tier = coordsInt[4]
-                stackIsEmpty = stack.isEmpty(coordsInt[4])
+                stackIsEmpty = stack.isTierEmpty(coordsInt[4])
             except (IndexError,KeyError,ValueError):
                 self.bad_data.addContainerCoordsInvalid(container)
                 continue
