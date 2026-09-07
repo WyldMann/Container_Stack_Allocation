@@ -51,7 +51,7 @@ class Parameter:
                  VESSEL_VOYAGE_SCORE:str,
                  WEIGHT_RANGE_SCORE:str,
                  ROUTE_SCORE:str,
-                 **kwargs):
+                 **_kwargs):
 
         self.id = PARAM_ID
         self.principal = PRINCIPAL
