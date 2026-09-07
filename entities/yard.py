@@ -38,7 +38,7 @@ class Stack:
         if self.isTierEmpty(tier):
             self.containers[tier] = container
         else:
-            print("Occupied")
+            raise NotImplementedError
     def replaceContainer(self, container: Container, tier: int):
         self.containers[tier] = container
 
@@ -225,34 +225,9 @@ class Yard:
                 self.bad_data.addIncompleteContainer(container)
                 continue
 
-            # validate coordsStr can be found. Otherwise, mark bad_data and move on
-            try:
-                coordsInt = container.getCoordsInt()
-                stack = self.blocks_by_code[(coordsInt[0],coordsInt[1])].getStack(coordsInt[2],coordsInt[3])
-                tier = coordsInt[4]
-                stackIsEmpty = stack.isTierEmpty(coordsInt[4])
-            except (IndexError,KeyError,ValueError):
-                self.bad_data.addContainerCoordsInvalid(container)
-                continue
+            self.addContainerInput(container)
 
-            # if tier is occupied, the one with most recent move_time takes highest precedence
-            if not stackIsEmpty:
-                # existing container is newer. current container is ignored
-                existing_container = stack.getContainerTrue(tier)
-                if container.getMoveTime() < existing_container.getMoveTime():
-                    old_container, new_container = container, existing_container
-                # current container is newer. remove existing_container from container dict and add current container to the container dict and the stack
-                else:
-                    old_container, new_container = existing_container, container
-                    del self.containers[existing_container.getId()]
-                    self.containers[new_container.getId()] = new_container
 
-                stack.replaceContainer(new_container,tier)
-                self.bad_data.addOverlappingContainer(old_container,new_container)
-
-            else:
-                stack.addContainer(container,tier)
-                self.containers[container.getId()] = container
 
         self.anomalyCheck()
 
@@ -262,6 +237,48 @@ class Yard:
         return self.blocks_by_id[block_id]
     def getBlockByCode(self, branch:str,code:str) -> Block:
         return self.blocks_by_code[(branch,code)]
+
+    def getBlockBranchCodebyID(self, block_id:str) -> tuple[str,str]:
+        return self.blocks_by_id[block_id].getBranch(), self.blocks_by_id[block_id].getCode()
+    def getBlockIDbyCode(self, block_id:str) -> str:
+        return self.blocks_by_id[block_id].getId()
+
+    def addContainerInput(self,container: Container):
+        # validate coordsStr can be found. Otherwise, mark bad_data and move on
+        try:
+            coordsInt = container.getCoordsInt()
+            stack = self.blocks_by_code[(coordsInt[0], coordsInt[1])].getStack(coordsInt[2], coordsInt[3])
+            tier = coordsInt[4]
+            stackIsEmpty = stack.isTierEmpty(coordsInt[4])
+        except (IndexError, KeyError, ValueError):
+            self.bad_data.addContainerCoordsInvalid(container)
+            return
+
+        # if tier is occupied, the one with most recent move_time takes highest precedence
+        if not stackIsEmpty:
+            # existing container is newer. current container is ignored
+            existing_container = stack.getContainerTrue(tier)
+            if container.getMoveTime() < existing_container.getMoveTime():
+                old_container, new_container = container, existing_container
+            # current container is newer. remove existing_container from container dict and add current container to the container dict and the stack
+            else:
+                old_container, new_container = existing_container, container
+                del self.containers[existing_container.getId()]
+                self.containers[new_container.getId()] = new_container
+
+            stack.replaceContainer(new_container, tier)
+            self.bad_data.addOverlappingContainer(old_container, new_container)
+
+        else:
+            stack.addContainer(container, tier)
+            self.containers[container.getId()] = container
+
+    def addContainerByCoords(self,container: Container,coords:tuple[str,int,int,int]):
+        # add container to the stack
+        self.getBlockByID(coords[0]).getStack(coords[1],coords[2]).addContainer(container,coords[3])
+
+        # add new coords to container
+        container.setCoordsInt(self.getBlockBranchCodebyID(coords[0])+(coords[1],coords[2],coords[3],))
 
     def anomalyCheck(self):
         for block in self.blocks_by_id.values():
@@ -283,24 +300,27 @@ class Yard:
             self.blocks_by_id[block_id].print()
 
     def assignContainer(self,container: Container):
-        coords = []
+        coords = ('',-1,-1,-1)
         maxScore = -float("inf")
 
         for block in self.blocks_by_id.values():
             for row in block.getSlots():
                 for stack in row:
 
-                    tierInt = stack.availableTierInt()
+                    tier = stack.availableTierInt()
 
-                    if tierInt is None: continue
+                    if tier is None: continue
                     currentScore = stack.score(container)
 
                     if currentScore is None: continue
                     elif maxScore < currentScore:
                         maxScore = currentScore
-                        coords = stack.getCoords()
+                        coords = stack.getCoords() + (tier,)
+        if coords == ('',-1,-1,-1):
+            print("No Space Found")
+        else:
+            self.addContainerByCoords(container,coords)
 
-        return coords
 
 class BadYardData:
     overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]

@@ -41,12 +41,12 @@ class ContainerFileReader(FileReader):
         with open(self.file_path) as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-
+                """
                 #stopgap data sampling fix
                 if row["BRANCH"] == "JKT64": row["BRANCH"] = "1"
                 elif row["BRANCH"] == "JKT74": row["BRANCH"] = "2"
                 elif row["BRANCH"] == "JKT56": row["BRANCH"] = "3"
-
+                """
                 data.append({key:strGeneralize(value) for key, value in row.items()})
 
         return data
