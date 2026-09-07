@@ -111,54 +111,57 @@ class Parameter:
         if self.principal != '':
             if self.principal == "ALL" or self.principal == container.getPrincipal():
                 totalScore += self.principal_score
-                totalParam += 1
+            totalParam += self.principal_score
 
         if self.cont_condition != '':
-            if self.principal == "ALL" or self.cont_condition != container.getContCondition():
+            if self.principal == "ALL" or self.cont_condition == container.getContCondition():
                 totalScore += self.cont_condition_score
-                totalParam += 1
+            totalParam += self.cont_condition_score
 
         if self.cont_fill != '':
-            if self.principal == "ALL" or self.cont_fill != container.getContFill():
+            if self.principal == "ALL" or self.cont_fill == container.getContFill():
                 totalScore += self.cont_fill_score
-                totalParam += 1
+            totalParam += self.cont_fill_score
 
         """
         if self.op_type != '':
             if self.principal == "ALL" or self.op_type != container.getOpType():
                 totalScore += self.op_type_score
-                totalParam += 1
+            totalParam += self.op_type_score
         """
 
         if self.cont_size != '':
-            if self.principal == "ALL" or self.cont_size != container.getContSize():
+            if self.principal == "ALL" or self.cont_size == container.getContSize():
                 totalScore += self.cont_size_score
-                totalParam += 1
+            totalParam += self.cont_size_score
 
         if self.cont_grade != '':
-            if self.principal == "ALL" or self.cont_grade != container.getContGrade():
+            if self.principal == "ALL" or self.cont_grade == container.getContGrade():
                 totalScore += self.cont_grade_score
-                totalParam += 1
+            totalParam += self.cont_grade_score
 
         # if container.pod == "" but self.pod != ""?
         if self.pol != '' or self.pod != '':
             if ((self.pol == "ALL" or self.pol == container.getPol() or self.pol == "") and
                     (self.pod == "ALL" or self.pod == container.getPod() or self.pod == "")):
                 totalScore += self.route_score
-                totalParam += 1
+            totalParam += self.route_score
 
         # vessel voyage
         if self.vessel != '' or self.voyage != '':
             if ((self.vessel == "ALL" or self.vessel == container.getVessel() or self.vessel == "") and
                     (self.voyage == "ALL" or self.voyage == container.getPod() or self.voyage == "")):
                 totalScore += self.vessel_voyage_score
-                totalParam += 1
+            totalParam += self.vessel_voyage_score
 
         # weight range
         if container.getWeight() is not None:
             if self.weight_start <= container.getWeight() <= self.weight_end:
                 totalScore += self.weight_range_score
-                totalParam += 1
+            totalParam += self.weight_range_score
 
-        return totalScore/totalParam
+        if totalParam == 0:
+            return 0
+        else:
+            return totalScore/totalParam * 100
 
