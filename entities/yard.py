@@ -304,10 +304,21 @@ class BadYardData:
         return self.yp_out_of_range
     def getContainerCoordsInvalid(self) -> list[Container]:
         return self.container_coords_invalid
+
     def getTotalYardPlanning(self) -> int:
         return self.total_yp
     def getTotalContainers(self) -> int:
         return self.total_containers
+    def getTotalOverlapping(self) -> int:
+        return len(self.overlapping_containers)
+    def getTotalIncomplete(self) -> int:
+        return len(self.incomplete_containers)
+    def getTotalYPOutOfRange(self) -> int:
+        return len(self.yp_out_of_range)
+    def getTotalContainerCoordsInvalid(self) -> int:
+        return len(self.container_coords_invalid)
+    def getTotalAnomalousStacks(self) -> int:
+        return len(self.anomalous_stacks)
 
     def addOverlappingContainer(self, container1: Container, container2: Container):
         coords = container1.getCoordsTuple()
@@ -367,9 +378,9 @@ class BadYardData:
 
     def printStats(self):
         print("Total Yard Planning Items:", self.total_yp)
-        print("Yard Planning Errors:", len(self.yp_out_of_range))
+        print("Yard Planning Errors:", self.getTotalYPOutOfRange())
         print("\nTotal Containers:", self.total_containers)
-        print("Incomplete Containers:", len(self.incomplete_containers))
-        print("Container Coords Invalid:", len(self.container_coords_invalid))
-        print("Overlapping Containers:", len(self.overlapping_containers))
-        print("\nAnomalous Stacks:", len(self.anomalous_stacks))
+        print("Incomplete Containers:", self.getTotalIncomplete())
+        print("Container Coords Invalid:", self.getTotalContainerCoordsInvalid())
+        print("Overlapping Containers:", self.getTotalOverlapping())
+        print("\nAnomalous Stacks:", self.getTotalAnomalousStacks())
