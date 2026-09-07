@@ -225,7 +225,7 @@ class Yard:
                 self.bad_data.addIncompleteContainer(container)
                 continue
 
-            # validate coords can be found. Otherwise, mark bad_data and move on
+            # validate coordsStr can be found. Otherwise, mark bad_data and move on
             try:
                 coordsInt = container.getCoordsInt()
                 stack = self.blocks_by_code[(coordsInt[0],coordsInt[1])].getStack(coordsInt[2],coordsInt[3])
@@ -347,7 +347,7 @@ class BadYardData:
         return len(self.anomalous_stacks)
 
     def addOverlappingContainer(self, container1: Container, container2: Container):
-        coords = container1.getCoordsTuple()
+        coords = container1.getCoordsStrTuple()
         if coords in self.overlapping_containers:
             self.overlapping_containers[coords].update({container1, container2})
         else:
@@ -370,7 +370,7 @@ class BadYardData:
     def printContainerCoordsInvalid(self):
         print("\nContainer Coordinates Invalid:")
         for x in self.container_coords_invalid:
-            print(x.getId(),x.getCoords())
+            print(x.getId(), x.getCoordsStr())
 
     def printYPOutOfRange(self):
         print("\nYard Planning Out of Range:")
@@ -386,7 +386,7 @@ class BadYardData:
     def printIncompleteContainers(self):
         print("\nIncomplete containers:")
         for x in self.incomplete_containers:
-            print(x, x.getCoords())
+            print(x, x.getCoordsStr())
 
     def bad_data(self) -> bool:
         return (self.overlapping_containers != []
