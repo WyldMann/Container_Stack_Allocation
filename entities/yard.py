@@ -6,6 +6,8 @@ class Stack:
     parameters: list[Parameter]
     maxTier: int
     coords: tuple[str,int,int]
+    mode: str
+    even: bool
 
     def __init__(self,
                  maxTier: int,
@@ -19,11 +21,17 @@ class Stack:
         self.parameters = parameters
         self.maxTier = maxTier
         self.coords = coords
+        self.mode = '0'   # '0' = None, '20' = cont20, '40' = cont40. which cont type it serves
+        self.even = self.coords[2] % 2 == 0     # cont40 is only assigned to evens in 1-based indexing, aka odd here
 
     def getContainers(self) -> list[Container | None]: return self.containers
     def getParameters(self) -> list[Parameter]: return self.parameters
     def getContainer(self, tier: int) -> Container | None: return self.containers[tier]
     def getCoords(self) -> tuple[str,int,int]: return self.coords
+    def getMode(self) -> str: return self.mode
+    def getEven(self) -> bool: return self.even
+
+    def setMode(self, mode: str): self.mode = mode
 
     def isTierEmpty(self, tier: int) -> bool:
         return self.containers[tier] is None
@@ -35,6 +43,10 @@ class Stack:
         return None
 
     def addContainer(self, container: Container, tier: int):
+        # if first container in stack, set its mode
+        if tier == 0:
+            mode = container.getContSize()
+            self.setMode(mode)
         if self.isTierEmpty(tier):
             self.containers[tier] = container
         else:
@@ -105,7 +117,7 @@ class Stack:
         print(self.vacancy(), end = " ")
 
     def printOccupancy(self):
-        print(self.occupancy(), end = " ")
+        print(self.occupancy(), self.getMode()[0], end = " ", sep = "")
 
     def printContents(self):
         for x in self.containers:
@@ -253,8 +265,15 @@ class Yard:
             stack2 = stack
             stackIsEmpty2 = stackIsEmpty
             if container.getContSize() == '40':
-                stack2 = self.blocks_by_code[(coordsInt[0], coordsInt[1])].getStack(coordsInt[2], coordsInt[3]+1)
+                # cont40 can only be put on (int) odd indexes.
+                if stack.getMode() == '20' or stack.getEven():
+                    raise IndexError
+                stack2 = self.blocks_by_code[(coordsInt[0], coordsInt[1])].getStack(coordsInt[2], coordsInt[3] - 1)
                 stackIsEmpty2 = stack2.isTierEmpty(tier)
+            # cont20 cannot be put on cont40 stacks
+            else:
+                if stack.getMode() == '40':
+                    raise IndexError
 
         except (IndexError, KeyError, ValueError):
             self.bad_data.addContainerCoordsInvalid(container)
@@ -263,7 +282,7 @@ class Yard:
         # if tier is occupied, the one with most recent move_time takes highest precedence
         if not (stackIsEmpty and stackIsEmpty2):
             # existing container is newer. current container is ignored or current container is 40 cuz i'm not handling that.
-            # todo cont40 overlap handling
+            # too much goes into cont40 placement to consider this
             existing_container = stack.getContainerTrue(tier)
             if container.getMoveTime() < existing_container.getMoveTime() and container.getContSize() == '40':
                 old_container, new_container = container, existing_container
@@ -287,7 +306,7 @@ class Yard:
         self.getBlockByID(coords[0]).getStack(coords[1],coords[2]).addContainer(container,coords[3])
         # if containerType = 40 add also add to the next stack
         if container.getContSize() == '40':
-            self.getBlockByID(coords[0]).getStack(coords[1],coords[2]+1).addContainer(container,coords[3])
+            self.getBlockByID(coords[0]).getStack(coords[1],coords[2] - 1).addContainer(container,coords[3])
 
         # add new coords to container
         container.setCoordsInt(self.getBlockBranchCodebyID(coords[0])+(coords[1],coords[2],coords[3],))
@@ -321,15 +340,28 @@ class Yard:
 
                     tier = stack.availableTierInt()
 
+                    # if stack is fully occupied
                     if tier is None: continue
+
+                    # must not conflict with stack.mode
+                    if container.getContSize() == '40' and stack.getMode() == '20': continue
+                    elif container.getContSize() == '20' and stack.getMode() == '40': continue
+
+                    # contsize 40 must be assigned to odd only
+                    if container.getContSize() == '40' and stack.getEven(): continue
 
                     currentCoords = stack.getCoords()
                     # if contsize 40, next slot must be able to accomodate
+                    # though if everything goes well it already should be
                     if container.getContSize() == '40':
                         try:
-                            currentCoords2 = row[slot + 1]
-                        except IndexError: continue
-                        if currentCoords2.availableTierInt() != tier: continue
+                            # second stack should already be '20
+                            currentCoords2 = row[slot - 1]
+                        except IndexError:
+                            print("uh oh")
+                            continue
+                        if currentCoords2.availableTierInt() != tier:
+                            continue
 
                     currentScore = stack.score(container)
                     if currentScore is None: continue
