@@ -95,7 +95,7 @@ class Stack:
 
     # returns tier score
     def score(self,container) -> float | None:
-        return max(x.evaluate(container) for x in self.parameters) if self.parameters != [] else None
+        return max(x.evaluate(container) for x in self.parameters) if self.parameters != [] else 0
 
     def makeVoid(self):
         self.maxTier = 0
@@ -285,6 +285,9 @@ class Yard:
     def addContainerByCoords(self,container: Container,coords:tuple[str,int,int,int]):
         # add container to the stack
         self.getBlockByID(coords[0]).getStack(coords[1],coords[2]).addContainer(container,coords[3])
+        # if containerType = 40 add also add to the next stack
+        if container.getContSize() == '40':
+            self.getBlockByID(coords[0]).getStack(coords[1],coords[2]+1).addContainer(container,coords[3])
 
         # add new coords to container
         container.setCoordsInt(self.getBlockBranchCodebyID(coords[0])+(coords[1],coords[2],coords[3],))
@@ -314,17 +317,25 @@ class Yard:
 
         for block in self.blocks_by_id.values():
             for row in block.getSlots():
-                for stack in row:
+                for slot,stack in enumerate(row):
 
                     tier = stack.availableTierInt()
 
                     if tier is None: continue
-                    currentScore = stack.score(container)
 
+                    currentCoords = stack.getCoords()
+                    # if contsize 40, next slot must be able to accomodate
+                    if container.getContSize() == '40':
+                        try:
+                            currentCoords2 = row[slot + 1]
+                        except IndexError: continue
+                        if currentCoords2.availableTierInt() != tier: continue
+
+                    currentScore = stack.score(container)
                     if currentScore is None: continue
                     elif maxScore < currentScore:
                         maxScore = currentScore
-                        coords = stack.getCoords() + (tier,)
+                        coords = currentCoords + (tier,)
         if coords == ('',-1,-1,-1):
             print("No Space Found")
         else:

@@ -163,5 +163,5 @@ class Parameter:
         if totalParam == 0:
             return 0
         else:
-            return totalScore/totalParam * 100
+            return totalScore
 
