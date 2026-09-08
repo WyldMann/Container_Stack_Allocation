@@ -437,6 +437,9 @@ class Yard:
 
         else:
             self.addContainerByCoords(container,coords)
+            container.print()
+            self.print()
+            input()
 
 
 class BadYardData:
