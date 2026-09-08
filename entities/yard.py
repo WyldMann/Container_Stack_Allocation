@@ -27,6 +27,7 @@ class Stack:
     def getContainers(self) -> list[Container | None]: return self.containers
     def getParameters(self) -> list[Parameter]: return self.parameters
     def getContainer(self, tier: int) -> Container | None: return self.containers[tier]
+    def getMaxTier(self) -> int: return self.maxTier
     def getCoords(self) -> tuple[str,int,int]: return self.coords
     def getMode(self) -> str: return self.mode
     def getEven(self) -> bool: return self.even
