@@ -111,6 +111,20 @@ class Container:
     def __str__(self):
         return self.id
 
+    def print(self):
+        print("ID:", self.id,
+              "| Principal:", self.principal,
+              "| Container Condition:", self.cont_condition,
+              "| Container Fill:", self.cont_fill,
+              "| Container Size:", self.cont_size,
+              "| Container Grade:", self.cont_grade,
+              "| Pol:", self.pol,
+              "| Pod:", self.pod,
+              "| Voyage:", self.voyage,
+              "| Weight:", self.weight if self.weight is not None else "None",
+              "| MoveTime:", self.move_time,
+              "| CoordsStr:", self.coordsStr)
+
 # special container to be filled in gaps of anomalous stacks
 class DummyContainer(Container):
     #[(block_id,row,slot,tier),...]
