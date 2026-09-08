@@ -172,6 +172,62 @@ class Block:
                 tier.printOccupancy()
             print()
 
+    # returns if true if it's safe to get put something a container in that stack
+    def safeMaxima(self,row:int,slot:int):
+        maxMaxima = 2
+        stack = self.slots[row][slot]
+        tier = stack.availableTierInt()
+        mode = stack.getMode()
+
+        if tier <= maxMaxima: return True
+
+        # assumes that only odd stack40s are called, hence even stack40s raise error
+        if stack.getEven() and mode == '40': raise IndexError
+
+        # up
+        if self.compareTier(row, slot, row + 1, slot) <= maxMaxima:
+            return True
+        # down
+        elif self.compareTier(row, slot, row - 1, slot) <= maxMaxima:
+            return True
+        # right
+        elif self.compareTier(row, slot, row, slot + 1) <= maxMaxima:
+            return True
+        elif stack.getMode() == '20':
+            # left for 20
+            if self.compareTier(row, slot, row, slot - 1) <= maxMaxima:
+                return True
+            # for 40
+        elif stack.getMode() == '40':
+            # left, left
+            if self.compareTier(row, slot, row, slot - 2) <= maxMaxima:
+                return True
+            # left, up
+            elif self.compareTier(row, slot, row + 1, slot - 1) <= maxMaxima:
+                return True
+            # left, down
+            elif self.compareTier(row, slot, row - 1, slot - 1) <= maxMaxima:
+                return True
+        return False
+
+        #down
+    #row1,slot1 must exist, row2,slot2 doesn't need to
+    def compareTier(self,row1:int,slot1:int,row2:int,slot2:int) -> int:
+        tier1 = self.slots[row1][slot1].availableTierInt()
+        try:
+            tier2 = self.slots[row2][slot2].availableTierInt()
+            if tier2 is None:
+                return 0
+            elif tier1 is not None and tier2 is not None:
+                return tier1 - tier2
+        except IndexError:
+            pass
+        if tier1 is None: return self.slots[row1][slot1].getMaxTier()
+        else: return tier1
+
+
+
+
 # in this scope, there's only one yard
 class Yard:
     blocks_by_id: dict[str,Block]
@@ -336,8 +392,8 @@ class Yard:
         maxScore = -float("inf")
 
         for block in self.blocks_by_id.values():
-            for row in block.getSlots():
-                for slot,stack in enumerate(row):
+            for row, slots in enumerate(block.getSlots()):
+                for slot,stack in enumerate(slots):
 
                     tier = stack.availableTierInt()
 
@@ -357,18 +413,22 @@ class Yard:
                     if container.getContSize() == '40':
                         try:
                             # second stack should already be '20
-                            currentCoords2 = row[slot - 1]
+                            currentCoords2 = slots[slot - 1]
                         except IndexError:
                             print("uh oh")
                             continue
                         if currentCoords2.availableTierInt() != tier:
                             continue
 
+                    # safeMaxima for pyramid safety stacking
+                    if not block.safeMaxima(row,slot): continue
+
                     currentScore = stack.score(container)
                     if currentScore is None: continue
                     elif maxScore < currentScore:
                         maxScore = currentScore
                         coords = currentCoords + (tier,)
+
         if coords == ('',-1,-1,-1):
             print("No Space Found")
             container.print()
