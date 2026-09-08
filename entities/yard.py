@@ -370,6 +370,10 @@ class Yard:
                         coords = currentCoords + (tier,)
         if coords == ('',-1,-1,-1):
             print("No Space Found")
+            container.print()
+            self.print()
+            input()
+
         else:
             self.addContainerByCoords(container,coords)
 
