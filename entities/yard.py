@@ -185,28 +185,28 @@ class Block:
         if stack.getEven() and mode == '40': raise IndexError
 
         # up
-        if self.compareTier(row, slot, row + 1, slot) <= maxMaxima:
+        if self.compareTier(row, slot, row + 1, slot) < maxMaxima:
             return True
         # down
-        elif self.compareTier(row, slot, row - 1, slot) <= maxMaxima:
+        elif self.compareTier(row, slot, row - 1, slot) < maxMaxima:
             return True
         # right
-        elif self.compareTier(row, slot, row, slot + 1) <= maxMaxima:
+        elif self.compareTier(row, slot, row, slot + 1) < maxMaxima:
             return True
         elif stack.getMode() == '20':
             # left for 20
-            if self.compareTier(row, slot, row, slot - 1) <= maxMaxima:
+            if self.compareTier(row, slot, row, slot - 1) < maxMaxima:
                 return True
             # for 40
         elif stack.getMode() == '40':
             # left, left
-            if self.compareTier(row, slot, row, slot - 2) <= maxMaxima:
+            if self.compareTier(row, slot, row, slot - 2) < maxMaxima:
                 return True
             # left, up
-            elif self.compareTier(row, slot, row + 1, slot - 1) <= maxMaxima:
+            elif self.compareTier(row, slot, row + 1, slot - 1) < maxMaxima:
                 return True
             # left, down
-            elif self.compareTier(row, slot, row - 1, slot - 1) <= maxMaxima:
+            elif self.compareTier(row, slot, row - 1, slot - 1) < maxMaxima:
                 return True
         return False
 
