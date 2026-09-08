@@ -21,7 +21,7 @@ class Stack:
         self.coords = coords
 
     def getContainers(self) -> list[Container | None]: return self.containers
-    def getParameters(self) -> list[Parameter] | None: return self.parameters
+    def getParameters(self) -> list[Parameter]: return self.parameters
     def getContainer(self, tier: int) -> Container | None: return self.containers[tier]
     def getCoords(self) -> tuple[str,int,int]: return self.coords
 
