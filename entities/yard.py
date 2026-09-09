@@ -438,6 +438,7 @@ class Yard:
         else:
             self.addContainerByCoords(container,coords)
             container.print()
+            print("Assigned to",container.getCoordsStr())
             self.print()
             input()
 
