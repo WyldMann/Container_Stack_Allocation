@@ -192,9 +192,9 @@ class Block:
         tier = stack.availableTierInt()
         mode = stack.getMode()
 
-        if tier <= maxMaxima: return True
+        if tier < maxMaxima: return True
 
-        # assumes that only odd stack40s are called, hence even stack40s raise error
+        # assumes that only odd-num stack40s are called, hence even-num stack40s raise error
         if stack.getEven() and mode == '40': raise IndexError
 
         # up
@@ -210,7 +210,7 @@ class Block:
             # left for 20
             if self.compareTier(row, slot, row, slot - 1) < maxMaxima:
                 return True
-            # for 40
+        # for 40
         elif stack.getMode() == '40':
             # left, left
             if self.compareTier(row, slot, row, slot - 2) < maxMaxima:
@@ -223,21 +223,23 @@ class Block:
                 return True
         return False
 
-        #down
     #row1,slot1 must exist, row2,slot2 doesn't need to
     def compareTier(self,row1:int,slot1:int,row2:int,slot2:int) -> int:
         tier1 = self.slots[row1][slot1].availableTierInt()
         try:
             tier2 = self.slots[row2][slot2].availableTierInt()
+
+            # stack2 is full or is removed_slot
             if tier2 is None:
-                return 0
+                return tier1 - self.slots[row2][slot2].getMaxTier()
+            # tier1 and tier2 is available
             elif tier1 is not None and tier2 is not None:
                 return tier1 - tier2
+
+        #stack2 is out of range
         except IndexError:
             pass
-        if tier1 is None: return self.slots[row1][slot1].getMaxTier()
-        else: return tier1
-
+        return tier1 + 1
 
 
 
@@ -458,29 +460,26 @@ class Yard:
                             continue
 
                     # safeMaxima for pyramid safety stacking
-                    if not block.safeMaxima(row,slot): continue
-
-                    currentScore = stack.score(container)
-                    if currentScore is None: continue
-                    elif maxScore == currentScore:
-                        coordsCandidates.append(currentCoords + (tier,))
-                    elif maxScore < currentScore:
-                        maxScore = currentScore
-                        coordsCandidates = [currentCoords + (tier,)]
-
+                    if block.safeMaxima(currentCoords[1],currentCoords[2]):
+                        currentScore = stack.score(container)
+                        if currentScore is None: continue
+                        elif maxScore == currentScore:
+                            coordsCandidates.append(currentCoords + (tier,))
+                        elif maxScore < currentScore:
+                            maxScore = currentScore
+                            coordsCandidates = [currentCoords + (tier,)]
         if coordsCandidates[0] == ('',-1,-1,-1):
             print("No Space Found")
             container.print()
             self.print()
             input()
-
         else:
-
             if len(coordsCandidates) > 1:
                 coordsCandidates = sorted(coordsCandidates,
                                           key = lambda stackCoords :
                                           self.getBlockByID(stackCoords[0])
                                           .calcEquipmentDistance(stackCoords[1],stackCoords[2]))
+            print(coordsCandidates)
             coords = coordsCandidates[0]
             rtg = self.getBlockByID(coords[0]).getRTG()
 
