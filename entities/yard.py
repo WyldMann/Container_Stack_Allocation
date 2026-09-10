@@ -1,5 +1,6 @@
 from .container import Container, DummyContainer
 from .parameter import Parameter
+from .equipment import RTG
 
 class Stack:
     containers: list[Container | None]
@@ -133,6 +134,7 @@ class Block:
     branch: str
     code: str
     slots: list[list[Stack]]
+    rtg: RTG|None
 
     def __init__(self,
                  BRANCH_ID: str,
@@ -148,6 +150,7 @@ class Block:
         self.branch = BRANCH_ID
         self.code = BLOCK_CODE
         self.slots = []
+        self.rtg = None
         for row in range(int(ROW_COUNT)):
             stacks = []
             for slot in range(int(SLOT_COUNT)):
@@ -167,10 +170,20 @@ class Block:
         return anomalies
     def print(self):
         print("ID:",self.id," Branch/Code:",self.branch + "/" + self.getCode())
+        if self.rtg is not None: print("RTG: ",self.rtg.getCode(),"at",self.rtg.getCoordsStr())
         for slot in self.slots:
             for tier in slot:
                 tier.printOccupancy()
             print()
+
+    def getRTG(self) -> RTG | None: return self.rtg
+    def setRTG(self, rtg: RTG): self.rtg = rtg
+
+    def calcEquipmentDistance(self,row,slot) -> float:
+        if self.rtg is None:
+            return float("inf")
+        else:
+            return self.rtg.rtgDistance(row, slot)
 
     # returns if true if it's safe to get put something a container in that stack
     def safeMaxima(self,row:int,slot:int):
@@ -245,12 +258,16 @@ class Yard:
                  removed_slots_input: list[tuple[str,int,int]] | None = None,
                  parameters_input: list[dict[str,str]] | None = None,
                  yard_planning_input: dict[str,list[tuple[str,int,int]]] | None = None,
-                 container_input: list[dict[str,str]] | None = None) -> None:
+                 container_input: list[dict[str,str]] | None = None,
+                 master_equipment: list[dict[str,str]] | None = None,
+                 equipment_history:dict[str,tuple[str,str,int,int]] | None = None) -> None:
 
         if removed_slots_input is None: removed_slots_input = []
         if parameters_input is None: parameters_input = []
         if yard_planning_input is None: yard_planning_input = {}
         if container_input is None: container_input = []
+        if master_equipment is None: master_equipment = []
+        if equipment_history is None: equipment_history = {}
 
         self.bad_data = BadYardData(sum(len(yp) for yp in yard_planning_input.values()),len(container_input))
         self.dummy = DummyContainer()
@@ -267,6 +284,9 @@ class Yard:
         # remove the slots as per input
         for removed_slot in removed_slots_input:
             self.blocks_by_id[removed_slot[0]].getStack(removed_slot[1],removed_slot[2]).makeVoid()
+
+        # assigns equipments
+        self.inputEquipment(master_equipment, equipment_history)
 
         # initializes and stores Parameters
         self.params = {}
@@ -298,6 +318,23 @@ class Yard:
 
         self.anomalyCheck()
 
+    def inputEquipment(self,
+                       master_equipment: list[dict[str,str]],
+                       history_move: dict[str,tuple[str,str,int,int]]):
+        for equipment in master_equipment:
+            if equipment["EQUIPMENT_TYPE"] == "RTG":
+                rtg_code = equipment["EQUIPMENT_CODE"]
+
+                try:
+                    coordsBranchCode = history_move[rtg_code]
+                    block = self.getBlockByCode(coordsBranchCode[0], coordsBranchCode[1])
+                    coords = (self.getBlockIDbyCode(coordsBranchCode[0], coordsBranchCode[1]),
+                              coordsBranchCode[2],
+                              coordsBranchCode[3])
+                    block.rtg = RTG(rtg_code, coords)
+                except KeyError:
+                    pass
+
     def getBadData(self) -> BadYardData: return self.bad_data
 
     def getBlockByID(self, block_id:str) -> Block:
@@ -307,8 +344,8 @@ class Yard:
 
     def getBlockBranchCodebyID(self, block_id:str) -> tuple[str,str]:
         return self.blocks_by_id[block_id].getBranch(), self.blocks_by_id[block_id].getCode()
-    def getBlockIDbyCode(self, block_id:str) -> str:
-        return self.blocks_by_id[block_id].getId()
+    def getBlockIDbyCode(self, block_branch:str,block_code:str) -> str:
+        return self.blocks_by_code[(block_branch,block_code)].getId()
 
     def addContainerInput(self,container: Container):
         # validate coordsStr can be found. Otherwise, mark bad_data and move on
@@ -388,8 +425,8 @@ class Yard:
             self.blocks_by_id[block_id].print()
 
     def assignContainer(self,container: Container):
-        coords = ('',-1,-1,-1)
         maxScore = -float("inf")
+        coordsCandidates = [('',-1,-1,-1)]
 
         for block in self.blocks_by_id.values():
             for row, slots in enumerate(block.getSlots()):
@@ -425,19 +462,37 @@ class Yard:
 
                     currentScore = stack.score(container)
                     if currentScore is None: continue
+                    elif maxScore == currentScore:
+                        coordsCandidates.append(currentCoords + (tier,))
                     elif maxScore < currentScore:
                         maxScore = currentScore
-                        coords = currentCoords + (tier,)
+                        coordsCandidates = [currentCoords + (tier,)]
 
-        if coords == ('',-1,-1,-1):
+        if coordsCandidates[0] == ('',-1,-1,-1):
             print("No Space Found")
             container.print()
             self.print()
             input()
 
         else:
+
+            if len(coordsCandidates) > 1:
+                coordsCandidates = sorted(coordsCandidates,
+                                          key = lambda stackCoords :
+                                          self.getBlockByID(stackCoords[0])
+                                          .calcEquipmentDistance(stackCoords[1],stackCoords[2]))
+            coords = coordsCandidates[0]
+            rtg = self.getBlockByID(coords[0]).getRTG()
+
             self.addContainerByCoords(container,coords)
             container.print()
+
+            # move rtg if it is used
+            if rtg is not None:
+                rtg.moveRTG(coords[1],coords[2])
+                print(rtg.getCode(),"moved to",rtg.getCoords())
+            #must move other equipment if added later
+
             print("Assigned to",container.getCoordsStr())
             self.print()
             input()

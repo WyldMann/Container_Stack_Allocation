@@ -1,6 +1,6 @@
 import csv
 from typing import Any
-from utils import strGeneralize
+from utils import strGeneralize, parse_datetime
 
 
 class FileReader:
@@ -85,3 +85,24 @@ class YardPlanningFileReader(FileReader):
             for line in reader:
                 data.append((strGeneralize(line[param_id]), strGeneralize(line[block_id]), int(line[row]) - 1, int(line[slot]) - 1))
         return data
+
+class EquipmentMoveFileReader(FileReader):
+    # dict[id:tuple(branch,block,row,slot)]
+    def readCSVDict(self) -> dict[str,tuple[str,str,int,int]]:
+
+        result = {}
+
+        with open(self.file_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+
+            for movement in reader:
+                id_ = movement["ALAT"]
+                dt = parse_datetime(movement["MOVE_DATE"])
+                coords = (movement["BRANCH"], movement["BLOK"], int(movement["ROW"]) - 1, int(movement["SLOT"]) - 1)
+
+                if id_ not in result or dt > result[id_][0]:
+                    result[id_] = (dt, coords)
+
+        # Remove the dt
+        result = {id_: coords for id_, (dt, coords) in result.items()}
+        return result
