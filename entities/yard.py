@@ -489,7 +489,6 @@ class Yard:
             # move rtg if it is used
             if rtg is not None:
                 rtg.moveRTG(coords[1],coords[2])
-                print(rtg.getCode(),"moved to",rtg.getCoords())
             #must move other equipment if added later
 
             print("Assigned to",container.getCoordsStr())
