@@ -1,6 +1,8 @@
+import math
+
 from .container import Container, DummyContainer
 from .parameter import Parameter
-from .equipment import RTG
+from .equipment import RTG,Loader,Equipment
 
 class Stack:
     containers: list[Container | None]
@@ -135,6 +137,9 @@ class Block:
     code: str
     slots: list[list[Stack]]
     rtg: RTG|None
+    loaders: list[Loader]
+    pos_x: int
+    pos_y: int
 
     def __init__(self,
                  BRANCH_ID: str,
@@ -143,6 +148,8 @@ class Block:
                  SLOT_COUNT: str,
                  ROW_COUNT: str,
                  MAX_TIER: str,
+                 POS_X:str,
+                 POS_Y:str,
 
                  **_kwargs
                  ):
@@ -151,6 +158,11 @@ class Block:
         self.code = BLOCK_CODE
         self.slots = []
         self.rtg = None
+        self.loaders = []
+        self.pos_x = int(POS_X)
+        self.pos_y = int(POS_Y)
+
+        # assign slots
         for row in range(int(ROW_COUNT)):
             stacks = []
             for slot in range(int(SLOT_COUNT)):
@@ -162,6 +174,12 @@ class Block:
     def getCode(self) -> str: return self.code
     def getSlots(self) -> list[list[Stack]]:return self.slots
     def getStack(self, row:int, slot:int) -> Stack: return self.slots[row][slot]
+    def getPosX(self) -> int: return self.pos_x
+    def getPosY(self) -> int: return self.pos_y
+    def getLoaders(self) -> list[Loader]: return self.loaders
+    def addLoader(self,loader: Loader): self.loaders.append(loader)
+    def removeLoader(self,loader:Loader): self.loaders.remove(loader)
+
     def anomalies(self) -> list[Stack]:
         anomalies = []
         for slot in self.slots:
@@ -171,6 +189,7 @@ class Block:
     def print(self):
         print("ID:",self.id," Branch/Code:",self.branch + "/" + self.getCode())
         if self.rtg is not None: print("RTG: ",self.rtg.getCode(),"at",self.rtg.getCoordsStr())
+        if self.loaders: [x.print() for x in self.loaders]
         for slot in self.slots:
             for tier in slot:
                 tier.printOccupancy()
@@ -178,12 +197,6 @@ class Block:
 
     def getRTG(self) -> RTG | None: return self.rtg
     def setRTG(self, rtg: RTG): self.rtg = rtg
-
-    def calcEquipmentDistance(self,row,slot) -> float:
-        if self.rtg is None:
-            return float("inf")
-        else:
-            return self.rtg.rtgDistance(row, slot)
 
     # returns if true if it's safe to get put something a container in that stack
     def safeMaxima(self,row:int,slot:int):
@@ -251,6 +264,7 @@ class Yard:
     bad_data: BadYardData
     containers: dict[str,Container]
     dummy: DummyContainer
+    masterLoader: list[Loader]
 
     #block and parameters input: {"args":"values",...}
     #removed_slots_input: [(block_id, row_no, slot_no),...]
@@ -288,6 +302,7 @@ class Yard:
             self.blocks_by_id[removed_slot[0]].getStack(removed_slot[1],removed_slot[2]).makeVoid()
 
         # assigns equipments
+        self.masterLoader = []
         self.inputEquipment(master_equipment, equipment_history)
 
         # initializes and stores Parameters
@@ -324,18 +339,32 @@ class Yard:
                        master_equipment: list[dict[str,str]],
                        history_move: dict[str,tuple[str,str,int,int]]):
         for equipment in master_equipment:
-            if equipment["EQUIPMENT_TYPE"] == "RTG":
-                rtg_code = equipment["EQUIPMENT_CODE"]
 
-                try:
-                    coordsBranchCode = history_move[rtg_code]
-                    block = self.getBlockByCode(coordsBranchCode[0], coordsBranchCode[1])
-                    coords = (self.getBlockIDbyCode(coordsBranchCode[0], coordsBranchCode[1]),
-                              coordsBranchCode[2],
-                              coordsBranchCode[3])
-                    block.rtg = RTG(rtg_code, coords)
-                except KeyError:
-                    pass
+            equipment_code = equipment["EQUIPMENT_CODE"]
+
+            try:
+                coordsBranchCode = history_move[equipment_code]
+                block = self.getBlockByCode(coordsBranchCode[0], coordsBranchCode[1])
+                coords = (self.getBlockIDbyCode(coordsBranchCode[0], coordsBranchCode[1]),
+                          coordsBranchCode[2],
+                          coordsBranchCode[3])
+            except KeyError:
+                continue
+
+            # if equipment is RTG
+            # assumes there's only one RTG
+            if equipment["EQUIPMENT_TYPE"] == "RTG":
+                block.rtg = RTG(equipment_code, coords)
+
+            # if equipment is loader
+            # can be more than one loader in one block
+            else:
+                loader = Loader(equipment_code, coords)
+                block.addLoader(loader)
+                self.masterLoader.append(loader)
+
+    def loadersByBlockID(self,blockID: str) -> list[Loader]:
+        return [loader for loader in self.masterLoader if loader.getCoords()[0] == blockID]
 
     def getBadData(self) -> BadYardData: return self.bad_data
 
@@ -426,6 +455,11 @@ class Yard:
         for block_id in self.blocks_by_id:
             self.blocks_by_id[block_id].print()
 
+    def distanceBetweenBlock(self, blockID1: str, blockID2: str) -> float:
+        block1 = self.blocks_by_id[blockID1]
+        block2 = self.blocks_by_id[blockID2]
+        return math.sqrt((block1.getPosX() - block2.getPosX()) ** 2 + (block1.getPosY() - block2.getPosY()) ** 2)
+
     def assignContainer(self,container: Container):
         maxScore = -float("inf")
         coordsCandidates = [('',-1,-1,-1)]
@@ -474,26 +508,54 @@ class Yard:
             self.print()
             input()
         else:
-            if len(coordsCandidates) > 1:
-                coordsCandidates = sorted(coordsCandidates,
-                                          key = lambda stackCoords :
-                                          self.getBlockByID(stackCoords[0])
-                                          .calcEquipmentDistance(stackCoords[1],stackCoords[2]))
-            print(coordsCandidates)
-            coords = coordsCandidates[0]
-            rtg = self.getBlockByID(coords[0]).getRTG()
+            # coord with the nearest equipment
+            equipment, coords = self.coordsWithNearestEquipment(coordsCandidates)
 
             self.addContainerByCoords(container,coords)
             container.print()
 
-            # move rtg if it is used
-            if rtg is not None:
-                rtg.moveRTG(coords[1],coords[2])
-            #must move other equipment if added later
-
+            # equipment is RTG
+            if isinstance(equipment,RTG):
+                equipment.inBlockMove(coords[1], coords[2])
+            # equipment is Loader
+            elif isinstance(equipment,Loader):
+                # if change blocks, change block.loaders
+                if coords[0] != equipment.getCoords()[0]:
+                    self.blocks_by_id[coords[0]].addLoader(equipment)
+                    self.blocks_by_id[equipment.getCoords()[0]].removeLoader(equipment)
+                    equipment.outBlockMove(coords[0],coords[1], coords[2])
+                else:
+                    equipment.inBlockMove(coords[1], coords[2])
             print("Assigned to",container.getCoordsStr())
+
             self.print()
             input()
+    # coords (with tier) with the nearest equipment distance
+    def coordsWithNearestEquipment (self, coords: list[tuple[str,int,int,int]]) -> tuple[Equipment,tuple[str,int,int,int]]:
+        minCoord = coords[0]
+        minEquipment, minDistance = self.nearestEquipmentDistance(minCoord[0],minCoord[1],minCoord[2])
+        for coord in coords[1:]:
+            equipment, distance = self.nearestEquipmentDistance(coord[0],coord[1],coord[2])
+            if minDistance > distance:
+                minEquipment = equipment
+                minDistance = distance
+                minCoord = coord
+
+        return minEquipment, minCoord
+
+    # nearest equipment and its distance for a stack coord (without tier)
+    def nearestEquipmentDistance(self,blockID: str, row: int, slot: int) -> tuple[Equipment,float]:
+        block = self.getBlockByID(blockID)
+        # if no RTG is present use loaders
+        if block.rtg is None:
+            # if loader is present in block
+            loaders = block.getLoaders()
+            if loaders:
+                return  min(((loader,loader.inBlockDistance(row,slot)) for loader in loaders), key = lambda x : x[1])
+            else:
+                return min(self.masterLoader, key = lambda loader: self.distanceBetweenBlock(blockID,loader.getCoordsStr()[0])),float("inf")
+        else:
+            return block.rtg, block.rtg.inBlockDistance(row, slot)
 
 
 class BadYardData:

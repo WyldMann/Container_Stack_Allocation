@@ -16,11 +16,15 @@ class Equipment:
         self.coords = (self.coords[0],row,slot)
     def inBlockDistance (self, row:int, slot:int) -> float:
         return math.sqrt((row - self.coords[1]) ** 2 + (slot - self.coords[2]) ** 2)
+    def print(self):
+        print(self.code,self.coords)
 
 class RTG(Equipment):
     def __init__(self,code:str,coords:tuple[str,int,int]) -> None:
         super().__init__(code,coords)
-    def moveRTG (self, row:int, slot:int):
-        self.coords = (self.coords[0],row,slot)
-    def rtgDistance (self,row:int,slot:int) -> float:
-        return math.sqrt((row - self.coords[1]) ** 2 + (row - self.coords[2]) ** 2)
+
+class Loader(Equipment):
+    def __init__(self,code:str,coords:tuple[str,int,int]) -> None:
+        super().__init__(code,coords)
+    def outBlockMove (self, block:str, row:int, slot:int):
+        self.coords = (block,row,slot)
