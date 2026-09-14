@@ -1,5 +1,7 @@
 import math
 
+import pandas as pd
+
 from .container import Container, DummyContainer
 from .parameter import Parameter
 from .equipment import RTG,Loader,Equipment
@@ -24,7 +26,7 @@ class Stack:
         self.parameters = parameters
         self.maxTier = maxTier
         self.coords = coords
-        self.mode = '0'   # '0' = None, '20' = cont20, '40' = cont40. which cont type it serves
+        self.mode = '0'   # '0' = None, 'X' = removed, '20' = cont20, '40' = cont40. which cont type it serves
         self.even = self.coords[2] % 2 == 0     # cont40 is only assigned to evens in 1-based indexing, aka odd here
 
     def getContainers(self) -> list[Container | None]: return self.containers
@@ -116,6 +118,7 @@ class Stack:
     def makeVoid(self):
         self.maxTier = 0
         self.containers = []
+        self.mode = 'X'
 
     def printVacancy(self):
         print(self.vacancy(), end = " ")
@@ -188,7 +191,7 @@ class Block:
         return anomalies
     def print(self):
         print("ID:",self.id," Branch/Code:",self.branch + "/" + self.getCode())
-        if self.rtg is not None: print("RTG: ",self.rtg.getCode(),"at",self.rtg.getCoordsStr())
+        if self.rtg is not None: self.rtg.print()
         if self.loaders: [x.print() for x in self.loaders]
         for slot in self.slots:
             for tier in slot:
@@ -460,6 +463,9 @@ class Yard:
         block2 = self.blocks_by_id[blockID2]
         return math.sqrt((block1.getPosX() - block2.getPosX()) ** 2 + (block1.getPosY() - block2.getPosY()) ** 2)
 
+    def getStack (self, blockID: str, row: int, slot:int) -> Stack:
+        return self.getBlockByID(blockID).getStack(row, slot)
+
     def assignContainer(self,container: Container):
         maxScore = -float("inf")
         coordsCandidates = [('',-1,-1,-1)]
@@ -508,11 +514,41 @@ class Yard:
             self.print()
             input()
         else:
+
+            # Visualization pre-assignment
+            container.print()
+            print("Candidate Score:", maxScore)
+
+            CoordsCandidatesEquipmentDistanceResult =\
+                [self.nearestEquipmentDistance(coords[0],coords[1],coords[2]) for coords in coordsCandidates]
+            CoordsCandidatesDistances = []
+            for enum,(equipment, distance) in enumerate(CoordsCandidatesEquipmentDistanceResult):
+                if distance != float("inf"):
+                    CoordsCandidatesDistances.append(str(round(distance,2)) + " row/slots away")
+                else:
+                    block_distance = str(round(self.distanceBetweenBlock(coordsCandidates[enum][0],equipment.getCoords()[0]),2)) + " px blocks away"
+                    CoordsCandidatesDistances.append(block_distance)
+
+            pd.set_option('display.max_rows', None)  # Show all rows
+            pd.set_option('display.max_columns', None)  # Show all columns
+            pd.set_option('display.width', None)  # No line wrapping
+            pd.set_option('display.max_colwidth', None)  # Show full cell content
+
+            print(pd.DataFrame({
+                "Coordinate": coordsCandidates,
+                "Parameter":[[str(x) for x in self.getStack(coords[0],coords[1],coords[2]).getParameters()] for coords in coordsCandidates],
+                "Nearest Equipment": [x[0].getCode() for x in CoordsCandidatesEquipmentDistanceResult],
+                "Distance": CoordsCandidatesDistances
+            }))
+            #visualization end
+
+
             # coord with the nearest equipment
             equipment, coords = self.coordsWithNearestEquipment(coordsCandidates)
 
+            print("Using", equipment, "from", equipment.getCoordsStr())
+
             self.addContainerByCoords(container,coords)
-            container.print()
 
             # equipment is RTG
             if isinstance(equipment,RTG):
@@ -526,10 +562,15 @@ class Yard:
                     equipment.outBlockMove(coords[0],coords[1], coords[2])
                 else:
                     equipment.inBlockMove(coords[1], coords[2])
-            print("Assigned to",container.getCoordsStr())
+
+            # Visualization after assignment
+            print("Container assigned to", [coords[0]] + container.getCoordsStr()[2:])
+            print()
 
             self.print()
             input()
+            # Visualization end
+
     # coords (with tier) with the nearest equipment distance
     def coordsWithNearestEquipment (self, coords: list[tuple[str,int,int,int]]) -> tuple[Equipment,tuple[str,int,int,int]]:
         minCoord = coords[0]
@@ -548,10 +589,11 @@ class Yard:
         block = self.getBlockByID(blockID)
         # if no RTG is present use loaders
         if block.rtg is None:
-            # if loader is present in block
             loaders = block.getLoaders()
+            # if loader is present in block
             if loaders:
                 return  min(((loader,loader.inBlockDistance(row,slot)) for loader in loaders), key = lambda x : x[1])
+            # else find loader in the nearest block
             else:
                 return min(self.masterLoader, key = lambda loader: self.distanceBetweenBlock(blockID,loader.getCoordsStr()[0])),float("inf")
         else:

@@ -1,3 +1,4 @@
+import code
 import math
 
 
@@ -9,6 +10,7 @@ class Equipment:
                  coords: tuple[str,int,int] = ('',-1,-1)):
         self.code = code
         self.coords = coords
+    def __str__(self): return self.code
     def getCode(self) -> str: return self.code
     def getCoords(self) -> tuple[str,int,int]: return self.coords
     def getCoordsStr(self) -> tuple[str,str,str]: return self.coords[0],str(self.coords[1] + 1),str(self.coords[2] + 1)
@@ -17,7 +19,7 @@ class Equipment:
     def inBlockDistance (self, row:int, slot:int) -> float:
         return math.sqrt((row - self.coords[1]) ** 2 + (slot - self.coords[2]) ** 2)
     def print(self):
-        print(self.code,self.coords)
+        print(self.code,"-",self.getCoordsStr())
 
 class RTG(Equipment):
     def __init__(self,code:str,coords:tuple[str,int,int]) -> None:
