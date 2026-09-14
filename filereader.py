@@ -85,7 +85,7 @@ class YardPlanningFileReader(FileReader):
             for line in reader:
                 data.append((strGeneralize(line[param_id]), strGeneralize(line[block_id]), int(line[row]) - 1, int(line[slot]) - 1))
         return data
-
+# returns the latest location of each unique equipmentID
 class EquipmentMoveFileReader(FileReader):
     # dict[id:tuple(branch,block,row,slot)]
     def readCSVDict(self) -> dict[str,tuple[str,str,int,int]]:
