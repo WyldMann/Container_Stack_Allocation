@@ -568,6 +568,7 @@ class Yard:
             print()
 
             self.print()
+            print("\n Press Enter to continue")
             input()
             # Visualization end
 
