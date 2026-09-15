@@ -27,8 +27,6 @@ yard.print()
 
 for x in inboundContRepo:
     print("\n Press Enter to continue")
-    #input()
+    input()
     newContainer = Container(**x)
     yard.assignContainer(newContainer)
-    print("\n Press Enter to continue")
-    input()
