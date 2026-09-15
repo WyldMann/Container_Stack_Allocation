@@ -30,3 +30,5 @@ for x in inboundContRepo:
     #input()
     newContainer = Container(**x)
     yard.assignContainer(newContainer)
+    print("\n Press Enter to continue")
+    input()
