@@ -467,8 +467,8 @@ class Yard:
         return self.getBlockByID(blockID).getStack(row, slot)
 
     def assignContainer(self,container: Container):
-        maxScore = -float("inf")
-        coordsCandidates = [('',-1,-1,-1)]
+        maxScore = 0
+        coordsCandidates = []
 
         for block in self.blocks_by_id.values():
             for row, slots in enumerate(block.getSlots()):
@@ -502,13 +502,24 @@ class Yard:
                     # safeMaxima for pyramid safety stacking
                     if block.safeMaxima(currentCoords[1],currentCoords[2]):
                         currentScore = stack.score(container)
+
+                        # currentScore is none if stack is full
                         if currentScore is None: continue
+
+                        # if tie
                         elif maxScore == currentScore:
-                            coordsCandidates.append(currentCoords + (tier,))
+                            # if container has no fulfillable parameters, put it in stacks with no parameters
+                            if maxScore == 0:
+                                if not stack.getParameters():
+                                    coordsCandidates.append(currentCoords + (tier,))
+                            # if container has fulfilabe parameters, stack is another candidate
+                            else:
+                                coordsCandidates.append(currentCoords + (tier,))
+                        # if new stack with better higher score is found, reset coordscandidates with new max score
                         elif maxScore < currentScore:
                             maxScore = currentScore
                             coordsCandidates = [currentCoords + (tier,)]
-        if coordsCandidates[0] == ('',-1,-1,-1):
+        if not coordsCandidates:
             print("No Space Found")
             container.print()
             self.print()
