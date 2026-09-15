@@ -16,7 +16,7 @@ class Parameter:
     cont_fill_score: int
     cont_size: str
     cont_size_score: int
-    cont_grade: str
+    cont_grade: list[str]
     cont_grade_score: int
     pol: str
     pod: str
@@ -64,7 +64,7 @@ class Parameter:
         # self.op_type_score = int(OPERATION_TYPE_SCORE) if OPERATION_TYPE_SCORE != '' else 0
         self.cont_size = CONT_SIZE
         self.cont_size_score = int(CONT_SIZE_SCORE) if CONT_SIZE_SCORE != '' else 0
-        self.cont_grade = CONT_GRADE
+        self.cont_grade = CONT_GRADE.split(",")
         self.cont_grade_score = int(CONT_GRADE_SCORE) if CONT_GRADE_SCORE != '' else 0
         self.pol = POL
         self.pod = POD
@@ -90,7 +90,7 @@ class Parameter:
     # def getOpTypeScore(self) -> int: return self.op_type_score
     def getContSize(self) -> str: return self.cont_size
     def getContSizeScore(self) -> int: return self.cont_size_score
-    def getContGrade(self) -> str: return self.cont_grade
+    def getContGrade(self) -> list[str]: return self.cont_grade
     def getContGradeScore(self) -> int: return self.cont_grade_score
     def getPol(self) -> str: return self.pol
     def getPod(self) -> str: return self.pod
@@ -135,8 +135,8 @@ class Parameter:
                 totalScore += self.cont_size_score
             totalParam += self.cont_size_score
 
-        if self.cont_grade != '':
-            if self.principal == "ALL" or self.cont_grade == container.getContGrade():
+        if self.cont_grade:
+            if self.principal == "ALL" or container.getContGrade() in self.cont_grade:
                 totalScore += self.cont_grade_score
             totalParam += self.cont_grade_score
 
