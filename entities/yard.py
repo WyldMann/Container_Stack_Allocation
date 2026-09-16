@@ -470,12 +470,6 @@ class Yard:
         maxScore = 0
         coordsCandidates = []
 
-        #evaluate params first
-        contScores = {}
-        for param in self.params.values():
-            contScores[str(param)] = param.evaluate(container)
-        contScores = dict(sorted(contScores.items(), key=lambda item: item[1], reverse=True))
-
         for block in self.blocks_by_id.values():
             for row, slots in enumerate(block.getSlots()):
                 for slot,stack in enumerate(slots):
@@ -507,8 +501,7 @@ class Yard:
 
                     # safeMaxima for pyramid safety stacking
                     if block.safeMaxima(currentCoords[1],currentCoords[2]):
-
-                        currentScore = max((contScores[str(param)] for param in stack.getParameters()), default = 0)
+                        currentScore = stack.score(container)
 
                         # currentScore is none if stack is full
                         if currentScore is None: continue
@@ -535,12 +528,7 @@ class Yard:
 
             # Visualization pre-assignment
             container.print()
-
-            # param visualization
-            # track cases in which container has params fulfilled, but must be placed in stack with no params
-
-            print(contScores)
-            print("Max Achievable Score:", maxScore)
+            print("Candidate Score:", maxScore)
 
             CoordsCandidatesEquipmentDistanceResult =\
                 [self.nearestEquipmentDistance(coords[0],coords[1],coords[2]) for coords in coordsCandidates]
