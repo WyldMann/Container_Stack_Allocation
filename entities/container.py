@@ -37,8 +37,8 @@ class Container:
                  CONT_GRADE:str,
                  POL:str,
                  POD:str,
-                 VESSEL_OPERATOR:str,
-                 VESSEL_VOYAGE:str,
+                 VESSEL:str,
+                 VOYAGE:str,
                  WEIGHT:str,
 
                  MOVE_TIME: str,
@@ -64,8 +64,8 @@ class Container:
         self.cont_grade = CONT_GRADE
         self.pol = POL
         self.pod = POD
-        self.vessel = VESSEL_OPERATOR
-        self.voyage = VESSEL_VOYAGE
+        self.vessel = VESSEL
+        self.voyage = VOYAGE
         self.weight = float(WEIGHT) if WEIGHT != '' else None
         self.move_time = parse_datetime(MOVE_TIME)
 
