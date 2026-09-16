@@ -696,14 +696,19 @@ class BadYardData:
         for x in self.incomplete_containers:
             print(x, x.getCoordsStr())
 
-    def bad_data(self) -> bool:
-        return (self.overlapping_containers != []
-                or self.anomalous_stacks != []
-                or self.incomplete_containers != []
-                or self.yp_out_of_range != [])
+    def anyBadData(self) -> bool:
+        return (self.yp_out_of_range != [] or
+                self.incomplete_containers != [] or
+                self.anomalous_stacks != [] or
+                self.incomplete_containers != [] or
+                self.overlapping_containers != {})
 
     #print in order of detection
     def print(self):
+        if not self.anyBadData():
+            print("No Bad Data")
+            return
+
         if self.yp_out_of_range: self.printYPOutOfRange()
         if self.incomplete_containers: self.printIncompleteContainers()
         if self.container_coords_invalid: self.printContainerCoordsInvalid()
@@ -711,9 +716,13 @@ class BadYardData:
         if self.anomalous_stacks: self.printAnomalousStacks()
 
     def printStats(self):
-        print("Total Yard Planning Items:", self.total_yp)
+        if not self.anyBadData():
+            print("No Bad Data")
+            return
+
+        print("Total Yard Planning Items:", self.getTotalYardPlanning())
         print("Yard Planning Errors:", self.getTotalYPOutOfRange())
-        print("\nTotal Containers:", self.total_containers)
+        print("\nTotal Containers:", self.getTotalContainers())
         print("Incomplete Containers:", self.getTotalIncomplete())
         print("Container Coords Invalid:", self.getTotalContainerCoordsInvalid())
         print("Overlapping Containers:", self.getTotalOverlapping())

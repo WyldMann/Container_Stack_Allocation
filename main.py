@@ -25,8 +25,11 @@ yard = Yard(block_repo, removed_repo, parameter_repo, yp_repo,containerRepo,mast
 
 yard.print()
 
+yard.getBadData().print()
+input()
+
 for x in inboundContRepo:
-    print("\n Press Enter to continue")
-    input()
     newContainer = Container(**x)
     yard.assignContainer(newContainer)
+    print("\n Press Enter to continue")
+    input()
