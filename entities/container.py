@@ -4,6 +4,8 @@ Warning:
     if implementing any sort of coords removal, remember to remove second coords for 40-ft Container
 """
 from datetime import datetime
+
+from utils import toIDSlotRowTier
 from utils.parse_datetime import parse_datetime
 
 
@@ -123,7 +125,7 @@ class Container:
               "| Voyage:", self.voyage,
               "| Weight:", self.weight if self.weight is not None else "None",
               "| MoveTime:", self.move_time,
-              "| CoordsStr:", self.coordsStr)
+              "| CoordsStr:", self.coordsStr[0], self.coordsStr[1],self.coordsStr[3],self.coordsStr[2],self.coordsStr[4])
 
 # special container to be filled in gaps of anomalous stacks
 class DummyContainer(Container):

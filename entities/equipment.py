@@ -1,4 +1,4 @@
-import code
+from utils import coord_handling
 import math
 
 
@@ -19,7 +19,7 @@ class Equipment:
     def inBlockDistance (self, row:int, slot:int) -> float:
         return math.sqrt((row - self.coords[1]) ** 2 + (slot - self.coords[2]) ** 2)
     def print(self):
-        print(self.code,"-",self.getCoordsStr())
+        print(self.code,"-", coord_handling.toIDSlotRow(self.getCoordsStr()))
 
 class RTG(Equipment):
     def __init__(self,code:str,coords:tuple[str,int,int]) -> None:

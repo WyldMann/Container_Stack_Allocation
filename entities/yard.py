@@ -5,6 +5,7 @@ import pandas as pd
 from .container import Container, DummyContainer
 from .parameter import Parameter
 from .equipment import RTG,Loader,Equipment
+from utils import *
 
 class Stack:
     containers: list[Container | None]
@@ -256,8 +257,6 @@ class Block:
         except IndexError:
             pass
         return tier1 + 1
-
-
 
 # in this scope, there's only one yard
 class Yard:
@@ -558,7 +557,7 @@ class Yard:
             pd.set_option('display.max_colwidth', None)  # Show full cell content
 
             print(pd.DataFrame({
-                "Coordinate": coordsCandidates,
+                "Coordinate": [toIDSlotRowTier(strRowSlotTier(coord)) for coord in coordsCandidates],
                 "Parameter":[[str(x) for x in self.getStack(coords[0],coords[1],coords[2]).getParameters()] for coords in coordsCandidates],
                 "Nearest Equipment": [x[0].getCode() for x in CoordsCandidatesEquipmentDistanceResult],
                 "Distance": CoordsCandidatesDistances
@@ -569,7 +568,7 @@ class Yard:
             # coord with the nearest equipment
             equipment, coords = self.coordsWithNearestEquipment(coordsCandidates)
 
-            print("Using", equipment, "from", equipment.getCoordsStr())
+            print("Using", equipment, "from", toIDSlotRow(equipment.getCoordsStr()))
 
             self.addContainerByCoords(container,coords)
 
@@ -587,7 +586,7 @@ class Yard:
                     equipment.inBlockMove(coords[1], coords[2])
 
             # Visualization after assignment
-            print("Container assigned to", [coords[0]] + container.getCoordsStr()[2:])
+            print("Container assigned to", toIDSlotRowTier(strRowSlotTier(coords)))
             print()
 
             self.print()
