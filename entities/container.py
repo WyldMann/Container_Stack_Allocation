@@ -4,8 +4,6 @@ Warning:
     if implementing any sort of coords removal, remember to remove second coords for 40-ft Container
 """
 from datetime import datetime
-
-from utils import toIDSlotRowTier
 from utils.parse_datetime import parse_datetime
 
 
