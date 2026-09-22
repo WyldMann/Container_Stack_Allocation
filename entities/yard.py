@@ -557,7 +557,7 @@ class Yard:
             pd.set_option('display.max_colwidth', None)  # Show full cell content
 
             print(pd.DataFrame({
-                "Coordinate": [toIDSlotRowTier(strRowSlotTier(coord)) for coord in coordsCandidates],
+                "Coordinate": [toStrSlotRowTier(coord) for coord in coordsCandidates],
                 "Parameter":[[str(x) for x in self.getStack(coords[0],coords[1],coords[2]).getParameters()] for coords in coordsCandidates],
                 "Nearest Equipment": [x[0].getCode() for x in CoordsCandidatesEquipmentDistanceResult],
                 "Distance": CoordsCandidatesDistances
@@ -586,7 +586,7 @@ class Yard:
                     equipment.inBlockMove(coords[1], coords[2])
 
             # Visualization after assignment
-            print("Container assigned to", toIDSlotRowTier(strRowSlotTier(coords)))
+            print("Container assigned to", toStrSlotRowTier(coords))
             print()
 
             self.print()
