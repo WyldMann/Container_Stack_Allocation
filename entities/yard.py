@@ -49,6 +49,15 @@ class Stack:
                 return tierInt
         return None
 
+    #returns the highest container object, None if there's no container object
+    def getTopContainer(self) -> Container | None:
+        prevContainer = None
+        for container in self.containers:
+            if container is None:
+                return prevContainer
+            prevContainer = container
+        return prevContainer
+
     def addContainer(self, container: Container, tier: int):
         # if first container in stack, set its mode
         if tier == 0:
