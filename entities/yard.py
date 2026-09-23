@@ -2,6 +2,7 @@ import math
 
 import pandas as pd
 
+from .heuristic_model import HeuristicModel
 from .container import Container, DummyContainer
 from .parameter import Parameter
 from .equipment import RTG,Loader,Equipment
@@ -276,6 +277,7 @@ class Yard:
     containers: dict[str,Container]
     dummy: DummyContainer
     masterLoader: list[Loader]
+    model = HeuristicModel()
 
     #block and parameters input: {"args":"values",...}
     #removed_slots_input: [(block_id, row_no, slot_no),...]
@@ -549,7 +551,7 @@ class Yard:
 
             print(contScores)
             print("Max Achievable Score:", maxScore)
-
+            """
             CoordsCandidatesEquipmentDistanceResult =\
                 [self.nearestEquipmentDistance(coords[0],coords[1],coords[2]) for coords in coordsCandidates]
             CoordsCandidatesDistances = []
@@ -572,10 +574,13 @@ class Yard:
                 "Distance": CoordsCandidatesDistances
             }))
             #visualization end
-
+            """
 
             # coord with the nearest equipment
-            equipment, coords = self.coordsWithNearestEquipment(coordsCandidates)
+            coords = self.bestCoordCandidate(container,coordsCandidates)
+            equipment = self.nearestEquipmentDistance(coords[0],coords[1],coords[2])[0]
+            # coords = tuple[str,int,int,int] of the best coordCandidate
+            # equipment object used.
 
             print("Using", equipment, "from", toIDSlotRow(equipment.getCoordsStr()))
 
@@ -629,6 +634,50 @@ class Yard:
         else:
             return block.rtg, block.rtg.inBlockDistance(row, slot)
 
+    @staticmethod
+    def compareTopWeight(container:Container, stack:Stack) -> float | None:
+        topContainer = stack.getTopContainer()
+        topWeight = None if topContainer is None else topContainer.getWeight()
+
+        containerWeight = container.getWeight()
+        if containerWeight is None or topWeight is None:
+            return None
+        else:
+            return topWeight - containerWeight
+
+    # returns equipment, modelScore
+    def modelEval(self, container:Container, coord: tuple[str,int,int,int]) -> tuple[Equipment, float]:
+        stack = self.getStack(coord[0],coord[1],coord[2])
+        deltaWeight = self.compareTopWeight(container,stack)
+        distance = self.nearestEquipmentDistance(coord[0],coord[1],coord[2])
+        return distance[0], self.model.evaluate(deltaWeight, distance[1])
+
+    def bestCoordCandidate(self,container, coordsCandidates: list[tuple[str,int,int,int]]):
+        evaluated_coords_candidates = sorted(
+            [(coord,self.modelEval(container,coord)[1]) for coord in coordsCandidates],
+            key = lambda candidate: candidate[1],
+            reverse = True
+        )
+
+        coordinates = [coord for coord,score in evaluated_coords_candidates]
+        scores = [score for coord,score in evaluated_coords_candidates]
+
+        #visualization start
+
+        pd.set_option('display.max_rows', None)  # Show all rows
+        pd.set_option('display.max_columns', None)  # Show all columns
+        pd.set_option('display.width', None)  # No line wrapping
+        pd.set_option('display.max_colwidth', None)  # Show full cell content
+
+        print(pd.DataFrame ({
+            "Coordinate": [toStrSlotRowTier(coord) for coord in coordinates],
+            "Parameter": [self.getStack(coord[0],coord[1],coord[2]).getParameters() for coord in coordinates],
+            "deltaWeight": [self.compareTopWeight(container,self.getStack(coord[0],coord[1],coord[2])) for coord in coordinates],
+            "distance": [self.nearestEquipmentDistance(coord[0],coord[1],coord[2])[1] for coord in coordinates],
+            "Eval Score": scores
+        }))
+
+        return coordinates[0]
 
 class BadYardData:
     overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]
