@@ -114,12 +114,12 @@ class Parameter:
             totalParam += self.principal_score
 
         if self.cont_condition != '':
-            if self.principal == "ALL" or self.cont_condition == container.getContCondition():
+            if self.cont_condition == "ALL" or self.cont_condition == container.getContCondition():
                 totalScore += self.cont_condition_score
             totalParam += self.cont_condition_score
 
         if self.cont_fill != '':
-            if self.principal == "ALL" or self.cont_fill == container.getContFill():
+            if self.cont_fill == "ALL" or self.cont_fill == container.getContFill():
                 totalScore += self.cont_fill_score
             totalParam += self.cont_fill_score
 
@@ -131,12 +131,12 @@ class Parameter:
         """
 
         if self.cont_size != '':
-            if self.principal == "ALL" or self.cont_size == container.getContSize():
+            if self.cont_size == "ALL" or self.cont_size == container.getContSize():
                 totalScore += self.cont_size_score
             totalParam += self.cont_size_score
 
         if self.cont_grade:
-            if self.principal == "ALL" or container.getContGrade() in self.cont_grade:
+            if self.cont_grade == ["ALL"] or container.getContGrade() in self.cont_grade:
                 totalScore += self.cont_grade_score
             totalParam += self.cont_grade_score
 
@@ -150,7 +150,7 @@ class Parameter:
         # vessel voyage
         if self.vessel != '' or self.voyage != '':
             if ((self.vessel == "ALL" or self.vessel == container.getVessel() or self.vessel == "") and
-                    (self.voyage == "ALL" or self.voyage == container.getPod() or self.voyage == "")):
+                    (self.voyage == "ALL" or self.voyage == container.getVoyage() or self.voyage == "")):
                 totalScore += self.vessel_voyage_score
             totalParam += self.vessel_voyage_score
 
