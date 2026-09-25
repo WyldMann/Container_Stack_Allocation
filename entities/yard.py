@@ -192,6 +192,10 @@ class Yard:
 
         # add new coords to container
         container.setCoordsInt(self.getBlockBranchCodebyID(coords[0])+(coords[1],coords[2],coords[3],))
+        self.addContainer(container)
+
+    def addContainer(self,container):
+        self.containers[container.getId()] = container
 
     def anomalyCheck(self):
         for block in self.blocks_by_id.values():
