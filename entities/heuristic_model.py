@@ -35,5 +35,5 @@ class HeuristicModel:
             return self.wEquipmentDistance * self.decayFormula(self.lambdaEquipmentDistance,equipmentDistance)
 
     #multiplicative weights
-    def evaluate(self,deltaWeight:float, equipmentDistance:float):
+    def evaluate(self,deltaWeight:float|None, equipmentDistance:float):
         return self.deltaWeight(deltaWeight) * self.equipmentDistance(equipmentDistance)
