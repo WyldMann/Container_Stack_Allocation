@@ -1,4 +1,3 @@
-from argparse import ArgumentError
 from datetime import datetime
 
 def parse_datetime(value: str) -> datetime:
