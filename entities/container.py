@@ -3,9 +3,20 @@ Warning:
     this class must not reference Stack or it will cause circular dependency and by extension, circ. import.
     if implementing any sort of coords removal, remember to remove second coords for 40-ft Container
 """
+import math
 from datetime import datetime
 from utils.parse_datetime import parse_datetime
 
+def _parse_weight(raw) -> float | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(value) or math.isinf(value):
+        return None
+    return value
 
 class Container:
     id: str
@@ -66,7 +77,7 @@ class Container:
         self.pod = POD
         self.vessel = VESSEL
         self.voyage = VOYAGE
-        self.weight = float(WEIGHT) if WEIGHT != '' else None
+        self.weight = _parse_weight(WEIGHT)
         self.move_time = parse_datetime(MOVE_TIME)
 
         if BRANCH is None: BRANCH = ""
