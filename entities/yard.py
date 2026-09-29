@@ -218,7 +218,38 @@ class Yard:
     def getStack(self, blockID: str, row: int, slot:int) -> Stack:
         return self.getBlockByID(blockID).getStack(row, slot)
 
-    def feasibilityCheck(self,container: Container) -> tuple[float,dict[str,float],list[tuple[str,int,int,int]]]:
+    @staticmethod
+    # returns coordinates of available tier in a Stack if feasible
+    # if not feasbile,
+    def feasibilityCheck(container: Container, block: Block, slots: list[Stack], stack: Stack, row:int, slot: int) -> tuple[str,int,int,int]|None:
+
+        tier = stack.availableTierInt()
+
+        # if stack is fully occupied
+        if tier is None: return None
+
+        # must not conflict with stack.mode
+        if container.getContSize() == '40' and stack.getMode() == '20': return None
+
+        elif container.getContSize() == '20' and stack.getMode() == '40': return None
+        # contsize 40 must be assigned to odd only
+        if container.getContSize() == '40' and stack.getEven(): return None
+
+        # if contsize 40, next slot must be able to accomodate
+        # though if everything goes well it already should be
+        if container.getContSize() == '40':
+            try:
+                # second stack should already be '20
+                currentCoords2 = slots[slot - 1]
+            except IndexError: return None
+            if currentCoords2.availableTierInt() != tier: return None
+
+        # safeMaxima for pyramid safety stacking
+        # cont40s must already be confirmed to be odd-numbered
+        if not block.safeMaxima(row, slot): return None
+        return *stack.getCoords(),tier
+
+    def findCoordsCandidates(self, container: Container) -> tuple[float,dict[str,float],list[tuple[str,int,int,int]]]:
         maxScore : float = 0
         coordsCandidates : list[tuple[str,int,int,int]] = []
 
@@ -232,56 +263,33 @@ class Yard:
             for row, slots in enumerate(block.getSlots()):
                 for slot,stack in enumerate(slots):
 
-                    tier = stack.availableTierInt()
+                    # feasibility check
+                    currentCoords = self.feasibilityCheck(container,block,slots,stack,row,slot)
+                    if currentCoords is None: continue
 
-                    # if stack is fully occupied
-                    if tier is None: continue
+                    # candidate scoring
+                    currentScore = max((contScores[str(param)] for param in stack.getParameters()), default = None)
 
-                    # must not conflict with stack.mode
-                    if container.getContSize() == '40' and stack.getMode() == '20': continue
-                    elif container.getContSize() == '20' and stack.getMode() == '40': continue
+                    # currentScore is none if stack is full
+                    if currentScore is None: continue
 
-                    # contsize 40 must be assigned to odd only
-                    if container.getContSize() == '40' and stack.getEven(): continue
-
-                    currentCoords = stack.getCoords()
-                    # if contsize 40, next slot must be able to accomodate
-                    # though if everything goes well it already should be
-                    if container.getContSize() == '40':
-                        try:
-                            # second stack should already be '20
-                            currentCoords2 = slots[slot - 1]
-                        except IndexError:
-                            continue
-                        if currentCoords2.availableTierInt() != tier:
-                            continue
-
-                    # safeMaxima for pyramid safety stacking
-                    # cont40s must already be confirmed to be odd-numbered
-                    if block.safeMaxima(currentCoords[1],currentCoords[2]):
-
-                        currentScore = max((contScores[str(param)] for param in stack.getParameters()), default = None)
-
-                        # currentScore is none if stack is full
-                        if currentScore is None: continue
-
-                        # if tie
-                        elif maxScore == currentScore:
-                            # if container has no fulfillable parameters, put it in stacks with no parameters
-                            if maxScore == 0:
-                                if not stack.getParameters():
-                                    coordsCandidates.append(currentCoords + (tier,))
-                            # if container has fulfilabe parameters, stack is another candidate
-                            else:
-                                coordsCandidates.append(currentCoords + (tier,))
-                        # if new stack with better higher parameter score is found, reset coordscandidates with new max parameter score
-                        elif maxScore < currentScore:
-                            maxScore = currentScore
-                            coordsCandidates = [currentCoords + (tier,)]
+                    # if tie
+                    elif maxScore == currentScore:
+                        # if container has no fulfillable parameters, put it in stacks with no parameters
+                        if maxScore == 0:
+                            if not stack.getParameters():
+                                coordsCandidates.append(currentCoords)
+                        # if container has fulfilabe parameters, stack is another candidate
+                        else:
+                            coordsCandidates.append(currentCoords)
+                    # if new stack with better higher parameter score is found, reset coordscandidates with new max parameter score
+                    elif maxScore < currentScore:
+                        maxScore = currentScore
+                        coordsCandidates = [currentCoords]
         return maxScore,contScores,coordsCandidates
 
     def assignContainer(self,container: Container) -> AssignResult | None:
-        maxScore, contScores,coordsCandidates = self.feasibilityCheck(container)
+        maxScore, contScores,coordsCandidates = self.findCoordsCandidates(container)
         if not coordsCandidates:
             return None
         else:
