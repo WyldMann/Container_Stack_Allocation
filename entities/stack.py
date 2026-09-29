@@ -115,7 +115,7 @@ class Stack:
                         self.containers[x + 1] = None
                         container.setTierInt(x)     #update container tier
 
-    # returns tier score
+    # returns tier eval_score
     def score(self,container) -> float | None:
         return max(x.evaluate(container) for x in self.parameters) if self.parameters != [] else 0
 
@@ -123,17 +123,3 @@ class Stack:
         self.maxTier = 0
         self.containers = []
         self.mode = 'X'
-
-    def printVacancy(self):
-        print(self.vacancy(), end = " ")
-
-    def printOccupancy(self):
-        print(self.occupancy(), self.getMode()[0], end = " ", sep = "")
-
-    def printContents(self):
-        for x in self.containers:
-            if x is not None:
-                print(x, end = " ")
-            else:
-                print("None", end = " ")
-        print()

@@ -2,6 +2,7 @@ from pathlib import Path
 
 from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader, EquipmentMoveFileReader
 from entities import Yard, Container
+from presenter import YardPresenter
 
 blockFile = Path(__file__).parent / "test_data" / "yard_block.csv"
 ypFile = Path(__file__).parent / "test_data" / "yard_planning.csv"
@@ -22,8 +23,8 @@ masterEquipmentRepo = FileReader(masterEquipmentFile).readCSV()
 equipmentHistoryFile = EquipmentMoveFileReader(equipmentHistoryFile).readCSVDict()
 
 yard = Yard(block_repo, removed_repo, parameter_repo, yp_repo,containerRepo,masterEquipmentRepo,equipmentHistoryFile)
-
-yard.print()
+yardPresenter = YardPresenter()
+yardPresenter.outYard(yard)
 
 yard.getBadData().print()
 
@@ -35,4 +36,5 @@ for x in inboundContRepo:
         if inp != "":
             skip = True
     newContainer = Container(**x)
-    yard.assignContainer(newContainer)
+    yardPresenter.outContainer(newContainer)
+    yardPresenter.outAssignResult(yard.assign_and_place(newContainer))

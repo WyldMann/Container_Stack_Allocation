@@ -1,14 +1,12 @@
 import math
 
-import pandas as pd
-
+from .assign_result import AssignResult, CandidateEvaluation
 from .heuristic_model import HeuristicModel
 from .container import Container, DummyContainer
 from .parameter import Parameter
 from .equipment import RTG,Loader,Equipment
 from .stack import Stack
 from .block import Block
-from utils import *
 
 from .bad_yard_data import BadYardData
 
@@ -212,19 +210,15 @@ class Yard:
         while len(self.bad_data.getAnomalousStacks()) != 0:
             self.bad_data.popAnomalousStack().anomalyDummyFill(self.dummy)
 
-    def print(self):
-        for block_id in self.blocks_by_id:
-            self.blocks_by_id[block_id].print()
-
     def distanceBetweenBlock(self, blockID1: str, blockID2: str) -> float:
         block1 = self.blocks_by_id[blockID1]
         block2 = self.blocks_by_id[blockID2]
         return math.sqrt((block1.getPosX() - block2.getPosX()) ** 2 + (block1.getPosY() - block2.getPosY()) ** 2)
 
-    def getStack (self, blockID: str, row: int, slot:int) -> Stack:
+    def getStack(self, blockID: str, row: int, slot:int) -> Stack:
         return self.getBlockByID(blockID).getStack(row, slot)
 
-    def assignContainer(self,container: Container):
+    def feasibilityCheck(self,container: Container) -> tuple[int,list[tuple[str,int,int,int]]]:
         maxScore = 0
         coordsCandidates = []
 
@@ -258,7 +252,6 @@ class Yard:
                             # second stack should already be '20
                             currentCoords2 = slots[slot - 1]
                         except IndexError:
-                            print("uh oh")
                             continue
                         if currentCoords2.availableTierInt() != tier:
                             continue
@@ -280,68 +273,41 @@ class Yard:
                             # if container has fulfilabe parameters, stack is another candidate
                             else:
                                 coordsCandidates.append(currentCoords + (tier,))
-                        # if new stack with better higher score is found, reset coordscandidates with new max score
+                        # if new stack with better higher parameter score is found, reset coordscandidates with new max parameter score
                         elif maxScore < currentScore:
                             maxScore = currentScore
                             coordsCandidates = [currentCoords + (tier,)]
+        return maxScore,coordsCandidates
+
+    def assignContainer(self,container: Container) -> AssignResult | None:
+        maxScore,coordsCandidates = self.feasibilityCheck(container)
         if not coordsCandidates:
-            print("No Space Found")
-            container.print()
-            self.print()
-            input()
+            return None
         else:
+            return AssignResult(
+                container,
+                maxScore,
+                self.bestCoordCandidate(container,coordsCandidates)
+            )
 
-            # Visualization pre-assignment
-            container.print()
+    def placeContainerWithAssignResult(self, result: AssignResult) -> None:
+        self.placeContainer(result.container, result.getBestCoordinate(), result.getBestEquipment())
 
-            # param visualization
-            # track cases in which container has params fulfilled, but must be placed in stack with no params
+    def placeContainer(self,container: Container,coords: tuple[str,int,int,int],equipment: Equipment):
+        self.addContainerByCoords(container, coords)
 
-            print(contScores)
-            print("Max Achievable Score:", maxScore)
-
-            # coord with the nearest equipment
-            coords = self.bestCoordCandidate(container,coordsCandidates)
-            equipment = self.nearestEquipmentDistance(coords[0],coords[1],coords[2])[0]
-            # coords = tuple[str,int,int,int] of the best coordCandidate
-            # equipment object used.
-
-            print("Using", equipment, "from", toIDSlotRow(equipment.getCoordsStr()))
-
-            self.addContainerByCoords(container,coords)
-
-            # equipment is RTG
-            if isinstance(equipment,RTG):
+        # equipment is RTG
+        if isinstance(equipment, RTG):
+            equipment.inBlockMove(coords[1], coords[2])
+        # equipment is Loader
+        elif isinstance(equipment, Loader):
+            # if change blocks, change block.loaders
+            if coords[0] != equipment.getCoords()[0]:
+                self.blocks_by_id[coords[0]].addLoader(equipment)
+                self.blocks_by_id[equipment.getCoords()[0]].removeLoader(equipment)
+                equipment.outBlockMove(coords[0], coords[1], coords[2])
+            else:
                 equipment.inBlockMove(coords[1], coords[2])
-            # equipment is Loader
-            elif isinstance(equipment,Loader):
-                # if change blocks, change block.loaders
-                if coords[0] != equipment.getCoords()[0]:
-                    self.blocks_by_id[coords[0]].addLoader(equipment)
-                    self.blocks_by_id[equipment.getCoords()[0]].removeLoader(equipment)
-                    equipment.outBlockMove(coords[0],coords[1], coords[2])
-                else:
-                    equipment.inBlockMove(coords[1], coords[2])
-
-            # Visualization after assignment
-            print("Container assigned to", toStrSlotRowTier(coords))
-            print()
-
-            self.print()
-            # Visualization end
-
-    # coords (with tier) with the nearest equipment distance
-    def coordsWithNearestEquipment (self, coords: list[tuple[str,int,int,int]]) -> tuple[Equipment,tuple[str,int,int,int]]:
-        minCoord = coords[0]
-        minEquipment, minDistance = self.nearestEquipmentDistance(minCoord[0],minCoord[1],minCoord[2])
-        for coord in coords[1:]:
-            equipment, distance = self.nearestEquipmentDistance(coord[0],coord[1],coord[2])
-            if minDistance > distance:
-                minEquipment = equipment
-                minDistance = distance
-                minCoord = coord
-
-        return minEquipment, minCoord
 
     # nearest equipment and its distance for a stack coord (without tier)
     def nearestEquipmentDistance(self,blockID: str, row: int, slot: int) -> tuple[Equipment,float]:
@@ -369,36 +335,27 @@ class Yard:
         else:
             return topWeight - containerWeight
 
-    # returns equipment, modelScore
-    def modelEval(self, container:Container, coord: tuple[str,int,int,int]) -> tuple[Equipment, float]:
+    # returns deltaWeight, equipment, distance, modelScore
+    # attribute of candidateEvaluation other than coord and param
+    def modelEval(self, container:Container, coord: tuple[str,int,int,int]) -> tuple[float|None,Equipment, float,float]:
         stack = self.getStack(coord[0],coord[1],coord[2])
         deltaWeight = self.compareTopWeight(container,stack)
-        distance = self.nearestEquipmentDistance(coord[0],coord[1],coord[2])
-        return distance[0], self.model.evaluate(deltaWeight, distance[1])
+        equipment, distance = self.nearestEquipmentDistance(coord[0],coord[1],coord[2])
+        return deltaWeight, equipment, distance, self.model.evaluate(deltaWeight, distance)
 
-    def bestCoordCandidate(self,container, coordsCandidates: list[tuple[str,int,int,int]]):
-        evaluated_coords_candidates = sorted(
-            [(coord,self.modelEval(container,coord)[1]) for coord in coordsCandidates],
-            key = lambda candidate: candidate[1],
+    # returns a list of CandidateEvaluation with highest eval_score to lowest
+    def bestCoordCandidate(self,container, coordsCandidates: list[tuple[str,int,int,int]]) -> list[CandidateEvaluation]:
+        # [(coord,eval_score)...] sorted from highest to lowest eval_score
+        sortedCandidateEvaluations = sorted(
+            [CandidateEvaluation(coord,
+                self.getStack(coord[0],coord[1],coord[2]).getParameters(),
+                                 *self.modelEval(container,coord)) for coord in coordsCandidates],
+            key = lambda candidate: candidate.eval_score,
             reverse = True
         )
+        return sortedCandidateEvaluations
 
-        coordinates = [coord for coord,score in evaluated_coords_candidates]
-        scores = [score for coord,score in evaluated_coords_candidates]
-
-        #visualization start
-
-        pd.set_option('display.max_rows', None)  # Show all rows
-        pd.set_option('display.max_columns', None)  # Show all columns
-        pd.set_option('display.width', None)  # No line wrapping
-        pd.set_option('display.max_colwidth', None)  # Show full cell content
-
-        print(pd.DataFrame ({
-            "Coordinate": [toStrSlotRowTier(coord) for coord in coordinates],
-            "Parameter": [self.getStack(coord[0],coord[1],coord[2]).getParameters() for coord in coordinates],
-            "deltaWeight": [self.compareTopWeight(container,self.getStack(coord[0],coord[1],coord[2])) for coord in coordinates],
-            "distance": [self.nearestEquipmentDistance(coord[0],coord[1],coord[2])[1] for coord in coordinates],
-            "Eval Score": scores
-        }))
-
-        return coordinates[0]
+    def assign_and_place(self,container) -> AssignResult | None:
+        result = self.assignContainer(container)
+        if result is not None: self.placeContainerWithAssignResult(result)
+        return result

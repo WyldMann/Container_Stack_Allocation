@@ -6,6 +6,7 @@ class HeuristicModel:
     wDeltaWeight = 10
     hlDeltaWeight = 5000
 
+
     lambdaDeltaWeight = math.log(2) / hlDeltaWeight
 
     wEquipmentDistance = 10

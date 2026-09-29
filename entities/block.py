@@ -56,14 +56,6 @@ class Block:
             for stack in slot:
                 if stack.anomaly(): anomalies.append(stack)
         return anomalies
-    def print(self):
-        print("ID:",self.id," Branch/Code:",self.branch + "/" + self.getCode())
-        if self.rtg is not None: self.rtg.print()
-        if self.loaders: [x.print() for x in self.loaders]
-        for slot in self.slots:
-            for tier in slot:
-                tier.printOccupancy()
-            print()
 
     def getRTG(self) -> RTG | None: return self.rtg
     def setRTG(self, rtg: RTG): self.rtg = rtg

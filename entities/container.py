@@ -122,20 +122,6 @@ class Container:
     def __str__(self):
         return self.id
 
-    def print(self):
-        print("ID:", self.id,
-              "| Principal:", self.principal,
-              "| Container Condition:", self.cont_condition,
-              "| Container Fill:", self.cont_fill,
-              "| Container Size:", self.cont_size,
-              "| Container Grade:", self.cont_grade,
-              "| Pol:", self.pol,
-              "| Pod:", self.pod,
-              "| Voyage:", self.voyage,
-              "| Weight:", self.weight if self.weight is not None else "None",
-              "| MoveTime:", self.move_time,
-              "| CoordsStr:", self.coordsStr[0], self.coordsStr[1],self.coordsStr[3],self.coordsStr[2],self.coordsStr[4])
-
 # special container to be filled in gaps of anomalous stacks
 class DummyContainer(Container):
     #[(block_id,row,slot,tier),...]
@@ -154,7 +140,3 @@ class DummyContainer(Container):
         self.removeCoordList((blockID,containerCoords[2],containerCoords[3],containerCoords[4]))
 
     def getCoordsList(self) -> set[tuple[str,str,str,str]]: return self.coordsList
-
-    def printCoordsList(self):
-        for coords in self.coordsList:
-            print(coords)
