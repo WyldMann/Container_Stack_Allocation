@@ -218,12 +218,12 @@ class Yard:
     def getStack(self, blockID: str, row: int, slot:int) -> Stack:
         return self.getBlockByID(blockID).getStack(row, slot)
 
-    def feasibilityCheck(self,container: Container) -> tuple[int,list[tuple[str,int,int,int]]]:
-        maxScore = 0
-        coordsCandidates = []
+    def feasibilityCheck(self,container: Container) -> tuple[float,dict[str,float],list[tuple[str,int,int,int]]]:
+        maxScore : float = 0
+        coordsCandidates : list[tuple[str,int,int,int]] = []
 
         #evaluate params first
-        contScores = {}
+        contScores : dict[str,float] = {}
         for param in self.params.values():
             contScores[str(param)] = param.evaluate(container)
         contScores = dict(sorted(contScores.items(), key=lambda item: item[1], reverse=True))
@@ -257,9 +257,10 @@ class Yard:
                             continue
 
                     # safeMaxima for pyramid safety stacking
+                    # cont40s must already be confirmed to be odd-numbered
                     if block.safeMaxima(currentCoords[1],currentCoords[2]):
 
-                        currentScore = max((contScores[str(param)] for param in stack.getParameters()), default = 0)
+                        currentScore = max((contScores[str(param)] for param in stack.getParameters()), default = None)
 
                         # currentScore is none if stack is full
                         if currentScore is None: continue
@@ -277,15 +278,16 @@ class Yard:
                         elif maxScore < currentScore:
                             maxScore = currentScore
                             coordsCandidates = [currentCoords + (tier,)]
-        return maxScore,coordsCandidates
+        return maxScore,contScores,coordsCandidates
 
     def assignContainer(self,container: Container) -> AssignResult | None:
-        maxScore,coordsCandidates = self.feasibilityCheck(container)
+        maxScore, contScores,coordsCandidates = self.feasibilityCheck(container)
         if not coordsCandidates:
             return None
         else:
             return AssignResult(
                 container,
+                contScores,
                 maxScore,
                 self.bestCoordCandidate(container,coordsCandidates)
             )

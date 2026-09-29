@@ -115,10 +115,6 @@ class Stack:
                         self.containers[x + 1] = None
                         container.setTierInt(x)     #update container tier
 
-    # returns tier eval_score
-    def score(self,container) -> float | None:
-        return max(x.evaluate(container) for x in self.parameters) if self.parameters != [] else 0
-
     def makeVoid(self):
         self.maxTier = 0
         self.containers = []

@@ -14,29 +14,30 @@ class Presenter:
 
     # ----- primitives -----
     def outContainer(self, container: Container) -> None:
-        self.out("ID:", container.id,
-              "| Principal:", container.principal,
-              "| Container Condition:", container.cont_condition,
-              "| Container Fill:", container.cont_fill,
-              "| Container Size:", container.cont_size,
-              "| Container Grade:", container.cont_grade,
-              "| Pol:", container.pol,
-              "| Pod:", container.pod,
-              "| Voyage:", container.voyage,
-              "| Weight:", container.weight if container.weight is not None else "None",
-              "| MoveTime:", container.move_time,
-              "| CoordsStr:", container.coordsStr[0], container.coordsStr[1],container.coordsStr[3],container.coordsStr[2],container.coordsStr[4])
+        self.out("ID:", container.getId(),
+              "| Principal:", container.getPrincipal(),
+              "| Container Condition:", container.getContCondition(),
+              "| Container Fill:", container.getContFill(),
+              "| Container Size:", container.getContSize(),
+              "| Container Grade:", container.getContGrade(),
+              "| Pol:", container.getPol(),
+              "| Pod:", container.getPod(),
+              "| Voyage:", container.getVoyage(),
+              "| Weight:", container.getWeight() if container.getWeight() is not None else "None",
+              "| MoveTime:", container.getMoveTime(),
+              "| CoordsStr:", container.getCoordsStr()[0], container.getCoordsStr()[1],container.getCoordsStr()[3],container.getCoordsStr()[2],container.getCoordsStr()[4])
 
     def outEquipment(self, equipment: Equipment) -> None:
         self.out(equipment.getCode(), "-", toIDSlotRow(equipment.getCoordsStr()))
 
     def outStackOccupancy(self, stack: Stack) -> None:
-        self.out(stack.occupancy(), stack.getMode()[0], end=" ", sep="")
+        # cannot find way to make this thing accept anything other than print as out
+        self.out(f"{stack.occupancy()}{stack.getMode()[:1]} ", end = "")
 
     def outStackContents(self, stack: Stack) -> None:
         for c in stack.getContainers():
-            self.out(c if c is not None else "None", end=" ")
-        self.out()
+            self.out(f"{c if c is not None else "None"} " )
+        self.out(f"\n")
 
 class YardPresenter(Presenter):
 
@@ -62,6 +63,9 @@ class YardPresenter(Presenter):
         if result is None:
             self.out("No Space Found")
             return
+
+        self.outContainer(result.container)
+        self.out(result.cont_scores)
 
         coords = result.getBestCoordinate()
         equipment = result.getBestEquipment()

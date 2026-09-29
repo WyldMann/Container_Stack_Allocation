@@ -19,7 +19,8 @@ class CandidateEvaluation:
 @dataclass
 class AssignResult:
     container: Container
-    param_score: float
+    cont_scores: dict[str,float]
+    max_param_score: float
     sortedCandidateEvaluations: list[CandidateEvaluation]
 
     def getBestCandidate(self) -> CandidateEvaluation:
