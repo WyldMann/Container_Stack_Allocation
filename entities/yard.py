@@ -7,6 +7,7 @@ from .parameter import Parameter
 from .equipment import RTG,Loader,Equipment
 from .stack import Stack
 from .block import Block
+from .placement_feasibility import PlacementFeasibility
 
 from .bad_yard_data import BadYardData
 
@@ -39,6 +40,8 @@ class Yard:
         if container_input is None: container_input = []
         if master_equipment is None: master_equipment = []
         if equipment_history is None: equipment_history = {}
+
+        self.feasibility = PlacementFeasibility()
 
         self.bad_data = BadYardData(sum(len(yp) for yp in yard_planning_input.values()),len(container_input))
         self.dummy = DummyContainer()
@@ -218,39 +221,6 @@ class Yard:
     def getStack(self, blockID: str, row: int, slot:int) -> Stack:
         return self.getBlockByID(blockID).getStack(row, slot)
 
-    @staticmethod
-    # returns coordinates of available tier in a Stack if feasible
-    # if not feasbile,
-    def feasibilityCheck(container: Container, block: Block, slots: list[Stack], stack: Stack, row:int, slot: int) -> tuple[str,int,int,int]|None:
-
-        size = container.getContSize()
-        if size not in ('20', '40'): return None
-
-        tier = stack.availableTierInt()
-
-        # if stack is fully occupied
-        if tier is None: return None
-
-        # must not conflict with stack.mode
-        if size == '40' and stack.getMode() == '20': return None
-
-        elif size == '20' and stack.getMode() == '40': return None
-        # contsize 40 must be assigned to odd only
-        if size == '40' and stack.getEven(): return None
-
-        # A 40-ft container also occupies the preceding stack.
-        if size == '40':
-            if not 0 < slot < len(slots): return None
-            partner = slots[slot - 1]
-            # The partner must be empty or serving 40-ft containers.
-            if partner.getMode() not in ('0', '40'): return None
-            if partner.availableTierInt() != tier: return None
-
-        # safeMaxima for pyramid safety stacking
-        # cont40s must already be confirmed to be odd-numbered
-        if not block.safeMaxima(row, slot): return None
-        return *stack.getCoords(),tier
-
     def findCoordsCandidates(self, container: Container) -> tuple[float,dict[str,float],list[tuple[str,int,int,int]]]:
         maxScore : float = 0
         coordsCandidates : list[tuple[str,int,int,int]] = []
@@ -266,7 +236,8 @@ class Yard:
                 for slot,stack in enumerate(slots):
 
                     # feasibility check
-                    currentCoords = self.feasibilityCheck(container,block,slots,stack,row,slot)
+                    result = self.feasibility.evaluate(container, block, row, slot)
+                    currentCoords = result.coordinates
                     if currentCoords is None: continue
 
                     # candidate scoring
