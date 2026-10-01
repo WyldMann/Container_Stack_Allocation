@@ -101,6 +101,9 @@ class Block:
     #row1,slot1 must exist, row2,slot2 doesn't need to
     def compareTier(self,row1:int,slot1:int,row2:int,slot2:int) -> int:
         tier1 = self.slots[row1][slot1].availableTierInt()
+        # Negative indices are outside the block, not opposite-edge neighbors.
+        if not 0 <= row2 < len(self.slots): return tier1 + 1
+        if not 0 <= slot2 < len(self.slots[row2]): return tier1 + 1
         try:
             tier2 = self.slots[row2][slot2].availableTierInt()
 

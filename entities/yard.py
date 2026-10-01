@@ -223,26 +223,28 @@ class Yard:
     # if not feasbile,
     def feasibilityCheck(container: Container, block: Block, slots: list[Stack], stack: Stack, row:int, slot: int) -> tuple[str,int,int,int]|None:
 
+        size = container.getContSize()
+        if size not in ('20', '40'): return None
+
         tier = stack.availableTierInt()
 
         # if stack is fully occupied
         if tier is None: return None
 
         # must not conflict with stack.mode
-        if container.getContSize() == '40' and stack.getMode() == '20': return None
+        if size == '40' and stack.getMode() == '20': return None
 
-        elif container.getContSize() == '20' and stack.getMode() == '40': return None
+        elif size == '20' and stack.getMode() == '40': return None
         # contsize 40 must be assigned to odd only
-        if container.getContSize() == '40' and stack.getEven(): return None
+        if size == '40' and stack.getEven(): return None
 
-        # if contsize 40, next slot must be able to accomodate
-        # though if everything goes well it already should be
-        if container.getContSize() == '40':
-            try:
-                # second stack should already be '20
-                currentCoords2 = slots[slot - 1]
-            except IndexError: return None
-            if currentCoords2.availableTierInt() != tier: return None
+        # A 40-ft container also occupies the preceding stack.
+        if size == '40':
+            if not 0 < slot < len(slots): return None
+            partner = slots[slot - 1]
+            # The partner must be empty or serving 40-ft containers.
+            if partner.getMode() not in ('0', '40'): return None
+            if partner.availableTierInt() != tier: return None
 
         # safeMaxima for pyramid safety stacking
         # cont40s must already be confirmed to be odd-numbered
