@@ -42,6 +42,9 @@ class FeasibilityTests(unittest.TestCase):
     def test_empty_pair_accepts_forty_foot(self):
         self.assertEqual(self.check('40'), ('A', 0, 1, 0))
 
+    def test_empty_stack_accepts_twenty_foot(self):
+        self.assertEqual(self.check('20', row=1, slot=2), ('A', 1, 2, 0))
+
     def test_compatible_pair_accepts_forty_foot(self):
         self.fill(0, 0, '40', 1)
         self.fill(0, 1, '40', 1)
@@ -61,7 +64,29 @@ class FeasibilityTests(unittest.TestCase):
         self.assert_rejected('40', RejectionReason.PARTNER_TIER_MISMATCH)
 
     def test_even_anchor_is_rejected(self):
-        self.assert_rejected('40', RejectionReason.INVALID_FORTY_FOOT_ANCHOR, slot=0)
+        for slot in (0, 2):
+            with self.subTest(slot=slot):
+                self.assert_rejected(
+                    '40', RejectionReason.INVALID_FORTY_FOOT_ANCHOR, slot=slot,
+                )
+
+    def test_evaluation_does_not_modify_stacks(self):
+        self.fill(0, 0, '40', 1)
+        self.fill(0, 1, '40', 1)
+        self.block.getStack(2, 3).makeVoid()
+
+        def snapshot():
+            return [
+                (stack.getMode(), stack.getMaxTier(), tuple(stack.getContainers()))
+                for slots in self.block.getSlots()
+                for stack in slots
+            ]
+
+        before = snapshot()
+        self.assertEqual(self.check('40'), ('A', 0, 1, 1))
+        self.assertEqual(snapshot(), before)
+        self.assert_rejected('20', RejectionReason.SIZE_CONFLICT)
+        self.assertEqual(snapshot(), before)
 
     def test_opposite_row_does_not_make_boundary_safe(self):
         self.fill(0, 1, '20', 2)

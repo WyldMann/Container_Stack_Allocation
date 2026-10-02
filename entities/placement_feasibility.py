@@ -3,6 +3,7 @@ from enum import Enum
 
 from .block import Block
 from .container import Container
+from .placement_proposal import PlacementProposal
 from .stack import Stack
 
 Coordinates = tuple[str, int, int, int]
@@ -78,11 +79,19 @@ class PlacementFeasibility:
             if reason is not None:
                 return FeasibilityResult(rejection_reason=reason)
 
-        reason = self._check_stacking_safety(block, row, slot)
+        proposal = PlacementProposal(
+            block_id=block.getId(),
+            row=row,
+            slot=slot,
+            tier=tier,
+            size=size,
+        )
+
+        reason = self._check_stacking_safety(block, proposal)
         if reason is not None:
             return FeasibilityResult(rejection_reason=reason)
 
-        return FeasibilityResult(coordinates=(*stack.getCoords(), tier))
+        return FeasibilityResult(coordinates=proposal.coordinates)
 
     @staticmethod
     def _check_size_compatibility(
@@ -118,9 +127,8 @@ class PlacementFeasibility:
     @staticmethod
     def _check_stacking_safety(
             block: Block,
-            row: int,
-            slot: int,
+            proposal: PlacementProposal,
     ) -> RejectionReason | None:
-        if not block.safeMaxima(row, slot):
+        if not block.safeMaxima(proposal.row, proposal.slot):
             return RejectionReason.UNSAFE_STACKING
         return None
