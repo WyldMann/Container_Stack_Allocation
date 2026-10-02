@@ -40,3 +40,4 @@ for x in inboundContRepo:
             skip = True
     newContainer = Container(**x)
     yardPresenter.outAssignResult(yard.assign_and_place(newContainer))
+    yardPresenter.outYard(yard)
