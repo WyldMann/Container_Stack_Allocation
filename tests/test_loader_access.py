@@ -119,7 +119,16 @@ class LoaderAccessTests(unittest.TestCase):
     def test_placement_above_ground_does_not_change_routes(self):
         self.set_stack(0, 1, count=1)
         self.set_stack(1, 1, count=1)
-        self.assertTrue(self.evaluate(self.proposal(0, 1, tier=1)).allowed)
+        result = self.evaluate(self.proposal(0, 1, tier=1))
+        self.assertTrue(result.destination_accessible)
+        self.assertTrue(result.allowed)
+
+    def test_inaccessible_destination_rejects_without_new_isolation(self):
+        self.set_stack(2, 1)
+        result = self.evaluate(self.proposal(2, 1))
+        self.assertFalse(result.destination_accessible)
+        self.assertEqual(result.isolated_locations, ())
+        self.assertFalse(result.allowed)
 
     def test_destination_with_remaining_capacity_can_be_isolated(self):
         # An empty interior destination is initially its neighbour's

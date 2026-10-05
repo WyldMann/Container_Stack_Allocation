@@ -8,6 +8,7 @@ from .equipment import RTG,Loader,Equipment
 from .stack import Stack
 from .block import Block
 from .placement_feasibility import PlacementFeasibility
+from .loader_access import LoaderBorderAccessPolicy
 
 from .bad_yard_data import BadYardData
 
@@ -32,7 +33,8 @@ class Yard:
                  yard_planning_input: dict[str,list[tuple[str,int,int]]] | None = None,
                  container_input: list[dict[str,str]] | None = None,
                  master_equipment: list[dict[str,str]] | None = None,
-                 equipment_history:dict[str,tuple[str,str,int,int]] | None = None) -> None:
+                 equipment_history:dict[str,tuple[str,str,int,int]] | None = None,
+                 loader_access_policies: dict[str, LoaderBorderAccessPolicy] | None = None) -> None:
 
         if removed_slots_input is None: removed_slots_input = []
         if parameters_input is None: parameters_input = []
@@ -42,6 +44,9 @@ class Yard:
         if equipment_history is None: equipment_history = {}
 
         self.feasibility = PlacementFeasibility()
+        self.loader_access_policies = (
+            dict(loader_access_policies) if loader_access_policies is not None else {}
+        )
 
         self.bad_data = BadYardData(sum(len(yp) for yp in yard_planning_input.values()),len(container_input))
         self.dummy = DummyContainer()
@@ -236,7 +241,10 @@ class Yard:
                 for slot,stack in enumerate(slots):
 
                     # feasibility check
-                    result = self.feasibility.evaluate(container, block, row, slot)
+                    result = self.feasibility.evaluate(
+                        container, block, row, slot,
+                        loader_policy=self.loader_access_policies.get(block.getId()),
+                    )
                     currentCoords = result.coordinates
                     if currentCoords is None: continue
 

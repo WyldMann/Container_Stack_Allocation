@@ -29,14 +29,15 @@ class ReceivingLocation:
 @dataclass(frozen=True)
 class LoaderAccessResult:
     isolated_locations: tuple[ReceivingLocation, ...] = ()
+    destination_accessible: bool = True
 
     @property
     def allowed(self) -> bool:
-        return not self.isolated_locations
+        return self.destination_accessible and not self.isolated_locations
 
 
 class LoaderAccessRule:
-    """Detect newly isolated receiving locations without modifying a block.
+    """Check destination access and new isolation without modifying a block.
 
     Assumes contiguous stacks and a proposal that has already passed
     basic placement checks. Movement uses a single-cell grid model;
@@ -52,6 +53,10 @@ class LoaderAccessRule:
 
         self._validate_proposal(block, proposal)
         reachable_before = self._reachable_ground(block, policy)
+        destination = ReceivingLocation(proposal.row, proposal.slot, proposal.size)
+        destination_accessible = self._can_serve(
+            block, destination, reachable_before, policy
+        )
         reachable_after = self._reachable_ground(block, policy, proposal)
         receiving_before = self._receiving_locations(block)
         receiving_after = self._receiving_locations(block, proposal)
@@ -76,7 +81,8 @@ class LoaderAccessRule:
                         isolatedLocation.row, isolatedLocation.slot, isolatedLocation.size
                     ),
                 )
-            )
+            ),
+            destination_accessible=destination_accessible,
         )
 
     @staticmethod

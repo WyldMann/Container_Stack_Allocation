@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from entities.block import Block
+from entities.equipment import RTG
 from entities.placement_feasibility import (
     FeasibilityResult, PlacementFeasibility, RejectionReason,
 )
@@ -14,6 +15,8 @@ class FeasibilityTests(unittest.TestCase):
             BRANCH_ID='B', BLOCK_ID='A', BLOCK_CODE='A', SLOT_COUNT='4',
             ROW_COUNT='3', MAX_TIER='5', POS_X='0', POS_Y='0',
         )
+        # These tests isolate size, pairing, and stacking safety from loader access.
+        self.block.setRTG(RTG('RTG-1', ('A', 0, 0)))
 
     def fill(self, row, slot, size, count):
         container = SimpleNamespace(getContSize=lambda: size)

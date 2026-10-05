@@ -3,6 +3,7 @@ from enum import Enum
 
 from .block import Block
 from .container import Container
+from .loader_access import LoaderAccessRule, LoaderBorderAccessPolicy
 from .placement_proposal import PlacementProposal
 from .stack import Stack
 
@@ -18,6 +19,8 @@ class RejectionReason(Enum):
     PARTNER_SIZE_CONFLICT = "partner_size_conflict"
     PARTNER_TIER_MISMATCH = "partner_tier_mismatch"
     UNSAFE_STACKING = "unsafe_stacking"
+    LOADER_DESTINATION_INACCESSIBLE = "loader_destination_inaccessible"
+    LOADER_ACCESS_BLOCKED = "loader_access_blocked"
 
 
 @dataclass(frozen=True)
@@ -38,12 +41,17 @@ class FeasibilityResult:
 class PlacementFeasibility:
     """Evaluate placement rules without modifying the yard."""
 
+    def __init__(self) -> None:
+        self.loader_access = LoaderAccessRule()
+
     def evaluate(
             self,
             container: Container,
             block: Block,
             row: int,
             slot: int,
+            *,
+            loader_policy: LoaderBorderAccessPolicy | None = None,
     ) -> FeasibilityResult:
         size = container.getContSize()
         if size not in ("20", "40"):
@@ -91,7 +99,29 @@ class PlacementFeasibility:
         if reason is not None:
             return FeasibilityResult(rejection_reason=reason)
 
+        reason = self._check_loader_access(block, proposal, loader_policy)
+        if reason is not None:
+            return FeasibilityResult(rejection_reason=reason)
+
         return FeasibilityResult(coordinates=proposal.coordinates)
+
+    def _check_loader_access(
+        self,
+        block: Block,
+        proposal: PlacementProposal,
+        policy: LoaderBorderAccessPolicy | None,
+    ) -> RejectionReason | None:
+        # Matches equipment selection: a block's RTG serves all its candidates.
+        if block.getRTG() is not None:
+            return None
+        if policy is None:
+            policy = LoaderBorderAccessPolicy()
+        result = self.loader_access.evaluate(block, proposal, policy)
+        if not result.destination_accessible:
+            return RejectionReason.LOADER_DESTINATION_INACCESSIBLE
+        if result.isolated_locations:
+            return RejectionReason.LOADER_ACCESS_BLOCKED
+        return None
 
     @staticmethod
     def _check_size_compatibility(
