@@ -1,7 +1,7 @@
 import unittest
 from dataclasses import FrozenInstanceError
 
-from entities.placement_proposal import PlacementProposal
+from entities.feasibility.placement_proposal import PlacementProposal
 
 
 class PlacementProposalTests(unittest.TestCase):

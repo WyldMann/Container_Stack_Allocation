@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from .block import Block
-from .container import Container
+from ..block import Block
+from ..container import Container
 from .loader_access import LoaderAccessRule, LoaderBorderAccessPolicy
 from .placement_proposal import PlacementProposal
-from .stack import Stack
+from ..stack import Stack
 
 Coordinates = tuple[str, int, int, int]
 

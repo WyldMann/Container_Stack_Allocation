@@ -7,8 +7,7 @@ from .parameter import Parameter
 from .equipment import RTG,Loader,Equipment
 from .stack import Stack
 from .block import Block
-from .placement_feasibility import PlacementFeasibility
-from .loader_access import LoaderBorderAccessPolicy
+from .feasibility import PlacementFeasibility, LoaderBorderAccessPolicy
 
 from .bad_yard_data import BadYardData
 

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from entities.block import Block
 from entities.equipment import RTG
-from entities.placement_feasibility import (
+from entities.feasibility.placement_feasibility import (
     FeasibilityResult, PlacementFeasibility, RejectionReason,
 )
 

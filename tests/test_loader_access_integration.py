@@ -3,8 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from entities.equipment import RTG
-from entities.loader_access import LoaderBorderAccessPolicy
-from entities.placement_feasibility import RejectionReason
+from entities.feasibility.loader_access import LoaderBorderAccessPolicy
+from entities.feasibility.placement_feasibility import RejectionReason
 from entities.yard import Yard
 
 

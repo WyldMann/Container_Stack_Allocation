@@ -1,7 +1,7 @@
 from collections import deque
 from dataclasses import dataclass
 
-from .block import Block
+from ..block import Block
 from .placement_proposal import PlacementProposal
 
 Position = tuple[int, int]

@@ -2,10 +2,10 @@ import unittest
 from types import SimpleNamespace
 
 from entities.block import Block
-from entities.loader_access import (
+from entities.feasibility.loader_access import (
     LoaderBorderAccessPolicy, LoaderAccessRule, ReceivingLocation,
 )
-from entities.placement_proposal import PlacementProposal
+from entities.feasibility.placement_proposal import PlacementProposal
 
 
 class LoaderAccessTests(unittest.TestCase):
