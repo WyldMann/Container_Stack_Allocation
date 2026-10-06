@@ -12,7 +12,6 @@ class CandidateEvaluation:
     equipment: Equipment
     distance: float
     eval_score: float
-    size_affinity: float = 0.0
     size_cluster_multiplier: float = 1.0
 
     def getStrParameter(self) -> list[str]:
@@ -43,7 +42,5 @@ class AssignResult:
         return [x.distance for x in self.sortedCandidateEvaluations]
     def getScores(self) -> list[float]:
         return [x.eval_score for x  in self.sortedCandidateEvaluations]
-    def getSizeAffinities(self) -> list[float]:
-        return [x.size_affinity for x in self.sortedCandidateEvaluations]
     def getSizeClusterMultipliers(self) -> list[float]:
         return [x.size_cluster_multiplier for x in self.sortedCandidateEvaluations]

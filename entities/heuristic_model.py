@@ -37,9 +37,9 @@ class HeuristicModel:
         else:
             return topWeight - containerWeight
 
-    def sizeAffinity(self, container: Container, block: Block,
-                     coord: tuple[str,int,int,int]) -> float:
-        """Distance-weighted size affinity of nearby occupied footprints.
+    def sizeCluster(self, container: Container, block: Block,
+                    coord: tuple[str,int,int,int]) -> float:
+        """Return the clustering score multiplier from neighborhood affinity.
 
         Count stacks independently of height and paired 40-ft slots only once.
         Distances are measured between the closest cells of each footprint,
@@ -77,7 +77,9 @@ class HeuristicModel:
                 else:
                     other += evidence
 
-        return (same - other) / (same + other + self.SIZE_CLUSTER_PRIOR)
+        affinity = (same - other) / (same + other + self.SIZE_CLUSTER_PRIOR)
+        multiplier = 2 ** (self.SIZE_CLUSTER_BIAS * affinity)
+        return multiplier
 
     @staticmethod
     def decayFormula(lambda_: float, variable:float) -> float:
@@ -97,12 +99,9 @@ class HeuristicModel:
         else:
             return self.W_EQUIPMENT_DISTANCE * self.decayFormula(self.LAMBDA_EQUIPMENT_DISTANCE,equipmentDistance)
 
-    def sizeCluster(self, sizeAffinity: float) -> float:
-        return 2 ** (self.SIZE_CLUSTER_BIAS * sizeAffinity)
-
     #multiplicative weights
     def evaluate(self,deltaWeight:float|None, equipmentDistance:float,
-                 sizeAffinity: float = 0.0) -> float:
+                 sizeClusterMultiplier: float = 1.0) -> float:
         return (self.deltaWeight(deltaWeight)
                 * self.equipmentDistance(equipmentDistance)
-                * self.sizeCluster(sizeAffinity))
+                * sizeClusterMultiplier)
