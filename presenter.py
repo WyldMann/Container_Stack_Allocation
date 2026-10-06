@@ -75,6 +75,7 @@ class YardPresenter(Presenter):
             "Parameters": result.getStrParameters(),
             "Top Container ΔWeight": result.getDeltaWeights(),
             "Distance": result.getDistances(),
+            "Size Cluster Multiplier": result.getSizeClusterMultipliers(),
             "Score": result.getScores()
         }))
         self.out("Container can be assigned to", toStrSlotRowTier(coords))

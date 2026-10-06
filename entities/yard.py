@@ -314,24 +314,16 @@ class Yard:
         else:
             return block.rtg, block.rtg.inBlockDistance(row, slot)
 
-    @staticmethod
-    def compareTopWeight(container:Container, stack:Stack) -> float | None:
-        topContainer = stack.getTopContainer()
-        topWeight = None if topContainer is None else topContainer.getWeight()
-
-        containerWeight = container.getWeight()
-        if containerWeight is None or topWeight is None:
-            return None
-        else:
-            return topWeight - containerWeight
-
-    # returns deltaWeight, equipment, distance, modelScore
+    # returns deltaWeight, equipment, distance, modelScore, affinity, multiplier
     # attribute of candidateEvaluation other than coord and param
-    def modelEval(self, container:Container, coord: tuple[str,int,int,int]) -> tuple[float|None,Equipment, float,float]:
+    def modelEval(self, container:Container, coord: tuple[str,int,int,int]) -> tuple[float|None,Equipment,float,float,float,float]:
         stack = self.getStack(coord[0],coord[1],coord[2])
-        deltaWeight = self.compareTopWeight(container,stack)
+        deltaWeight = self.model.compareTopWeight(container,stack)
         equipment, distance = self.nearestEquipmentDistance(coord[0],coord[1],coord[2])
-        return deltaWeight, equipment, distance, self.model.evaluate(deltaWeight, distance)
+        affinity = self.model.sizeAffinity(container, self.getBlockByID(coord[0]), coord)
+        return (deltaWeight, equipment, distance,
+                self.model.evaluate(deltaWeight, distance, affinity),
+                affinity, self.model.sizeCluster(affinity))
 
     # returns a list of CandidateEvaluation with highest eval_score to lowest
     def bestCoordCandidate(self,container, coordsCandidates: list[tuple[str,int,int,int]]) -> list[CandidateEvaluation]:
