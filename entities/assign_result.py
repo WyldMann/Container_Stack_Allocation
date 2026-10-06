@@ -11,8 +11,8 @@ class CandidateEvaluation:
     delta_weight: float | None
     equipment: Equipment
     distance: float
+    size_cluster_multiplier: float
     eval_score: float
-    size_cluster_multiplier: float = 1.0
 
     def getStrParameter(self) -> list[str]:
         return [str(x) for x in self.param]

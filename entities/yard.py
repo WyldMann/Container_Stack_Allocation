@@ -314,16 +314,15 @@ class Yard:
         else:
             return block.rtg, block.rtg.inBlockDistance(row, slot)
 
-    # returns deltaWeight, equipment, distance, modelScore, multiplier
+    # returns deltaWeight, equipment, distance, multiplier, modelScore
     # attribute of candidateEvaluation other than coord and param
     def modelEval(self, container:Container, coord: tuple[str,int,int,int]) -> tuple[float|None,Equipment,float,float,float]:
         stack = self.getStack(coord[0],coord[1],coord[2])
         deltaWeight = self.model.compareTopWeight(container,stack)
         equipment, distance = self.nearestEquipmentDistance(coord[0],coord[1],coord[2])
         multiplier = self.model.sizeCluster(container, self.getBlockByID(coord[0]), coord)
-        return (deltaWeight, equipment, distance,
-                self.model.evaluate(deltaWeight, distance, multiplier),
-                multiplier)
+        return (deltaWeight, equipment, distance, multiplier,
+                self.model.evaluate(deltaWeight, distance, multiplier))
 
     # returns a list of CandidateEvaluation with highest eval_score to lowest
     def bestCoordCandidate(self,container, coordsCandidates: list[tuple[str,int,int,int]]) -> list[CandidateEvaluation]:

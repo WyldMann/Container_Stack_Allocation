@@ -115,9 +115,9 @@ class SizeClusteringTests(unittest.TestCase):
         self.assertEqual(table['Score'].tolist(), result.getScores())
         self.assertNotIn('Size Affinity', table.columns)
 
-    def test_existing_candidate_construction_defaults_to_neutral_clustering(self):
+    def test_candidate_construction_omits_affinity(self):
         candidate = CandidateEvaluation(('A', 0, 0, 0), [], None,
-                                        RTG('RTG', ('A', 0, 0)), 0, 1)
+                                        RTG('RTG', ('A', 0, 0)), 0, 1, 1)
         self.assertFalse(hasattr(candidate, 'size_affinity'))
         self.assertEqual(candidate.size_cluster_multiplier, 1)
 
