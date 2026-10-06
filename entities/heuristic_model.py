@@ -1,30 +1,28 @@
 import math
-from typing import Final
+from config import HeuristicSettings
 
 from .block import Block
 from .container import Container
 from .stack import Stack
 
 class HeuristicModel:
-    """Placement scoring with fixed constants; not runtime-configurable."""
+    """Placement scoring using settings supplied at construction."""
 
-    W_DELTA_WEIGHT: Final[float] = 10
-    HL_DELTA_WEIGHT: Final[float] = 5000
-
-    LAMBDA_DELTA_WEIGHT: Final[float] = math.log(2) / HL_DELTA_WEIGHT
-
-    W_EQUIPMENT_DISTANCE: Final[float] = 10
-    HL_EQUIPMENT_DISTANCE: Final[float] = 5
-
-    LAMBDA_EQUIPMENT_DISTANCE: Final[float] = math.log(2) / HL_EQUIPMENT_DISTANCE
-
-    MIN_VALUE: Final[float] = 0.001
-    NO_DELTA_WEIGHT_VALUE: Final[float] = 0.1
-
-    SIZE_CLUSTER_RADIUS: Final[int] = 3
-    HL_SIZE_CLUSTER_DISTANCE: Final[float] = 1.5
-    SIZE_CLUSTER_PRIOR: Final[float] = 2.0
-    SIZE_CLUSTER_BIAS: Final[float] = 1.0
+    def __init__(self, settings: HeuristicSettings | None = None) -> None:
+        self.settings = settings if settings is not None else HeuristicSettings()
+        settings = self.settings
+        self.W_DELTA_WEIGHT = settings.w_delta_weight
+        self.HL_DELTA_WEIGHT = settings.hl_delta_weight
+        self.LAMBDA_DELTA_WEIGHT = math.log(2) / self.HL_DELTA_WEIGHT
+        self.W_EQUIPMENT_DISTANCE = settings.w_equipment_distance
+        self.HL_EQUIPMENT_DISTANCE = settings.hl_equipment_distance
+        self.LAMBDA_EQUIPMENT_DISTANCE = math.log(2) / self.HL_EQUIPMENT_DISTANCE
+        self.MIN_VALUE = settings.min_value
+        self.NO_DELTA_WEIGHT_VALUE = settings.no_delta_weight_value
+        self.SIZE_CLUSTER_RADIUS = settings.size_cluster_radius
+        self.HL_SIZE_CLUSTER_DISTANCE = settings.hl_size_cluster_distance
+        self.SIZE_CLUSTER_PRIOR = settings.size_cluster_prior
+        self.SIZE_CLUSTER_BIAS = settings.size_cluster_bias
 
     @staticmethod
     def compareTopWeight(container:Container, stack:Stack) -> float | None:

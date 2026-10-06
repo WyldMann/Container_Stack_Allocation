@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from config import load_feasibility_settings
+from config import load_config
 
 from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader, EquipmentMoveFileReader
 from entities import Yard, Container
 from presenter import YardPresenter, BadDataPresenter
 
 config_file = Path(__file__).resolve().parent / "config.toml"
-feasibility_settings = load_feasibility_settings(config_file)
+settings = load_config(config_file)
 
 blockFile = Path(__file__).parent / "test_data" / "yard_block.csv"
 ypFile = Path(__file__).parent / "test_data" / "yard_planning.csv"
@@ -35,7 +35,8 @@ yard = Yard(
     container_input=containerRepo,
     master_equipment=masterEquipmentRepo,
     equipment_history=equipmentHistoryFile,
-    feasibility_settings=feasibility_settings,
+    feasibility_settings=settings.feasibility,
+    heuristic_settings=settings.heuristic,
 )
 yardPresenter = YardPresenter()
 yardPresenter.outYard(yard)
