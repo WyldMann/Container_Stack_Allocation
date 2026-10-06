@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
 
+from config import FeasibilitySettings
+
 from ..block import Block
 from ..container import Container
 from .loader_access import LoaderAccessRule, LoaderBorderAccessPolicy
@@ -41,7 +43,8 @@ class FeasibilityResult:
 class PlacementFeasibility:
     """Evaluate placement rules without modifying the yard."""
 
-    def __init__(self) -> None:
+    def __init__(self, settings: FeasibilitySettings | None = None) -> None:
+        self.settings = settings if settings is not None else FeasibilitySettings()
         self.loader_access = LoaderAccessRule()
 
     def evaluate(
@@ -95,13 +98,15 @@ class PlacementFeasibility:
             size=size,
         )
 
-        reason = self._check_stacking_safety(block, proposal)
-        if reason is not None:
-            return FeasibilityResult(rejection_reason=reason)
+        if self.settings.stacking_safety:
+            reason = self._check_stacking_safety(block, proposal)
+            if reason is not None:
+                return FeasibilityResult(rejection_reason=reason)
 
-        reason = self._check_loader_access(block, proposal, loader_policy)
-        if reason is not None:
-            return FeasibilityResult(rejection_reason=reason)
+        if self.settings.loader_access:
+            reason = self._check_loader_access(block, proposal, loader_policy)
+            if reason is not None:
+                return FeasibilityResult(rejection_reason=reason)
 
         return FeasibilityResult(coordinates=proposal.coordinates)
 

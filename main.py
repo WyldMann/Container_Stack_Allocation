@@ -1,8 +1,13 @@
 from pathlib import Path
 
+from config import load_feasibility_settings
+
 from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader, EquipmentMoveFileReader
 from entities import Yard, Container
 from presenter import YardPresenter, BadDataPresenter
+
+config_file = Path(__file__).resolve().parent / "config.toml"
+feasibility_settings = load_feasibility_settings(config_file)
 
 blockFile = Path(__file__).parent / "test_data" / "yard_block.csv"
 ypFile = Path(__file__).parent / "test_data" / "yard_planning.csv"
@@ -22,7 +27,16 @@ inboundContRepo = ContainerFileReader(inboundContFile).readCSV()
 masterEquipmentRepo = FileReader(masterEquipmentFile).readCSV()
 equipmentHistoryFile = EquipmentMoveFileReader(equipmentHistoryFile).readCSVDict()
 
-yard = Yard(block_repo, removed_repo, parameter_repo, yp_repo,containerRepo,masterEquipmentRepo,equipmentHistoryFile)
+yard = Yard(
+    yard_block_input=block_repo,
+    removed_slots_input=removed_repo,
+    parameters_input=parameter_repo,
+    yard_planning_input=yp_repo,
+    container_input=containerRepo,
+    master_equipment=masterEquipmentRepo,
+    equipment_history=equipmentHistoryFile,
+    feasibility_settings=feasibility_settings,
+)
 yardPresenter = YardPresenter()
 yardPresenter.outYard(yard)
 

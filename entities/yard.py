@@ -1,5 +1,7 @@
 import math
 
+from config import FeasibilitySettings
+
 from .assign_result import AssignResult, CandidateEvaluation
 from .heuristic_model import HeuristicModel
 from .container import Container, DummyContainer
@@ -33,7 +35,8 @@ class Yard:
                  container_input: list[dict[str,str]] | None = None,
                  master_equipment: list[dict[str,str]] | None = None,
                  equipment_history:dict[str,tuple[str,str,int,int]] | None = None,
-                 loader_access_policies: dict[str, LoaderBorderAccessPolicy] | None = None) -> None:
+                 loader_access_policies: dict[str, LoaderBorderAccessPolicy] | None = None,
+                 feasibility_settings: FeasibilitySettings | None = None) -> None:
 
         if removed_slots_input is None: removed_slots_input = []
         if parameters_input is None: parameters_input = []
@@ -42,7 +45,7 @@ class Yard:
         if master_equipment is None: master_equipment = []
         if equipment_history is None: equipment_history = {}
 
-        self.feasibility = PlacementFeasibility()
+        self.feasibility = PlacementFeasibility(settings=feasibility_settings)
         self.loader_access_policies = (
             dict(loader_access_policies) if loader_access_policies is not None else {}
         )
