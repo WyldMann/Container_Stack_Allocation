@@ -1,15 +1,49 @@
 [feasibility]
+# Enforce the existing pyramid stacking safety rule.
 stacking_safety = true
+
+# Require loader access to the destination and prevent new isolation
+# of locations with remaining capacity. RTG-served blocks are exempt.
 loader_access = true
 
+
 [heuristic]
+# Maximum weight-compatibility score, reached when the incoming
+# container and the supporting top container have equal weights.
 w_delta_weight = 10.0
+
+# Positive weight difference at which the weight score halves.
+# Difference = supporting container weight minus incoming weight.
+# Uses the same weight units as the container data.
 hl_delta_weight = 5000.0
+
+# Maximum equipment-distance score, reached at zero distance.
 w_equipment_distance = 10.0
+
+# Equipment distance at which the distance score halves.
+# Uses the grid-distance units calculated by the equipment model.
 hl_equipment_distance = 5.0
+
+# Fallback score when the incoming container is heavier than its
+# support, or equipment distance is infinite. This is not a general
+# lower bound on all scores.
 min_value = 0.001
+
+# Weight-compatibility score when either container's weight is unknown.
 no_delta_weight_value = 0.1
+
+# Maximum neighborhood distance considered for size clustering,
+# measured between the closest footprint cells in grid units.
+# Zero produces a neutral clustering multiplier.
 size_cluster_radius = 3
+
+# Neighbor distance at which its clustering contribution halves.
 hl_size_cluster_distance = 1.5
+
+# Positive smoothing value that pulls clustering towards neutral.
+# Larger values reduce the influence of neighboring container sizes.
 size_cluster_prior = 2.0
+
+# Strength of the clustering reward for matching sizes and penalty
+# for different sizes. Zero produces a neutral multiplier of 1.
 size_cluster_bias = 1.0
