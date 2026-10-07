@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from config import (
     ApplicationSettings, ConfigurationError, FeasibilitySettings,
     HeuristicSettings, load_config, load_feasibility_settings,
+    load_heuristic_settings,
 )
 from entities.block import Block
 from entities.heuristic_model import HeuristicModel
@@ -78,6 +79,40 @@ class HeuristicConfigTests(unittest.TestCase):
                 load_feasibility_settings(path),
                 FeasibilitySettings(loader_access=False),
             )
+
+    def test_heuristic_only_loader_uses_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'config.toml'
+            path.write_text('', encoding='utf-8')
+            self.assertEqual(load_heuristic_settings(path), HeuristicSettings())
+
+    def test_heuristic_only_loader_reads_partial_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'config.toml'
+            path.write_text(
+                'feasibility = false\n'
+                '[heuristic]\nw_delta_weight = 20\n', encoding='utf-8',
+            )
+            # Like the feasibility-only loader, it validates its own section.
+            self.assertEqual(
+                load_heuristic_settings(path), HeuristicSettings(w_delta_weight=20),
+            )
+
+    def test_heuristic_only_loader_rejects_invalid_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'config.toml'
+            for text in (
+                '[heuristic]\nunknown = 1\n',
+                '[heuristic]\nhl_delta_weight = 0\n',
+                'heuristic = false\n',
+                '[heuristic\n',
+            ):
+                with self.subTest(text=text):
+                    path.write_text(text, encoding='utf-8')
+                    with self.assertRaises(ConfigurationError):
+                        load_heuristic_settings(path)
+            with self.assertRaises(ConfigurationError):
+                load_heuristic_settings(Path(directory) / 'missing.toml')
 
 
 class ConfiguredHeuristicModelTests(unittest.TestCase):

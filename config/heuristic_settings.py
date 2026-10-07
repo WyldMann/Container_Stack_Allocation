@@ -4,6 +4,7 @@ from dataclasses import dataclass, fields
 
 @dataclass(frozen=True)
 class HeuristicSettings:
+    # Default values; options supplied in config.toml override these.
     w_delta_weight: float = 10.0
     hl_delta_weight: float = 5000.0
     w_equipment_distance: float = 10.0

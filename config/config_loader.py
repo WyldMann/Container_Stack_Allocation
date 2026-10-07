@@ -72,3 +72,7 @@ def load_config(path: str | Path) -> ApplicationSettings:
 
 def load_feasibility_settings(path: str | Path) -> FeasibilitySettings:
     return _parse_feasibility(_read_document(path))
+
+
+def load_heuristic_settings(path: str | Path) -> HeuristicSettings:
+    return _parse_heuristic(_read_document(path))
