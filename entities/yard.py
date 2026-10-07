@@ -290,19 +290,56 @@ class Yard:
 
     def placeContainer(self,container: Container,coords: tuple[str,int,int,int],equipment: Equipment):
         self.addContainerByCoords(container, coords)
+        self.moveEquipment(equipment, (coords[0],coords[1],coords[2]))
 
-        # equipment is RTG
+    def moveEquipment(
+        self,
+        equipment: Equipment,
+        coords: tuple[str, int, int],
+    ) -> None:
+        """Move registered equipment and maintain its block membership."""
+        block_id, row, slot = coords
+        source_id = equipment.getCoords()[0]
+
+        if not isinstance(equipment, (RTG, Loader)):
+            raise TypeError("Unsupported equipment type.")
+
+        source = self.getBlockByID(source_id)
+        destination = self.getBlockByID(block_id)
+
+        rows = destination.getSlots()
+        if (
+            type(row) is not int
+            or type(slot) is not int
+            or not 0 <= row < len(rows)
+            or not 0 <= slot < len(rows[row])
+        ):
+            raise ValueError("Equipment destination is outside the block.")
+
         if isinstance(equipment, RTG):
-            equipment.inBlockMove(coords[1], coords[2])
-        # equipment is Loader
-        elif isinstance(equipment, Loader):
-            # if change blocks, change block.loaders
-            if coords[0] != equipment.getCoords()[0]:
-                self.blocks_by_id[coords[0]].addLoader(equipment)
-                self.blocks_by_id[equipment.getCoords()[0]].removeLoader(equipment)
-                equipment.outBlockMove(coords[0], coords[1], coords[2])
-            else:
-                equipment.inBlockMove(coords[1], coords[2])
+            if source.getRTG() is not equipment:
+                raise ValueError("RTG is not registered in its source block.")
+            if block_id != source_id:
+                raise ValueError("RTG cannot move between blocks.")
+
+            equipment.inBlockMove(row, slot)
+            return
+
+        if equipment not in self.masterLoader:
+            raise ValueError("Loader is not registered in this yard.")
+        if source.getLoaders().count(equipment) != 1:
+            raise ValueError("Loader source-block registration is inconsistent.")
+
+        if block_id == source_id:
+            equipment.inBlockMove(row, slot)
+            return
+
+        if equipment in destination.getLoaders():
+            raise ValueError("Loader is already registered in the destination block.")
+
+        source.removeLoader(equipment)
+        destination.addLoader(equipment)
+        equipment.outBlockMove(block_id, row, slot)
 
     # nearest equipment and its distance for a stack coord (without tier)
     def nearestEquipmentDistance(self,blockID: str, row: int, slot: int) -> tuple[Equipment,float]:
