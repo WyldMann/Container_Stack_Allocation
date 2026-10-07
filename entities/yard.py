@@ -297,7 +297,11 @@ class Yard:
         equipment: Equipment,
         coords: tuple[str, int, int],
     ) -> None:
-        """Move registered equipment and maintain its block membership."""
+        """Move registered equipment, including outside its block's storage grid.
+
+        The block identifies membership; row and slot describe a simulated
+        position and may be negative or beyond the block's storage dimensions.
+        """
         block_id, row, slot = coords
         source_id = equipment.getCoords()[0]
 
@@ -307,14 +311,8 @@ class Yard:
         source = self.getBlockByID(source_id)
         destination = self.getBlockByID(block_id)
 
-        rows = destination.getSlots()
-        if (
-            type(row) is not int
-            or type(slot) is not int
-            or not 0 <= row < len(rows)
-            or not 0 <= slot < len(rows[row])
-        ):
-            raise ValueError("Equipment destination is outside the block.")
+        if type(row) is not int or type(slot) is not int:
+            raise ValueError("Equipment row and slot must be integers.")
 
         if isinstance(equipment, RTG):
             if source.getRTG() is not equipment:

@@ -53,11 +53,32 @@ class EquipmentMovementTests(unittest.TestCase):
     def test_rtg_cannot_change_blocks(self):
         self.assert_rejected(self.rtg, ("B", 0, 0))
 
+    def test_outside_grid_positions_preserve_same_block_membership(self):
+        for equipment in (self.loader, self.rtg):
+            before = self.snapshot(equipment)[1:]
+            for row, slot in ((-1, 0), (2, 0), (0, -1), (0, 3), (-5, 20)):
+                with self.subTest(equipment=equipment.getCode(), row=row, slot=slot):
+                    self.yard.moveEquipment(equipment, ("A", row, slot))
+                    self.assertEqual(equipment.getCoords(), ("A", row, slot))
+                    self.assertEqual(self.snapshot(equipment)[1:], before)
+
+    def test_loader_can_change_blocks_to_outside_grid_position(self):
+        self.yard.moveEquipment(self.loader, ("B", -1, 5))
+        self.assertEqual(self.loader.getCoords(), ("B", -1, 5))
+        self.assertEqual(self.source.getLoaders(), [])
+        self.assertEqual(self.destination.getLoaders(), [self.loader])
+        self.assertEqual(self.yard.masterLoader, [self.loader])
+        self.yard.moveEquipment(self.loader, ("A", 0, 0))
+        self.assertEqual(self.loader.getCoords(), ("A", 0, 0))
+        self.assertEqual(self.source.getLoaders(), [self.loader])
+        self.assertEqual(self.destination.getLoaders(), [])
+
     def test_invalid_destinations_leave_state_unchanged(self):
-        for row, slot in ((-1, 0), (2, 0), (0, -1), (0, 3),
-                          (True, 0), (0, 1.5)):
-            with self.subTest(row=row, slot=slot):
-                self.assert_rejected(self.loader, ("B", row, slot))
+        for equipment in (self.loader, self.rtg):
+            for row, slot in ((True, 0), (0, False), (1.5, 0), (0, 1.5),
+                              ("1", 0), (0, None)):
+                with self.subTest(equipment=equipment.getCode(), row=row, slot=slot):
+                    self.assert_rejected(equipment, ("A", row, slot))
         self.assert_rejected(self.loader, ("UNKNOWN", 0, 0), KeyError)
 
     def test_unsupported_and_unregistered_equipment_are_rejected(self):
