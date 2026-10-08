@@ -5,7 +5,7 @@ from config import FeasibilitySettings
 
 from ..block import Block
 from ..container import Container
-from .loader_access import LoaderAccessRule, LoaderBorderAccessPolicy
+from .loader_access import LoaderAccessContext, LoaderAccessRule, LoaderBorderAccessPolicy
 from .placement_proposal import PlacementProposal
 from ..stack import Stack
 
@@ -47,6 +47,18 @@ class PlacementFeasibility:
         self.settings = settings if settings is not None else FeasibilitySettings()
         self.loader_access = LoaderAccessRule()
 
+    def prepare_loader_context(
+        self,
+        block: Block,
+        loader_policy: LoaderBorderAccessPolicy | None = None,
+    ) -> LoaderAccessContext | None:
+        """Prepare one block's access data for a read-only candidate search."""
+        if not self.settings.loader_access or block.getRTG() is not None:
+            return None
+        if loader_policy is None:
+            loader_policy = LoaderBorderAccessPolicy()
+        return self.loader_access.prepare_context(block, loader_policy)
+
     def evaluate(
             self,
             container: Container,
@@ -55,6 +67,7 @@ class PlacementFeasibility:
             slot: int,
             *,
             loader_policy: LoaderBorderAccessPolicy | None = None,
+            loader_context: LoaderAccessContext | None = None,
     ) -> FeasibilityResult:
         size = container.getContSize()
         if size not in ("20", "40"):
@@ -104,7 +117,7 @@ class PlacementFeasibility:
                 return FeasibilityResult(rejection_reason=reason)
 
         if self.settings.loader_access:
-            reason = self._check_loader_access(block, proposal, loader_policy)
+            reason = self._check_loader_access(block, proposal, loader_policy, loader_context)
             if reason is not None:
                 return FeasibilityResult(rejection_reason=reason)
 
@@ -115,13 +128,14 @@ class PlacementFeasibility:
         block: Block,
         proposal: PlacementProposal,
         policy: LoaderBorderAccessPolicy | None,
+        context: LoaderAccessContext | None = None,
     ) -> RejectionReason | None:
         # Matches equipment selection: a block's RTG serves all its candidates.
         if block.getRTG() is not None:
             return None
         if policy is None:
             policy = LoaderBorderAccessPolicy()
-        result = self.loader_access.evaluate(block, proposal, policy)
+        result = self.loader_access.evaluate(block, proposal, policy, context=context)
         if not result.destination_accessible:
             return RejectionReason.LOADER_DESTINATION_INACCESSIBLE
         if result.isolated_locations:

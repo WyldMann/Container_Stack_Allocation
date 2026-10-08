@@ -241,13 +241,17 @@ class Yard:
         contScores = dict(sorted(contScores.items(), key=lambda item: item[1], reverse=True))
 
         for block in self.blocks_by_id.values():
+            loader_policy = self.loader_access_policies.get(block.getId())
+            # This loop only evaluates candidates; no context survives a placement.
+            loader_context = self.feasibility.prepare_loader_context(block, loader_policy)
             for row, slots in enumerate(block.getSlots()):
                 for slot,stack in enumerate(slots):
 
                     # feasibility check
                     result = self.feasibility.evaluate(
                         container, block, row, slot,
-                        loader_policy=self.loader_access_policies.get(block.getId()),
+                        loader_policy=loader_policy,
+                        loader_context=loader_context,
                     )
                     currentCoords = result.coordinates
                     if currentCoords is None: continue

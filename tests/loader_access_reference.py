@@ -1,8 +1,15 @@
+"""Original loader-access algorithm, retained only for equivalence checks.
+
+Keep the reference independent of production access helpers so optimizations
+cannot silently change both sides of a comparison.
+"""
+
 from collections import deque
 from dataclasses import dataclass
 
-from ..block import Block
-from .placement_proposal import PlacementProposal
+from entities.block import Block
+from entities.feasibility.placement_proposal import PlacementProposal
+from entities.feasibility.placement_feasibility import PlacementFeasibility, RejectionReason
 
 Position = tuple[int, int]
 
@@ -227,3 +234,26 @@ class LoaderAccessRule:
             if all((working_row, slot) in reachable for slot in working_slots):
                 return True
         return False
+
+
+class ReferencePlacementFeasibility(PlacementFeasibility):
+    """Use the original access rule through the current candidate-search API."""
+
+    def __init__(self, settings=None):
+        super().__init__(settings)
+        self.loader_access = LoaderAccessRule()
+
+    def prepare_loader_context(self, block, loader_policy=None):
+        return None
+
+    def _check_loader_access(self, block, proposal, policy, context=None):
+        if block.getRTG() is not None:
+            return None
+        if policy is None:
+            policy = LoaderBorderAccessPolicy()
+        result = self.loader_access.evaluate(block, proposal, policy)
+        if not result.destination_accessible:
+            return RejectionReason.LOADER_DESTINATION_INACCESSIBLE
+        if result.isolated_locations:
+            return RejectionReason.LOADER_ACCESS_BLOCKED
+        return None
