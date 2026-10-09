@@ -105,8 +105,12 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
         parameter.evaluate.return_value = 1.0
         self.yard.params['P'] = parameter
         self.block.getStack(0, 1).addParameter(parameter)
-        _, _, coordinates = self.yard.findCoordsCandidates(self.container)
-        self.assertEqual(coordinates, [])
+        score, _, coordinates = self.yard.findCoordsCandidates(self.container)
+        # Reject the positive-scoring placement that would isolate its neighbour,
+        # but retain that neighbour as a feasible, unplanned fallback.
+        self.assertNotIn(('A', 0, 1, 0), coordinates)
+        self.assertEqual(score, 0)
+        self.assertEqual(coordinates, [('A', 1, 1, 1)])
 
 
 if __name__ == '__main__':

@@ -257,13 +257,13 @@ class Yard:
                     if currentCoords is None: continue
 
                     # candidate scoring
-                    currentScore = max((contScores[str(param)] for param in stack.getParameters()), default = None)
-
-                    # currentScore is none if stack is full
-                    if currentScore is None: continue
+                    currentScore = max(
+                        (contScores[str(param)] for param in stack.getParameters()),
+                        default=0,
+                    )
 
                     # if tie
-                    elif maxScore == currentScore:
+                    if maxScore == currentScore:
                         # if container has no fulfillable parameters, put it in stacks with no parameters
                         if maxScore == 0:
                             if not stack.getParameters():
