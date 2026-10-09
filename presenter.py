@@ -67,6 +67,8 @@ class YardPresenter(Presenter):
         self.outContainer(result.container)
         self.out(result.cont_scores)
 
+        self.out("Max Param Score:", result.max_param_score)
+
         coords = result.getBestCoordinate()
         equipment = result.getBestEquipment()
 
