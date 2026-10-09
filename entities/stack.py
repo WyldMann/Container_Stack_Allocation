@@ -96,7 +96,7 @@ class Stack:
                     dummy.addCoordList(self.coords,x)
 
     # use this instead if return type is definitely a container and not None
-    def getContainerTrue(self,tier:int) -> Container:
+    def getContainerOrRaise(self,tier:int) -> Container:
         container = self.containers[tier]
         if container is not None:
             return container

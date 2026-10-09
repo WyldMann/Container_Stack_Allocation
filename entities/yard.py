@@ -175,8 +175,8 @@ class Yard:
         if not (stackIsEmpty and stackIsEmpty2):
             # existing container is newer. current container is ignored or current container is 40 cuz i'm not handling that.
             # too much goes into cont40 placement to consider this
-            existing_container = stack.getContainerTrue(tier)
-            if container.getMoveTime() < existing_container.getMoveTime() and container.getContSize() == '40':
+            existing_container = stack.getContainerOrRaise(tier)
+            if container.getMoveTime() < existing_container.getMoveTime() or container.getContSize() == '40' or existing_container.getContSize() == '40':
                 old_container, new_container = container, existing_container
             # current container is newer. remove existing_container from container dict and add current container to the container dict and the stack
             else:
