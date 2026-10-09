@@ -72,7 +72,8 @@ class YardPresenter(Presenter):
 
         self.out(pd.DataFrame ({
             "Coordinate": [toStrSlotRowTier(coord) for coord in result.getCoords()],
-            "Parameters": result.getStrParameters(),
+            "Param ID": result.getStrParameters(),
+            "Param Name": result.getParameterNames(),
             "Top Container ΔWeight": result.getDeltaWeights(),
             "Distance": result.getDistances(),
             "Size Cluster Multiplier": result.getSizeClusterMultipliers(),

@@ -30,6 +30,9 @@ class AssignResult:
         return self.getBestCandidate().coords
     def getStrParameters(self) -> list[list[str]]:
         return [x.getStrParameter() for x in self.sortedCandidateEvaluations]
+    def getParameterNames(self) -> list[list[str]]:
+        return [[parameter.getName() for parameter in candidate.param]
+                for candidate in self.sortedCandidateEvaluations]
     def getBestEquipment(self) -> Equipment:
         return self.getBestCandidate().equipment
     def getCoords(self) -> list[tuple[str,int,int,int]]:

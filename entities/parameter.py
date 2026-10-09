@@ -8,6 +8,7 @@ missing parameters:
 
 class Parameter:
     id: str
+    name: str
     principal: str
     principal_score: int
     cont_condition: str
@@ -30,6 +31,7 @@ class Parameter:
 
     def __init__(self,
                  PARAM_ID:str,
+                 PARAM_NAME:str,
                  PRINCIPAL:str,
                  PRINCIPAL_SCORE:str,
                  CONT_CONDITION:str,
@@ -54,6 +56,7 @@ class Parameter:
                  **_kwargs):
 
         self.id = PARAM_ID
+        self.name = PARAM_NAME
         self.principal = PRINCIPAL
         self.principal_score = int(PRINCIPAL_SCORE) if PRINCIPAL_SCORE != '' else 0
         self.cont_condition = CONT_CONDITION
@@ -80,6 +83,7 @@ class Parameter:
 
     # getters
     def getId(self) -> str: return self.id
+    def getName(self) -> str: return self.name
     def getPrincipal(self) -> str: return self.principal
     def getPrincipalScore(self) -> int: return self.principal_score
     def getCondCondition(self) -> str: return self.cont_condition
