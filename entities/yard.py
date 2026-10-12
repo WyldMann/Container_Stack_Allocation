@@ -212,11 +212,11 @@ class Yard:
             reject()
             return
 
-        occupants = [
-            stack.getContainer(tier)
-            for stack in stacks
-            if not stack.isTierEmpty(tier)
-        ]
+        occupants: list[Container] = []
+        for stack in stacks:
+            occupant = stack.getContainer(tier)
+            if occupant is not None:
+                occupants.append(occupant)
 
         if occupants:
             if size == "40":
