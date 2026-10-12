@@ -145,53 +145,105 @@ class Yard:
     def getBlockIDbyCode(self, block_branch:str,block_code:str) -> str:
         return self.blocks_by_code[(block_branch,block_code)].getId()
 
-    def addContainerInput(self,container: Container):
-        # validate coordsStr can be found. Otherwise, mark bad_data and move on
-        try:
-            coordsInt = container.getCoordsInt()
-            stack = self.blocks_by_code[(coordsInt[0], coordsInt[1])].getStack(coordsInt[2], coordsInt[3])
-            tier = coordsInt[4]
-            stackIsEmpty = stack.isTierEmpty(tier)
-
-            # cont40 handling
-            stack2 = stack
-            stackIsEmpty2 = stackIsEmpty
-            if container.getContSize() == '40':
-                # cont40 can only be put on (int) odd indexes.
-                if stack.getMode() == '20' or stack.getEven():
-                    raise IndexError
-                stack2 = self.blocks_by_code[(coordsInt[0], coordsInt[1])].getStack(coordsInt[2], coordsInt[3] - 1)
-                stackIsEmpty2 = stack2.isTierEmpty(tier)
-            # cont20 cannot be put on cont40 stacks
-            else:
-                if stack.getMode() == '40':
-                    raise IndexError
-
-        except (IndexError, KeyError, ValueError):
+    def addContainerInput(self, container: Container):
+        def reject():
             self.bad_data.addContainerCoordsInvalid(container)
+
+        # Validate coordinates and both slots before modifying yard state.
+        try:
+            branch, code, row, slot, tier = container.getCoordsInt()
+            block = self.getBlockByCode(branch, code)
+            rows = block.getSlots()
+            size = container.getContSize()
+
+            if size not in ("20", "40"):
+                reject()
+                return
+
+            if not 0 <= row < len(rows):
+                reject()
+                return
+
+            if not 0 <= slot < len(rows[row]):
+                reject()
+                return
+
+            # A 40-foot container uses an odd zero-based anchor and
+            # the immediately preceding slot.
+            if size == "40":
+                if slot == 0 or slot % 2 == 0:
+                    reject()
+                    return
+                slots = (slot, slot - 1)
+            else:
+                slots = (slot,)
+
+            stacks = [block.getStack(row, index) for index in slots]
+
+            for stack in stacks:
+                if not 0 <= tier < stack.getMaxTier():
+                    reject()
+                    return
+
+                if stack.getMode() not in ("0", size):
+                    reject()
+                    return
+
+                # Floating containers may exist in a stack whose mode
+                # is still "0", so inspect its contents as well.
+                if any(
+                    item is not None and item.getContSize() != size
+                    for item in stack.getContainers()
+                ):
+                    reject()
+                    return
+
+            # One container ID must not occupy two separate locations.
+            registered = self.containers.get(container.getId())
+            if registered is not None:
+                if registered.getCoordsInt() != (branch, code, row, slot, tier):
+                    reject()
+                    return
+                if registered.getContSize() != size:
+                    reject()
+                    return
+
+        except (KeyError, IndexError, TypeError, ValueError):
+            reject()
             return
 
-        # if tier is occupied, the one with most recent move_time takes highest precedence
-        if not (stackIsEmpty and stackIsEmpty2):
-            # existing container is newer. current container is ignored or current container is 40 cuz i'm not handling that.
-            # too much goes into cont40 placement to consider this
-            existing_container = stack.getContainerOrRaise(tier)
-            if container.getMoveTime() < existing_container.getMoveTime() or container.getContSize() == '40' or existing_container.getContSize() == '40':
-                old_container, new_container = container, existing_container
-            # current container is newer. remove existing_container from container dict and add current container to the container dict and the stack
-            else:
-                old_container, new_container = existing_container, container
-                del self.containers[existing_container.getId()]
-                self.containers[new_container.getId()] = new_container
+        occupants = [
+            stack.getContainer(tier)
+            for stack in stacks
+            if not stack.isTierEmpty(tier)
+        ]
 
-            stack.replaceContainer(new_container, tier)
-            self.bad_data.addOverlappingContainer(old_container, new_container)
+        if occupants:
+            if size == "40":
+                # Preserve existing containers, including when only
+                # the partner slot is occupied.
+                for existing in set(occupants):
+                    self.bad_data.addOverlappingContainer(container, existing)
+                return
 
-        else:
-            stack.addContainer(container, tier)
-            if container.getContSize() == '40':
-                stack2.addContainer(container, tier)
+            existing = occupants[0]
+
+            if container.getMoveTime() < existing.getMoveTime():
+                self.bad_data.addOverlappingContainer(container, existing)
+                return
+
+            # Incoming 20-foot container wins on newer or equal time.
+            stacks[0].replaceContainer(container, tier)
+            del self.containers[existing.getId()]
             self.containers[container.getId()] = container
+            self.bad_data.addOverlappingContainer(existing, container)
+            return
+
+        # Every destination has passed validation and is empty.
+        for stack in stacks:
+            stack.addContainer(container, tier)
+
+        self.containers[container.getId()] = container
 
     def addContainerByCoords(self,container: Container,coords:tuple[str,int,int,int]):
         # add container to the stack
