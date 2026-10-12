@@ -109,102 +109,84 @@ class Parameter:
     def getWeightRangeScore(self) -> int: return self.weight_range_score
     def getRouteScore(self) -> int: return self.route_score
 
-    def evaluate(self, container) -> float:
-        if self.and_score is None: return self.evaluateAdd(container)
-        else: return self.evaluateAnd(container)
+    @staticmethod
+    def _matchesText(expected: str, actual: str) -> bool:
+        return expected in ("", "ALL") or expected == actual
+
+    def _evaluateCriteria(self, container: Container):
+        # All comparisons within an entry must match to earn its score.
+        criteria = (
+            (
+                self.principal_score,
+                ((self.principal, container.getPrincipal()),),
+            ),
+            (
+                self.cont_condition_score,
+                ((self.cont_condition, container.getContCondition()),),
+            ),
+            (
+                self.cont_fill_score,
+                ((self.cont_fill, container.getContFill()),),
+            ),
+            (
+                self.cont_size_score,
+                ((self.cont_size, container.getContSize()),),
+            ),
+            (
+                self.route_score,
+                (
+                    (self.pol, container.getPol()),
+                    (self.pod, container.getPod()),
+                ),
+            ),
+            (
+                self.vessel_voyage_score,
+                (
+                    (self.vessel, container.getVessel()),
+                    (self.voyage, container.getVoyage()),
+                ),
+            ),
+        )
+
+        for score, comparisons in criteria:
+            # Ignore a criterion when all its expected values are blank.
+            if not any(expected != "" for expected, _ in comparisons):
+                continue
+            matched = all(
+                self._matchesText(expected, actual)
+                for expected, actual in comparisons
+            )
+            yield matched, score
+
+        # Grade uses membership rather than a single-value comparison.
+        grades = [grade for grade in self.cont_grade if grade]
+        if grades:
+            matched = grades == ["ALL"] or container.getContGrade() in grades
+            yield matched, self.cont_grade_score
+
+        # Missing container weight does not impose a requirement in either mode.
+        weight = container.getWeight()
+        if weight is not None:
+            matched = self.weight_start <= weight <= self.weight_end
+            yield matched, self.weight_range_score
+
+    def evaluate(self, container: Container) -> float:
+        if self.and_score is None:
+            return self.evaluateAdd(container)
+        return self.evaluateAnd(container)
+
+    def evaluateAdd(self, container: Container) -> float:
+        total_score = 0
+        total_possible = 0
+        for matched, score in self._evaluateCriteria(container):
+            total_possible += score
+            if matched:
+                total_score += score
+        return total_score if total_possible != 0 else 0
 
     def evaluateAnd(self, container: Container) -> float:
         if self.and_score is None:
             return 0
-
-        criteria = (
-            (self.principal, container.getPrincipal()),
-            (self.cont_condition, container.getContCondition()),
-            (self.cont_fill, container.getContFill()),
-            (self.cont_size, container.getContSize()),
-            (self.pol, container.getPol()),
-            (self.pod, container.getPod()),
-            (self.vessel, container.getVessel()),
-            (self.voyage, container.getVoyage()),
-        )
-
-        for expected, actual in criteria:
-            if expected not in ("", "ALL") and expected != actual:
-                return 0
-
-        # An empty CONT_GRADE becomes [""] in the constructor.
-        grades = [grade for grade in self.cont_grade if grade]
-        if grades and grades != ["ALL"]:
-            if container.getContGrade() not in grades:
-                return 0
-
-        weight = container.getWeight()
-        if weight is not None:
-            if not self.weight_start <= weight <= self.weight_end:
-                return 0
-
-        return self.and_score
-
-
-    def evaluateAdd(self, container: Container) -> float:
-
-        totalScore = 0
-        totalParam = 0
-
-        if self.principal != '':
-            if self.principal == "ALL" or self.principal == container.getPrincipal():
-                totalScore += self.principal_score
-            totalParam += self.principal_score
-
-        if self.cont_condition != '':
-            if self.cont_condition == "ALL" or self.cont_condition == container.getContCondition():
-                totalScore += self.cont_condition_score
-            totalParam += self.cont_condition_score
-
-        if self.cont_fill != '':
-            if self.cont_fill == "ALL" or self.cont_fill == container.getContFill():
-                totalScore += self.cont_fill_score
-            totalParam += self.cont_fill_score
-
-        """
-        if self.op_type != '':
-            if self.principal == "ALL" or self.op_type != container.getOpType():
-                totalScore += self.op_type_score
-            totalParam += self.op_type_score
-        """
-
-        if self.cont_size != '':
-            if self.cont_size == "ALL" or self.cont_size == container.getContSize():
-                totalScore += self.cont_size_score
-            totalParam += self.cont_size_score
-
-        if self.cont_grade:
-            if self.cont_grade == ["ALL"] or container.getContGrade() in self.cont_grade:
-                totalScore += self.cont_grade_score
-            totalParam += self.cont_grade_score
-
-        # if container.pod == "" but self.pod != ""?
-        if self.pol != '' or self.pod != '':
-            if ((self.pol == "ALL" or self.pol == container.getPol() or self.pol == "") and
-                    (self.pod == "ALL" or self.pod == container.getPod() or self.pod == "")):
-                totalScore += self.route_score
-            totalParam += self.route_score
-
-        # vessel voyage
-        if self.vessel != '' or self.voyage != '':
-            if ((self.vessel == "ALL" or self.vessel == container.getVessel() or self.vessel == "") and
-                    (self.voyage == "ALL" or self.voyage == container.getVoyage() or self.voyage == "")):
-                totalScore += self.vessel_voyage_score
-            totalParam += self.vessel_voyage_score
-
-        # weight range
-        if container.getWeight() is not None:
-            if self.weight_start <= container.getWeight() <= self.weight_end:
-                totalScore += self.weight_range_score
-            totalParam += self.weight_range_score
-
-        if totalParam == 0:
-            return 0
-        else:
-            return totalScore
-
+        if all(matched for matched, _ in self._evaluateCriteria(container)):
+            return self.and_score
+        return 0
