@@ -70,7 +70,10 @@ class Container:
         self.principal = PRINCIPAL
         self.cont_condition = DMG_FLAG
         self.cont_fill = FULLMT
-        #self.op_type = OPERATION_TYPE
+        self.operation_type = _kwargs.get("OPERATION_TYPE", "")
+        self.pot = _kwargs.get("POT", "")
+        self.vessel_operator = _kwargs.get("VESSEL_OPERATOR", "")
+        self.move_time_raw = MOVE_TIME
         self.cont_size = CONTSIZE
         self.cont_grade = CONT_GRADE
         self.pol = POL
@@ -92,7 +95,10 @@ class Container:
     def getPrincipal(self) -> str: return self.principal
     def getContCondition(self) -> str: return self.cont_condition
     def getContFill(self) -> str: return self.cont_fill
-    #def getOpType(self) -> str: return self.op_type
+    def getOpType(self) -> str: return self.operation_type
+    def getPot(self) -> str: return self.pot
+    def getVesselOperator(self) -> str: return self.vessel_operator
+    def getMoveTimeRaw(self) -> str: return self.move_time_raw
     def getContSize(self) -> str: return self.cont_size
     def getContGrade(self) -> str: return self.cont_grade
     def getPol(self) -> str: return self.pol

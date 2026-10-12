@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from filewriter import ContainerFileWriter
+
 from config import load_config
 
 from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader, EquipmentMoveFileReader
@@ -56,3 +58,8 @@ for x in inboundContRepo:
     newContainer = Container(**x)
     yardPresenter.outAssignResult(yard.assign_and_place(newContainer))
     yardPresenter.outYard(yard)
+
+container_writer = ContainerFileWriter(
+    Path(__file__).parent / "yard_containers.csv"
+)
+container_writer.writeCSV(yard)
