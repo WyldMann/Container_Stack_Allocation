@@ -91,7 +91,7 @@ class Yard:
         # input containers already in the batabase
         self.containers = {}
         for inp in container_input:
-            container = Container(**inp)
+            container = Container(**({"CONTSIZE": ""} | inp))
 
             # No containers in container_input can be incomplete
             if container.isIncomplete():

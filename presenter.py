@@ -111,7 +111,7 @@ class BadDataPresenter(Presenter):
     def printIncompleteContainers(self,incomplete_containers: list[Container]) -> None:
         self.out("\nIncomplete containers:")
         for x in incomplete_containers:
-            self.out(x, x.getCoordsStr())
+            self.out(x.getId(), x.getCoordsStr(), "CONTSIZE:", repr(x.getContSize()))
 
     # ----- composites -----
     #print in the theoretical order of detection
