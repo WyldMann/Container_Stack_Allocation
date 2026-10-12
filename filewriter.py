@@ -27,8 +27,8 @@ class ContainerFileWriter:
         )
         return (
             block_key,
-            int(record["ROW"]),
             int(record["SLOT"]),
+            int(record["ROW"]),
             int(record["TIER"]),
             str(record["CONTNO"]),
         )
