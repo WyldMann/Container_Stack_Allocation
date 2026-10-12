@@ -2,6 +2,8 @@ import math
 import unittest
 from types import SimpleNamespace
 
+import pandas as pd
+
 from entities.assign_result import AssignResult, CandidateEvaluation
 from entities.equipment import RTG
 from entities.heuristic_model import HeuristicModel
@@ -110,7 +112,14 @@ class SizeClusteringTests(unittest.TestCase):
         presenter = YardPresenter(lambda *args: output.append(args))
         presenter.outContainer = lambda container: None
         presenter.outAssignResult(result)
-        table = output[1][0]
+        tables = [
+            arg
+            for args in output
+            for arg in args
+            if isinstance(arg, pd.DataFrame)
+        ]
+        self.assertEqual(len(tables), 1)
+        table = tables[0]
         self.assertEqual(table['Size Cluster Multiplier'].tolist(), result.getSizeClusterMultipliers())
         self.assertEqual(table['Score'].tolist(), result.getScores())
         self.assertNotIn('Size Affinity', table.columns)
