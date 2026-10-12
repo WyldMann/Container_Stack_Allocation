@@ -60,6 +60,6 @@ for x in inboundContRepo:
     yardPresenter.outYard(yard)
 
 container_writer = ContainerFileWriter(
-    Path(__file__).parent / "yard_containers.csv"
+    Path(__file__).parent / "output" / "result.csv"
 )
 container_writer.writeCSV(yard)
