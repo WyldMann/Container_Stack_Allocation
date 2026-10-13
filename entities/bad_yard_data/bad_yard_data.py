@@ -1,14 +1,14 @@
 from dataclasses import dataclass
 
-from .block import Block
-from .container import Container
-from .equipment import Equipment, Loader, RTG
-from .feasibility import PlacementProposal
+from ..block import Block
+from ..container import Container
+from ..equipment import Equipment, Loader, RTG
+from ..feasibility import PlacementProposal
 from .incomplete_containers import (
     IncompleteExistingContainers,
     IncompleteInboundContainers,
 )
-from .stack import Stack
+from ..stack import Stack
 
 
 class PlacementRejected(ValueError):

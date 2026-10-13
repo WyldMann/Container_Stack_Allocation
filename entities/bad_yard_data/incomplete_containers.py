@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from .container import Container
+from ..container import Container
 
 
 @dataclass
