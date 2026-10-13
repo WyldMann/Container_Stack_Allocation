@@ -149,6 +149,12 @@ class BadDataPresenter(Presenter):
         if baddata.overlapping_containers != {}: self.printOverlappingContainers(baddata)
         if baddata.anomalous_stacks: self.printAnomalousStacks(baddata)
 
+    def printInbound(self, baddata: BadYardData) -> None:
+        if baddata.getIncompleteInboundContainers():
+            self.printIncompleteInboundContainers(baddata)
+        if baddata.getDuplicateInboundContainerIDs():
+            self.printDuplicateInboundContainerIDs(baddata)
+
     def printStats(self,baddata: BadYardData) -> None:
         if not baddata.anyBadData():
             self.out("No Bad Data")
