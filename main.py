@@ -5,7 +5,7 @@ from filewriter import ContainerFileWriter
 from config import load_config
 
 from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader, EquipmentMoveFileReader
-from entities import Yard, Container, IncompleteContainers
+from entities import Yard, Container
 from presenter import YardPresenter, BadDataPresenter
 
 config_file = Path(__file__).resolve().parent / "config.toml"
@@ -48,8 +48,6 @@ if yard.bad_data.anyBadData():
     BadDataPresenter().printStats(yard.bad_data)
 else: print("All good.")
 
-incompleteInbound = IncompleteContainers()
-
 skip = False
 for x in inboundContRepo:
     print("\n Press Enter to continue. Anything else to skip.")
@@ -59,17 +57,15 @@ for x in inboundContRepo:
             skip = True
     newContainer = Container(**({"CONTSIZE": ""} | x))
 
-    if not incompleteInbound.validateInboundAndRecord(newContainer):
-        print(
-            "Incomplete inbound container:",
-            repr(newContainer.getId()),
-            "CONTSIZE:",
-            repr(newContainer.getContSize()),
-        )
+    if not yard.bad_data.incompleteInboundContainer.validateInboundAndRecord(newContainer):
+        BadDataPresenter().printIncompleteInboundContainers([newContainer])
         continue
 
     yardPresenter.outAssignResult(yard.assign_and_place(newContainer))
     yardPresenter.outYard(yard)
+
+if yard.bad_data.incompleteInboundContainer:
+    BadDataPresenter().printStats(yard.bad_data)
 
 container_writer = ContainerFileWriter(
     Path(__file__).parent / "output" / "result.csv"

@@ -108,10 +108,15 @@ class BadDataPresenter(Presenter):
             self.out(x.getCoords(), end = " ")
             self.outStackContents(x)
 
-    def printIncompleteContainers(self,incomplete_containers: list[Container]) -> None:
-        self.out("\nIncomplete containers:")
-        for x in incomplete_containers:
+    def printIncompleteExistingContainers(self, incomplete_existing_containers: list[Container]) -> None:
+        self.out("\nIncomplete Existing Containers:")
+        for x in incomplete_existing_containers:
             self.out(x.getId(), x.getCoordsStr(), "CONTSIZE:", repr(x.getContSize()))
+
+    def printIncompleteInboundContainers(self, incomplete_inbound_containers: list[Container]) -> None:
+        self.out("\nIncomplete Inbound Containers:")
+        for x in incomplete_inbound_containers:
+            self.out(x.getId(), "CONTSIZE:", repr(x.getContSize()))
 
     # ----- composites -----
     #print in the theoretical order of detection
@@ -121,7 +126,10 @@ class BadDataPresenter(Presenter):
             return
 
         if baddata.yp_out_of_range: self.printYPOutOfRange(baddata.yp_out_of_range)
-        if baddata.incomplete_containers: self.printIncompleteContainers(baddata.getIncompleteContainers())
+        if baddata.incompleteExistingContainer:
+            self.printIncompleteExistingContainers(baddata.getIncompleteExistingContainers())
+        if baddata.incompleteInboundContainer:
+            self.printIncompleteInboundContainers(baddata.getIncompleteInboundContainers())
         if baddata.container_coords_invalid: self.printContainerCoordsInvalid(baddata.container_coords_invalid)
         if baddata.overlapping_containers != {}: self.printOverlappingContainers(baddata.overlapping_containers)
         if baddata.anomalous_stacks: self.printAnomalousStacks(baddata.anomalous_stacks)
@@ -133,8 +141,9 @@ class BadDataPresenter(Presenter):
 
         self.out("Total Yard Planning Items:", baddata.getTotalYardPlanning())
         self.out("Yard Planning Errors:", baddata.getTotalYPOutOfRange())
-        self.out("\nTotal Containers:", baddata.getTotalContainers())
-        self.out("Incomplete Containers:", baddata.getTotalIncomplete())
+        self.out("\nTotal Existing Containers:", baddata.getTotalContainers())
+        self.out("Incomplete Existing Containers:", baddata.getTotalIncompleteExisting())
         self.out("Container Coords Invalid:", baddata.getTotalContainerCoordsInvalid())
         self.out("Overlapping Containers:", baddata.getTotalOverlapping())
+        self.out("\nIncomplete Inbound Containers:", baddata.getTotalIncompleteInbound())
         self.out("\nAnomalous Stacks:", baddata.getTotalAnomalousStacks())

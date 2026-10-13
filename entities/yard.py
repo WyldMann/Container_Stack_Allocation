@@ -93,7 +93,7 @@ class Yard:
         for inp in container_input:
             container = Container(**({"CONTSIZE": ""} | inp))
 
-            if not self.bad_data.incomplete_containers.validateExistingAndRecord(
+            if not self.bad_data.incompleteExistingContainer.validateExistingAndRecord(
                 container
             ):
                 continue

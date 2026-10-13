@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 from entities import Container, IncompleteContainers
 from entities.yard import Yard
@@ -25,7 +25,7 @@ class ContainerInputValidationTests(unittest.TestCase):
         yard = Yard([self.block], container_input=[record])
         self.assertEqual(record, original)
         self.assertTrue(yard.bad_data.anyBadData())
-        self.assertEqual(yard.bad_data.getTotalIncomplete(), 1)
+        self.assertEqual(yard.bad_data.getTotalIncompleteExisting(), 1)
         self.assertEqual(yard.bad_data.getTotalContainers(), 1)
         self.assertEqual(yard.containers, {})
         for slot in range(2):
@@ -105,25 +105,25 @@ class ContainerInputValidationTests(unittest.TestCase):
         clean_yard = Yard([self.block], container_input=[self.record])
 
         self.assertIsNot(
-            rejected_yard.bad_data.incomplete_containers.containers,
-            clean_yard.bad_data.incomplete_containers.containers,
+            rejected_yard.bad_data.incompleteExistingContainer.containers,
+            clean_yard.bad_data.incompleteExistingContainer.containers,
         )
-        self.assertEqual(rejected_yard.bad_data.getTotalIncomplete(), 1)
-        self.assertEqual(clean_yard.bad_data.getIncompleteContainers(), [])
+        self.assertEqual(rejected_yard.bad_data.getTotalIncompleteExisting(), 1)
+        self.assertEqual(clean_yard.bad_data.getIncompleteExistingContainers(), [])
         self.assertFalse(clean_yard.bad_data.anyBadData())
 
-    def test_legacy_incomplete_helpers_use_the_dataclass_collection(self):
+    def test_existing_incomplete_helpers_use_the_dataclass_collection(self):
         yard = Yard([self.block])
         container = Container(**(self.record | {"CONTSIZE": "45"}))
 
-        yard.bad_data.addIncompleteContainer(container)
+        yard.bad_data.addIncompleteExistingContainer(container)
 
         self.assertIs(
-            yard.bad_data.getIncompleteContainers(),
-            yard.bad_data.incomplete_containers.containers,
+            yard.bad_data.getIncompleteExistingContainers(),
+            yard.bad_data.incompleteExistingContainer.containers,
         )
-        self.assertIs(yard.bad_data.getIncompleteContainers()[0], container)
-        self.assertEqual(yard.bad_data.getTotalIncomplete(), 1)
+        self.assertIs(yard.bad_data.getIncompleteExistingContainers()[0], container)
+        self.assertEqual(yard.bad_data.getTotalIncompleteExisting(), 1)
         self.assertTrue(yard.bad_data.anyBadData())
 
     def test_inbound_can_be_complete_without_coordinates(self):
@@ -157,6 +157,83 @@ class ContainerInputValidationTests(unittest.TestCase):
                 )
                 self.assertEqual(len(collection), 1)
                 self.assertIs(collection.containers[0], container)
+
+    def test_inbound_helpers_keep_existing_and_inbound_errors_separate(self):
+        yard = self.assert_rejected(self.record | {"CONTSIZE": "45"})
+        inbound = Container(**(self.record | {
+            "CONTNO": "INBOUND", "CONTSIZE": "45",
+        }))
+
+        yard.bad_data.addIncompleteInboundContainer(inbound)
+
+        self.assertIs(
+            yard.bad_data.getIncompleteInboundContainers(),
+            yard.bad_data.incompleteInboundContainer.containers,
+        )
+        self.assertIs(yard.bad_data.getIncompleteInboundContainers()[0], inbound)
+        self.assertEqual(yard.bad_data.getTotalIncompleteInbound(), 1)
+        self.assertEqual(yard.bad_data.getTotalIncompleteExisting(), 1)
+        self.assertIsNot(
+            yard.bad_data.getIncompleteExistingContainers(),
+            yard.bad_data.getIncompleteInboundContainers(),
+        )
+
+        clean_yard = Yard([self.block])
+        self.assertEqual(clean_yard.bad_data.getIncompleteInboundContainers(), [])
+        self.assertEqual(clean_yard.bad_data.getIncompleteExistingContainers(), [])
+        self.assertFalse(clean_yard.bad_data.anyBadData())
+
+    def test_inbound_only_errors_are_presented_without_coordinates(self):
+        yard = Yard([self.block])
+        record = {
+            key: value
+            for key, value in self.record.items()
+            if key not in ("BRANCH", "BLOK", "ROW", "SLOT", "TIER")
+        } | {"CONTNO": "INBOUND", "CONTSIZE": "45"}
+        inbound = Container(**record)
+
+        self.assertFalse(
+            yard.bad_data.incompleteInboundContainer.validateInboundAndRecord(inbound)
+        )
+        self.assertTrue(yard.bad_data.anyBadData())
+        self.assertEqual(yard.bad_data.getTotalIncompleteExisting(), 0)
+
+        output = Mock()
+        presenter = BadDataPresenter(out=output)
+        presenter.print(yard.bad_data)
+        output.assert_any_call("\nIncomplete Inbound Containers:")
+        output.assert_any_call("INBOUND", "CONTSIZE:", "'45'")
+        self.assertNotIn(
+            call("\nIncomplete Existing Containers:"),
+            output.call_args_list,
+        )
+        self.assertNotIn(call("No Bad Data"), output.call_args_list)
+
+        presenter.printStats(yard.bad_data)
+        output.assert_any_call("Incomplete Existing Containers:", 0)
+        output.assert_any_call("\nIncomplete Inbound Containers:", 1)
+
+    def test_presenter_labels_existing_and_inbound_errors_and_counts(self):
+        yard = self.assert_rejected(self.record | {"CONTSIZE": "45"})
+        inbound = Container(**(self.record | {
+            "CONTNO": "INBOUND", "CONTSIZE": "45",
+        }))
+        yard.bad_data.addIncompleteInboundContainer(inbound)
+
+        output = Mock()
+        presenter = BadDataPresenter(out=output)
+        presenter.print(yard.bad_data)
+        presenter.printStats(yard.bad_data)
+
+        output.assert_any_call("\nIncomplete Existing Containers:")
+        output.assert_any_call(
+            "C", ["BR", "A", "1", "2", "1"], "CONTSIZE:", "'45'"
+        )
+        output.assert_any_call("\nIncomplete Inbound Containers:")
+        output.assert_any_call("INBOUND", "CONTSIZE:", "'45'")
+        output.assert_any_call("\nTotal Existing Containers:", 1)
+        output.assert_any_call("Incomplete Existing Containers:", 1)
+        output.assert_any_call("\nIncomplete Inbound Containers:", 1)
 
 
 if __name__ == "__main__":
