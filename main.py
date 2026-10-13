@@ -58,10 +58,6 @@ for x in inboundContRepo:
             skip = True
     newContainer = Container(**({"CONTSIZE": ""} | x))
 
-    if not yard.bad_data.validateInboundAndRecord(newContainer):
-        BadDataPresenter().printIncompleteInboundContainers([newContainer])
-        continue
-
     try:
         result = yard.assign_and_place(newContainer)
     except PlacementRejected as error:
