@@ -7,6 +7,7 @@ import math
 from datetime import datetime
 from utils.parse_datetime import parse_datetime
 
+
 def _parse_weight(raw) -> float | None:
     if raw is None or raw == "":
         return None
@@ -17,6 +18,7 @@ def _parse_weight(raw) -> float | None:
     if math.isnan(value) or math.isinf(value):
         return None
     return value
+
 
 class Container:
     id: str
@@ -33,32 +35,32 @@ class Container:
     pod: str
     vessel: str
     voyage: str
-    weight: float| None
+    weight: float | None
     # coordsStr = [Branch, Block, Row, Slot, Tier]
     coordsStr: list[str]
     move_time: datetime
 
     def __init__(self,
-                 CONTNO:str,
-                 PRINCIPAL:str,
-                 DMG_FLAG:str,
-                 FULLMT:str,
+                 CONTNO: str,
+                 PRINCIPAL: str,
+                 DMG_FLAG: str,
+                 FULLMT: str,
                  # OPERATION_TYPE:str,
-                 CONTSIZE:str,
-                 CONT_GRADE:str,
-                 POL:str,
-                 POD:str,
-                 VESSEL:str,
-                 VOYAGE:str,
-                 WEIGHT:str,
+                 CONTSIZE: str,
+                 CONT_GRADE: str,
+                 POL: str,
+                 POD: str,
+                 VESSEL: str,
+                 VOYAGE: str,
+                 WEIGHT: str,
 
                  MOVE_TIME: str,
 
-                 BRANCH:str|None = None,
-                 BLOK:str | None = None,
-                 SLOT:str | None = None,
-                 ROW:str | None = None,
-                 TIER:str | None = None,
+                 BRANCH: str | None = None,
+                 BLOK: str | None = None,
+                 SLOT: str | None = None,
+                 ROW: str | None = None,
+                 TIER: str | None = None,
 
                  #TIER: Stack,
                  #TIERHEIGHT: int,
@@ -91,56 +93,96 @@ class Container:
 
         self.coordsStr = [BRANCH, BLOK, ROW, SLOT, TIER]
 
-    def getId(self) -> str: return self.id
-    def getPrincipal(self) -> str: return self.principal
-    def getContCondition(self) -> str: return self.cont_condition
-    def getContFill(self) -> str: return self.cont_fill
-    def getOpType(self) -> str: return self.operation_type
-    def getPot(self) -> str: return self.pot
-    def getVesselOperator(self) -> str: return self.vessel_operator
-    def getMoveTimeRaw(self) -> str: return self.move_time_raw
-    def getContSize(self) -> str: return self.cont_size
-    def getContGrade(self) -> str: return self.cont_grade
-    def getPol(self) -> str: return self.pol
-    def getPod(self) -> str: return self.pod
-    def getVessel(self) -> str: return self.vessel
-    def getVoyage(self) -> str: return self.voyage
-    def getWeight(self) -> float|None: return self.weight
-    def getMoveTime(self) -> datetime: return self.move_time
-    def getCoordsStr(self) -> list[str]: return self.coordsStr
-    def setCoordsStr(self, branch:str, block: str, row: str, slot: str, tier: str):
+    def getId(self) -> str:
+        return self.id
+
+    def getPrincipal(self) -> str:
+        return self.principal
+
+    def getContCondition(self) -> str:
+        return self.cont_condition
+
+    def getContFill(self) -> str:
+        return self.cont_fill
+
+    def getOpType(self) -> str:
+        return self.operation_type
+
+    def getPot(self) -> str:
+        return self.pot
+
+    def getVesselOperator(self) -> str:
+        return self.vessel_operator
+
+    def getMoveTimeRaw(self) -> str:
+        return self.move_time_raw
+
+    def getContSize(self) -> str:
+        return self.cont_size
+
+    def getContGrade(self) -> str:
+        return self.cont_grade
+
+    def getPol(self) -> str:
+        return self.pol
+
+    def getPod(self) -> str:
+        return self.pod
+
+    def getVessel(self) -> str:
+        return self.vessel
+
+    def getVoyage(self) -> str:
+        return self.voyage
+
+    def getWeight(self) -> float | None:
+        return self.weight
+
+    def getMoveTime(self) -> datetime:
+        return self.move_time
+
+    def getCoordsStr(self) -> list[str]:
+        return self.coordsStr
+
+    def setCoordsStr(self, branch: str, block: str, row: str, slot: str, tier: str):
         self.coordsStr = [branch, block, row, slot, tier]
-    def getCoordsStrTuple(self) -> tuple[str,str,str,str,str]:
-        return self.coordsStr[0],self.coordsStr[1],self.coordsStr[2],self.coordsStr[3],self.coordsStr[4]
+
+    def getCoordsStrTuple(self) -> tuple[str, str, str, str, str]:
+        return self.coordsStr[0], self.coordsStr[1], self.coordsStr[2], self.coordsStr[3], self.coordsStr[4]
 
     # coordsInt changes relevant data to str/int and follows 0-based indexing instead of database's 1-based indexing
-    def getCoordsInt(self) -> tuple[str,str,int,int,int]:
-        return self.coordsStr[0],self.coordsStr[1], int(self.coordsStr[2]) - 1, int(self.coordsStr[3]) - 1, int(self.coordsStr[4]) - 1
-    def setCoordsInt(self, coordsInt: tuple[str,str,int,int,int]):
-        self.coordsStr = [coordsInt[0], coordsInt[1], str(coordsInt[2] + 1), str(coordsInt[3] + 1), str(coordsInt[4] + 1)]
+    def getCoordsInt(self) -> tuple[str, str, int, int, int]:
+        return self.coordsStr[0], self.coordsStr[1], int(self.coordsStr[2]) - 1, int(self.coordsStr[3]) - 1, int(
+            self.coordsStr[4]) - 1
+
+    def setCoordsInt(self, coordsInt: tuple[str, str, int, int, int]):
+        self.coordsStr = [coordsInt[0], coordsInt[1], str(coordsInt[2] + 1), str(coordsInt[3] + 1),
+                          str(coordsInt[4] + 1)]
 
     # same goes for tierInt for coordsStr[3]
-    def setTierInt(self,tierInt: int):
+    def setTierInt(self, tierInt: int):
         self.coordsStr[4] = str(tierInt + 1)
 
     def __str__(self):
         return self.id
 
+
 # special container to be filled in gaps of anomalous stacks
 class DummyContainer(Container):
     #[(block_id,row,slot,tier),...]
-    coordsList:set[tuple[str,str,str,str]]
+    coordsList: set[tuple[str, str, str, str]]
 
     def __init__(self):
-        super().__init__("DUMMY","","","","","","","","","","","","","","","","")
+        super().__init__("DUMMY", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "")
         self.coordsList = set()
-    def addCoordList(self,coords:tuple[str,int,int],tier:int):
-        self.coordsList.add((coords[0], str(coords[1] + 1), str(coords[2] + 1),str(tier + 1)))
 
-    def removeCoordList(self,coords:tuple[str,str,str,str]): self.coordsList.remove(coords)
+    def addCoordList(self, coords: tuple[str, int, int], tier: int):
+        self.coordsList.add((coords[0], str(coords[1] + 1), str(coords[2] + 1), str(tier + 1)))
 
-    def replaceDummy(self,container:Container,blockID:str):
+    def removeCoordList(self, coords: tuple[str, str, str, str]): self.coordsList.remove(coords)
+
+    def replaceDummy(self, container: Container, blockID: str):
         containerCoords = container.getCoordsStr()
-        self.removeCoordList((blockID,containerCoords[2],containerCoords[3],containerCoords[4]))
+        self.removeCoordList((blockID, containerCoords[2], containerCoords[3], containerCoords[4]))
 
-    def getCoordsList(self) -> set[tuple[str,str,str,str]]: return self.coordsList
+    def getCoordsList(self) -> set[tuple[str, str, str, str]]: return self.coordsList
