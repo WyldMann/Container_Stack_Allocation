@@ -9,7 +9,7 @@ from .parameter import Parameter
 from .equipment import RTG,Loader,Equipment
 from .stack import Stack
 from .block import Block
-from .feasibility import PlacementFeasibility, LoaderBorderAccessPolicy
+from .feasibility import PlacementFeasibility, PlacementProposal, LoaderBorderAccessPolicy
 
 from .bad_yard_data import BadYardData
 
@@ -240,7 +240,12 @@ class Yard:
 
         self.containers[container.getId()] = container
 
-    def _commitPlacement(self, container, proposal, movement=None):
+    def _commitPlacement(
+        self,
+        container: Container,
+        proposal: PlacementProposal,
+        movement: tuple[Equipment, Block, Block] | None = None,
+    ) -> None:
         stacks = [self.getStack(*coord) for coord in proposal.footprint]
         stack_before = [
             (stack, list(stack.getContainers()), stack.getMode())
@@ -250,18 +255,19 @@ class Yard:
         coords_before = container.getCoordsStr()
         coords_values_before = list(coords_before)
 
+        equipment_snapshot = None
         if movement is not None:
             equipment, source, destination = movement
-            equipment_before = equipment.getCoords()
-            master_before = list(self.masterLoader)
             blocks = {
                 block.getId(): block
                 for block in (source, destination)
             }
-            membership_before = [
-                (block, list(block.getLoaders()))
-                for block in blocks.values()
-            ]
+            equipment_snapshot = (
+                equipment,
+                equipment.getCoords(),
+                list(self.masterLoader),
+                [(block, list(block.getLoaders())) for block in blocks.values()],
+            )
 
         try:
             for stack in stacks:
@@ -273,7 +279,7 @@ class Yard:
             self.addContainer(container)
             if movement is not None:
                 self.moveEquipment(
-                    equipment,
+                    movement[0],
                     (proposal.block_id, proposal.row, proposal.slot),
                 )
         except Exception:
@@ -285,7 +291,8 @@ class Yard:
             self.containers.update(registry_before)
             coords_before[:] = coords_values_before
             container.coordsStr = coords_before
-            if movement is not None:
+            if equipment_snapshot is not None:
+                equipment, equipment_before, master_before, membership_before = equipment_snapshot
                 equipment.coords = equipment_before
                 self.masterLoader[:] = master_before
                 for block, loaders in membership_before:
@@ -431,10 +438,12 @@ class Yard:
         block_id, row, slot = coords
         if source is destination:
             equipment.inBlockMove(row, slot)
-        else:
+        elif isinstance(equipment, Loader):
             source.removeLoader(equipment)
             destination.addLoader(equipment)
             equipment.outBlockMove(block_id, row, slot)
+        else:
+            raise ValueError("Only loaders can move between blocks.")
 
     # nearest equipment and its distance for a stack coord (without tier)
     def nearestEquipmentDistance(self,blockID: str, row: int, slot: int) -> tuple[Equipment,float]:
