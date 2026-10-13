@@ -245,16 +245,68 @@ class Yard:
 
         self.containers[container.getId()] = container
 
-    def addContainerByCoords(self,container: Container,coords:tuple[str,int,int,int]):
-        # add container to the stack
-        self.getBlockByID(coords[0]).getStack(coords[1],coords[2]).addContainer(container,coords[3])
-        # if containerType = 40 add also add to the next stack
-        if container.getContSize() == '40':
-            self.getBlockByID(coords[0]).getStack(coords[1],coords[2] - 1).addContainer(container,coords[3])
+    def _commitPlacement(self, container, proposal, movement=None):
+        stacks = [self.getStack(*coord) for coord in proposal.footprint]
+        stack_before = [
+            (stack, list(stack.getContainers()), stack.getMode())
+            for stack in stacks
+        ]
+        registry_before = dict(self.containers)
+        coords_before = container.getCoordsStr()
+        coords_values_before = list(coords_before)
 
-        # add new coords to container
-        container.setCoordsInt(self.getBlockBranchCodebyID(coords[0])+(coords[1],coords[2],coords[3],))
-        self.addContainer(container)
+        if movement is not None:
+            equipment, source, destination = movement
+            equipment_before = equipment.getCoords()
+            master_before = list(self.masterLoader)
+            blocks = {
+                block.getId(): block
+                for block in (source, destination)
+            }
+            membership_before = [
+                (block, list(block.getLoaders()))
+                for block in blocks.values()
+            ]
+
+        try:
+            for stack in stacks:
+                stack.addContainer(container, proposal.tier)
+            container.setCoordsInt(
+                self.getBlockBranchCodebyID(proposal.block_id)
+                + (proposal.row, proposal.slot, proposal.tier)
+            )
+            self.addContainer(container)
+            if movement is not None:
+                self.moveEquipment(
+                    equipment,
+                    (proposal.block_id, proposal.row, proposal.slot),
+                )
+        except Exception:
+            # Restore directly without calling update methods that may fail.
+            for stack, contents, mode in stack_before:
+                stack.containers[:] = contents
+                stack.mode = mode
+            self.containers.clear()
+            self.containers.update(registry_before)
+            coords_before[:] = coords_values_before
+            container.coordsStr = coords_before
+            if movement is not None:
+                equipment.coords = equipment_before
+                self.masterLoader[:] = master_before
+                for block, loaders in membership_before:
+                    block.loaders[:] = loaders
+            raise
+
+    def addContainerByCoords(self, container, coords):
+        proposal = self.bad_data.validateInboundDestination(
+            container,
+            coords,
+            blocks_by_id=self.blocks_by_id,
+            registered_containers=self.containers,
+            feasibility=self.feasibility,
+            loader_policies=self.loader_access_policies,
+        )
+        self._commitPlacement(container, proposal)
 
     def addContainer(self,container):
         self.containers[container.getId()] = container
@@ -329,24 +381,41 @@ class Yard:
                         coordsCandidates = [currentCoords]
         return maxScore,contScores,coordsCandidates
 
-    def assignContainer(self,container: Container) -> AssignResult | None:
-        maxScore, contScores,coordsCandidates = self.findCoordsCandidates(container)
+    def assignContainer(self, container) -> AssignResult | None:
+        self.bad_data.validateInboundContainer(container, self.containers)
+        maxScore, contScores, coordsCandidates = self.findCoordsCandidates(container)
         if not coordsCandidates:
             return None
-        else:
-            return AssignResult(
-                container,
-                contScores,
-                maxScore,
-                self.bestCoordCandidate(container,coordsCandidates)
-            )
+        return AssignResult(
+            container,
+            contScores,
+            maxScore,
+            self.bestCoordCandidate(container, coordsCandidates),
+        )
 
     def placeContainerWithAssignResult(self, result: AssignResult) -> None:
         self.placeContainer(result.container, result.getBestCoordinate(), result.getBestEquipment())
 
-    def placeContainer(self,container: Container,coords: tuple[str,int,int,int],equipment: Equipment):
-        self.addContainerByCoords(container, coords)
-        self.moveEquipment(equipment, (coords[0],coords[1],coords[2]))
+    def placeContainer(self, container, coords, equipment):
+        validated = self.bad_data.validateInboundPlacement(
+            container,
+            coords,
+            equipment,
+            blocks_by_id=self.blocks_by_id,
+            registered_containers=self.containers,
+            master_loaders=self.masterLoader,
+            feasibility=self.feasibility,
+            loader_policies=self.loader_access_policies,
+        )
+        self._commitPlacement(
+            container,
+            validated.proposal,
+            (
+                validated.equipment,
+                validated.source_block,
+                validated.destination_block,
+            ),
+        )
 
     def moveEquipment(
         self,
@@ -358,42 +427,19 @@ class Yard:
         The block identifies membership; row and slot describe a simulated
         position and may be negative or beyond the block's storage dimensions.
         """
+        source, destination = self.bad_data.validateEquipmentMove(
+            equipment,
+            coords,
+            blocks_by_id=self.blocks_by_id,
+            master_loaders=self.masterLoader,
+        )
         block_id, row, slot = coords
-        source_id = equipment.getCoords()[0]
-
-        if not isinstance(equipment, (RTG, Loader)):
-            raise TypeError("Unsupported equipment type.")
-
-        source = self.getBlockByID(source_id)
-        destination = self.getBlockByID(block_id)
-
-        if type(row) is not int or type(slot) is not int:
-            raise ValueError("Equipment row and slot must be integers.")
-
-        if isinstance(equipment, RTG):
-            if source.getRTG() is not equipment:
-                raise ValueError("RTG is not registered in its source block.")
-            if block_id != source_id:
-                raise ValueError("RTG cannot move between blocks.")
-
+        if source is destination:
             equipment.inBlockMove(row, slot)
-            return
-
-        if equipment not in self.masterLoader:
-            raise ValueError("Loader is not registered in this yard.")
-        if source.getLoaders().count(equipment) != 1:
-            raise ValueError("Loader source-block registration is inconsistent.")
-
-        if block_id == source_id:
-            equipment.inBlockMove(row, slot)
-            return
-
-        if equipment in destination.getLoaders():
-            raise ValueError("Loader is already registered in the destination block.")
-
-        source.removeLoader(equipment)
-        destination.addLoader(equipment)
-        equipment.outBlockMove(block_id, row, slot)
+        else:
+            source.removeLoader(equipment)
+            destination.addLoader(equipment)
+            equipment.outBlockMove(block_id, row, slot)
 
     # nearest equipment and its distance for a stack coord (without tier)
     def nearestEquipmentDistance(self,blockID: str, row: int, slot: int) -> tuple[Equipment,float]:

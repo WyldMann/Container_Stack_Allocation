@@ -9,7 +9,8 @@ class IncompleteContainers:
 
     def addContainer(self, container: Container) -> None:
         """Record a container already classified as incomplete."""
-        self.containers.append(container)
+        if not any(item is container for item in self.containers):
+            self.containers.append(container)
 
     def __len__(self) -> int:
         return len(self.containers)
@@ -20,8 +21,10 @@ class IncompleteInboundContainers(IncompleteContainers):
     @staticmethod
     def isInboundComplete(container: Container) -> bool:
         """Check inbound completeness without requiring coordinates."""
+        container_id = container.getId()
         return (
-            container.getId() != ""
+            isinstance(container_id, str)
+            and bool(container_id.strip())
             and container.getContSize() in ("20", "40")
         )
 

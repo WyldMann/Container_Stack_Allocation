@@ -6,6 +6,7 @@ from config import load_config
 
 from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader, EquipmentMoveFileReader
 from entities import Yard, Container
+from entities.bad_yard_data import PlacementRejected
 from presenter import YardPresenter, BadDataPresenter
 
 config_file = Path(__file__).resolve().parent / "config.toml"
@@ -57,11 +58,17 @@ for x in inboundContRepo:
             skip = True
     newContainer = Container(**({"CONTSIZE": ""} | x))
 
-    if not yard.bad_data.incompleteInboundContainer.validateInboundAndRecord(newContainer):
+    if not yard.bad_data.validateInboundAndRecord(newContainer):
         BadDataPresenter().printIncompleteInboundContainers([newContainer])
         continue
 
-    yardPresenter.outAssignResult(yard.assign_and_place(newContainer))
+    try:
+        result = yard.assign_and_place(newContainer)
+    except PlacementRejected as error:
+        print(f"Container {newContainer.getId()} was not placed: {error}")
+        continue
+
+    yardPresenter.outAssignResult(result)
     yardPresenter.outYard(yard)
 
 if yard.bad_data.incompleteInboundContainer:

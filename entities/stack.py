@@ -53,14 +53,20 @@ class Stack:
         return prevContainer
 
     def addContainer(self, container: Container, tier: int):
-        # if first container in stack, set its mode
+        if type(tier) is not int:
+            raise TypeError("Tier must be an integer.")
+        if self.mode == "X" or not 0 <= tier < len(self.containers):
+            raise ValueError("Tier is outside an available stack.")
+
+        size = container.getContSize()
+        if size not in ("20", "40") or self.mode not in ("0", size):
+            raise ValueError("Container size conflicts with stack mode.")
+        if not self.isTierEmpty(tier):
+            raise ValueError("Tier is already occupied.")
+
+        self.containers[tier] = container
         if tier == 0:
-            mode = container.getContSize()
-            self.setMode(mode)
-        if self.isTierEmpty(tier):
-            self.containers[tier] = container
-        else:
-            raise NotImplementedError
+            self.setMode(size)
     def replaceContainer(self, container: Container, tier: int):
         self.containers[tier] = container
 

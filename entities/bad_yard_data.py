@@ -1,9 +1,27 @@
+from dataclasses import dataclass
+
+from .block import Block
 from .container import Container
+from .equipment import Equipment, Loader, RTG
+from .feasibility import PlacementProposal
 from .incomplete_containers import (
     IncompleteExistingContainers,
     IncompleteInboundContainers,
 )
 from .stack import Stack
+
+
+class PlacementRejected(ValueError):
+    """An inbound placement failed validation before changing yard state."""
+
+
+@dataclass(frozen=True)
+class ValidatedInboundPlacement:
+    proposal: PlacementProposal
+    equipment: Equipment
+    source_block: Block
+    destination_block: Block
+
 
 class BadYardData:
     overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]
@@ -24,6 +42,140 @@ class BadYardData:
         self.container_coords_invalid = []
         self.total_yp = total_params
         self.total_containers = total_containers
+
+    def validateInboundAndRecord(self, container: Container) -> bool:
+        return self.incompleteInboundContainer.validateInboundAndRecord(
+            container
+        )
+
+    def requireInboundComplete(self, container: Container) -> None:
+        if not self.validateInboundAndRecord(container):
+            raise PlacementRejected(
+                "Inbound container requires an ID and size 20 or 40."
+            )
+
+    def validateInboundContainer(
+        self,
+        container: Container,
+        registered_containers,
+    ) -> None:
+        self.requireInboundComplete(container)
+        if container.getId() in registered_containers:
+            raise PlacementRejected(
+                "Container ID is already registered in this yard."
+            )
+
+    def validateInboundDestination(
+        self,
+        container,
+        coords,
+        *,
+        blocks_by_id,
+        registered_containers,
+        feasibility,
+        loader_policies,
+    ) -> PlacementProposal:
+        self.validateInboundContainer(container, registered_containers)
+        try:
+            block_id, row, slot, tier = coords
+            proposal = PlacementProposal(
+                block_id, row, slot, tier, container.getContSize()
+            )
+            block = blocks_by_id[block_id]
+        except (TypeError, ValueError, KeyError) as error:
+            raise PlacementRejected(f"Invalid destination: {error}") from error
+
+        # Evaluate against current state, including configured safety rules.
+        result = feasibility.evaluate(
+            container,
+            block,
+            row,
+            slot,
+            loader_policy=loader_policies.get(block_id),
+        )
+        if not result.feasible:
+            raise PlacementRejected(
+                f"Placement rejected: {result.rejection_reason.value}"
+            )
+        if result.coordinates != proposal.coordinates:
+            raise PlacementRejected(
+                "Destination tier changed; assign the container again."
+            )
+
+        for _, r, s in proposal.footprint:
+            stack = block.getStack(r, s)
+            if stack.anomaly():
+                raise PlacementRejected(
+                    "Repair floating containers before placing here."
+                )
+            if not stack.isTierEmpty(tier):
+                raise PlacementRejected("A destination tier is already occupied.")
+        return proposal
+
+    def validateEquipmentMove(
+        self,
+        equipment,
+        coords,
+        *,
+        blocks_by_id,
+        master_loaders,
+    ) -> tuple[Block, Block]:
+        if not isinstance(equipment, (RTG, Loader)):
+            raise TypeError("Unsupported equipment type.")
+        block_id, row, slot = coords
+        if type(row) is not int or type(slot) is not int:
+            raise ValueError("Equipment row and slot must be integers.")
+
+        source = blocks_by_id[equipment.getCoords()[0]]
+        destination = blocks_by_id[block_id]
+        if isinstance(equipment, RTG):
+            if source.getRTG() is not equipment:
+                raise ValueError("RTG is not registered in its source block.")
+            if source is not destination:
+                raise ValueError("RTG cannot move between blocks.")
+        else:
+            if equipment not in master_loaders:
+                raise ValueError("Loader is not registered in this yard.")
+            if source.getLoaders().count(equipment) != 1:
+                raise ValueError("Loader source-block registration is inconsistent.")
+            if source is not destination and equipment in destination.getLoaders():
+                raise ValueError(
+                    "Loader is already registered in the destination block."
+                )
+        return source, destination
+
+    def validateInboundPlacement(
+        self,
+        container,
+        coords,
+        equipment,
+        *,
+        blocks_by_id,
+        registered_containers,
+        master_loaders,
+        feasibility,
+        loader_policies,
+    ) -> ValidatedInboundPlacement:
+        proposal = self.validateInboundDestination(
+            container,
+            coords,
+            blocks_by_id=blocks_by_id,
+            registered_containers=registered_containers,
+            feasibility=feasibility,
+            loader_policies=loader_policies,
+        )
+        try:
+            source, destination = self.validateEquipmentMove(
+                equipment,
+                (proposal.block_id, proposal.row, proposal.slot),
+                blocks_by_id=blocks_by_id,
+                master_loaders=master_loaders,
+            )
+        except (TypeError, ValueError, KeyError) as error:
+            raise PlacementRejected(str(error)) from error
+        return ValidatedInboundPlacement(
+            proposal, equipment, source, destination
+        )
 
     def getAnomalousStacks(self) -> list[Stack]:
         return self.anomalous_stacks
