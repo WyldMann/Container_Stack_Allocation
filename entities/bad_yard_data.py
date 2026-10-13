@@ -28,6 +28,8 @@ class BadYardData:
     anomalous_stacks: list[Stack]
     incompleteExistingContainer: IncompleteExistingContainers
     incompleteInboundContainer: IncompleteInboundContainers
+    duplicateExistingContainerIDs: list[Container]
+    duplicateInboundContainerIDs: list[Container]
     yp_out_of_range: list[tuple[str,str,int,int]]
     container_coords_invalid: list[Container]
     total_yp: int
@@ -38,6 +40,8 @@ class BadYardData:
         self.anomalous_stacks = []
         self.incompleteExistingContainer = IncompleteExistingContainers()
         self.incompleteInboundContainer = IncompleteInboundContainers()
+        self.duplicateExistingContainerIDs = []
+        self.duplicateInboundContainerIDs = []
         self.yp_out_of_range = []
         self.container_coords_invalid = []
         self.total_yp = total_params
@@ -54,13 +58,29 @@ class BadYardData:
                 "Inbound container requires an ID and size 20 or 40."
             )
 
+    def validateExistingContainerIDAndRecord(
+        self, container: Container, registered_containers,
+    ) -> bool:
+        if container.getId() not in registered_containers:
+            return True
+        self.addDuplicateExistingContainerID(container)
+        return False
+
+    def validateInboundContainerIDAndRecord(
+        self, container: Container, registered_containers,
+    ) -> bool:
+        if container.getId() not in registered_containers:
+            return True
+        self.addDuplicateInboundContainerID(container)
+        return False
+
     def validateInboundContainer(
         self,
         container: Container,
         registered_containers,
     ) -> None:
         self.requireInboundComplete(container)
-        if container.getId() in registered_containers:
+        if not self.validateInboundContainerIDAndRecord(container, registered_containers):
             raise PlacementRejected(
                 "Container ID is already registered in this yard."
             )
@@ -112,8 +132,8 @@ class BadYardData:
                 raise PlacementRejected("A destination tier is already occupied.")
         return proposal
 
+    @staticmethod
     def validateEquipmentMove(
-        self,
         equipment,
         coords,
         *,
@@ -185,6 +205,10 @@ class BadYardData:
         return self.incompleteExistingContainer.containers
     def getIncompleteInboundContainers(self) -> list[Container]:
         return self.incompleteInboundContainer.containers
+    def getDuplicateExistingContainerIDs(self) -> list[Container]:
+        return self.duplicateExistingContainerIDs
+    def getDuplicateInboundContainerIDs(self) -> list[Container]:
+        return self.duplicateInboundContainerIDs
     def getYPOutOfRange(self) -> list[tuple[str,str,int,int]]:
         return self.yp_out_of_range
     def getContainerCoordsInvalid(self) -> list[Container]:
@@ -200,6 +224,10 @@ class BadYardData:
         return len(self.incompleteExistingContainer)
     def getTotalIncompleteInbound(self) -> int:
         return len(self.incompleteInboundContainer)
+    def getTotalDuplicateExistingContainerIDs(self) -> int:
+        return len(self.duplicateExistingContainerIDs)
+    def getTotalDuplicateInboundContainerIDs(self) -> int:
+        return len(self.duplicateInboundContainerIDs)
     def getTotalYPOutOfRange(self) -> int:
         return len(self.yp_out_of_range)
     def getTotalContainerCoordsInvalid(self) -> int:
@@ -217,6 +245,12 @@ class BadYardData:
         self.incompleteExistingContainer.addContainer(container)
     def addIncompleteInboundContainer(self, container: Container):
         self.incompleteInboundContainer.addContainer(container)
+    def addDuplicateExistingContainerID(self, container: Container) -> None:
+        if not any(item is container for item in self.duplicateExistingContainerIDs):
+            self.duplicateExistingContainerIDs.append(container)
+    def addDuplicateInboundContainerID(self, container: Container) -> None:
+        if not any(item is container for item in self.duplicateInboundContainerIDs):
+            self.duplicateInboundContainerIDs.append(container)
     def addYPOutOfRange(self,yp_item: tuple[str,str,int,int]):
         self.yp_out_of_range.append(yp_item)
     def addContainerCoordsInvalid(self,container:Container):
@@ -229,6 +263,8 @@ class BadYardData:
             self.yp_out_of_range
             or self.incompleteExistingContainer
             or self.incompleteInboundContainer
+            or self.duplicateExistingContainerIDs
+            or self.duplicateInboundContainerIDs
             or self.anomalous_stacks
             or self.container_coords_invalid
             or self.overlapping_containers

@@ -108,19 +108,19 @@ class ContainerImportProtectionTests(unittest.TestCase):
 
     def test_twenty_foot_overlap_uses_timestamp_and_reports_both_records(self):
         for time, incoming_wins in (("09:00", False), ("10:00", True), ("11:00", True)):
-            for incoming_id in ("OLD", "NEW"):
-                with self.subTest(time=time, incoming_id=incoming_id):
-                    yard = self.make_yard([self.record | {"CONTNO": "OLD"}])
-                    existing = yard.containers["OLD"]
-                    incoming = Container(**(self.record | dict(
-                        CONTNO=incoming_id, MOVE_TIME="01/01/2026 " + time)))
-                    yard.addContainerInput(incoming)
-                    winner = incoming if incoming_wins else existing
-                    self.assertEqual(yard.containers, {winner.getId(): winner})
-                    self.assertIs(yard.getStack("A", 0, 1).getContainer(0), winner)
-                    self.assertEqual(yard.bad_data.getOverlappingContainers(), {
-                        incoming.getCoordsStrTuple(): {existing, incoming}})
-                    self.assertEqual(yard.bad_data.getTotalContainerCoordsInvalid(), 0)
+            with self.subTest(time=time):
+                yard = self.make_yard([self.record | {"CONTNO": "OLD"}])
+                existing = yard.containers["OLD"]
+                incoming = Container(**(self.record | dict(
+                    CONTNO="NEW", MOVE_TIME="01/01/2026 " + time)))
+                yard.addContainerInput(incoming)
+                winner = incoming if incoming_wins else existing
+                self.assertEqual(yard.containers, {winner.getId(): winner})
+                self.assertIs(yard.getStack("A", 0, 1).getContainer(0), winner)
+                self.assertEqual(yard.bad_data.getOverlappingContainers(), {
+                    incoming.getCoordsStrTuple(): {existing, incoming}})
+                self.assertEqual(yard.bad_data.getTotalContainerCoordsInvalid(), 0)
+                self.assertEqual(yard.bad_data.getTotalDuplicateExistingContainerIDs(), 0)
 
     def test_forty_foot_overlap_preserves_existing_pair_even_when_incoming_is_newer(self):
         yard = self.make_yard([self.record | dict(CONTNO="OLD", CONTSIZE="40")])
@@ -153,8 +153,15 @@ class ContainerImportProtectionTests(unittest.TestCase):
                 with self.subTest(size=size, field=field):
                     record = self.record | {"CONTSIZE": size}
                     yard = self.make_yard([record])
-                    self.assert_invalid_without_changes(yard, record | {
-                        field: value, "MOVE_TIME": "01/01/2026 11:00"})
+                    before = self.snapshot(yard)
+                    incoming = Container(**(record | {
+                        field: value, "MOVE_TIME": "01/01/2026 11:00"}))
+                    yard.addContainerInput(incoming)
+                    self.assertEqual(self.snapshot(yard), before)
+                    self.assertEqual(yard.bad_data.getDuplicateExistingContainerIDs(),
+                                     [incoming])
+                    self.assertEqual(yard.bad_data.getTotalDuplicateExistingContainerIDs(), 1)
+                    self.assertEqual(yard.bad_data.getTotalContainerCoordsInvalid(), 0)
 
     def test_constructor_continues_after_rejections_without_changing_input_records(self):
         records = [
@@ -168,7 +175,8 @@ class ContainerImportProtectionTests(unittest.TestCase):
         yard = self.make_yard(records)
         self.assertEqual(records, originals)
         self.assertEqual(set(yard.containers), {"OLD", "VALID"})
-        self.assertEqual(yard.bad_data.getTotalContainerCoordsInvalid(), 3)
+        self.assertEqual(yard.bad_data.getTotalContainerCoordsInvalid(), 2)
+        self.assertEqual(yard.bad_data.getTotalDuplicateExistingContainerIDs(), 1)
         self.assertEqual(yard.bad_data.getTotalContainers(), 5)
         self.assertEqual(yard.getStack("A", 0, 1).occupancy(), 0)
         self.assertEqual(yard.getStack("A", 0, 2).occupancy(), 0)

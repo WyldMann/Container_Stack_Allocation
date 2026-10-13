@@ -70,6 +70,11 @@ for x in inboundContRepo:
 if yard.bad_data.incompleteInboundContainer:
     BadDataPresenter().printStats(yard.bad_data)
 
+if yard.bad_data.duplicateInboundContainerIDs:
+    BadDataPresenter().printDuplicateInboundContainerIDs(
+        yard.bad_data.getDuplicateInboundContainerIDs()
+    )
+
 container_writer = ContainerFileWriter(
     Path(__file__).parent / "output" / "result.csv"
 )

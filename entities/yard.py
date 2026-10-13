@@ -151,6 +151,11 @@ class Yard:
 
         # Validate coordinates and both slots before modifying yard state.
         try:
+            if not self.bad_data.validateExistingContainerIDAndRecord(
+                container, self.containers,
+            ):
+                return
+
             branch, code, row, slot, tier = container.getCoordsInt()
             block = self.getBlockByCode(branch, code)
             rows = block.getSlots()
@@ -195,16 +200,6 @@ class Yard:
                     item is not None and item.getContSize() != size
                     for item in stack.getContainers()
                 ):
-                    reject()
-                    return
-
-            # One container ID must not occupy two separate locations.
-            registered = self.containers.get(container.getId())
-            if registered is not None:
-                if registered.getCoordsInt() != (branch, code, row, slot, tier):
-                    reject()
-                    return
-                if registered.getContSize() != size:
                     reject()
                     return
 

@@ -118,6 +118,17 @@ class BadDataPresenter(Presenter):
         for x in incomplete_inbound_containers:
             self.out(x.getId(), "CONTSIZE:", repr(x.getContSize()))
 
+    def printDuplicateExistingContainerIDs(self, containers: list[Container]) -> None:
+        self.out("\nDuplicate Existing Container IDs:")
+        for container in containers:
+            self.out(container.getId(), container.getCoordsStr(),
+                     "CONTSIZE:", repr(container.getContSize()))
+
+    def printDuplicateInboundContainerIDs(self, containers: list[Container]) -> None:
+        self.out("\nDuplicate Inbound Container IDs:")
+        for container in containers:
+            self.out(container.getId(), "CONTSIZE:", repr(container.getContSize()))
+
     # ----- composites -----
     #print in the theoretical order of detection
     def print(self, baddata: BadYardData) -> None:
@@ -130,6 +141,10 @@ class BadDataPresenter(Presenter):
             self.printIncompleteExistingContainers(baddata.getIncompleteExistingContainers())
         if baddata.incompleteInboundContainer:
             self.printIncompleteInboundContainers(baddata.getIncompleteInboundContainers())
+        if baddata.duplicateExistingContainerIDs:
+            self.printDuplicateExistingContainerIDs(baddata.getDuplicateExistingContainerIDs())
+        if baddata.duplicateInboundContainerIDs:
+            self.printDuplicateInboundContainerIDs(baddata.getDuplicateInboundContainerIDs())
         if baddata.container_coords_invalid: self.printContainerCoordsInvalid(baddata.container_coords_invalid)
         if baddata.overlapping_containers != {}: self.printOverlappingContainers(baddata.overlapping_containers)
         if baddata.anomalous_stacks: self.printAnomalousStacks(baddata.anomalous_stacks)
@@ -143,7 +158,9 @@ class BadDataPresenter(Presenter):
         self.out("Yard Planning Errors:", baddata.getTotalYPOutOfRange())
         self.out("\nTotal Existing Containers:", baddata.getTotalContainers())
         self.out("Incomplete Existing Containers:", baddata.getTotalIncompleteExisting())
+        self.out("Duplicate Existing Container IDs:", baddata.getTotalDuplicateExistingContainerIDs())
         self.out("Container Coords Invalid:", baddata.getTotalContainerCoordsInvalid())
         self.out("Overlapping Containers:", baddata.getTotalOverlapping())
         self.out("\nIncomplete Inbound Containers:", baddata.getTotalIncompleteInbound())
+        self.out("Duplicate Inbound Container IDs:", baddata.getTotalDuplicateInboundContainerIDs())
         self.out("\nAnomalous Stacks:", baddata.getTotalAnomalousStacks())
