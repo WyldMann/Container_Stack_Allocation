@@ -1,12 +1,15 @@
 from .container import Container
-from .incomplete_containers import IncompleteContainers
+from .incomplete_containers import (
+    IncompleteExistingContainers,
+    IncompleteInboundContainers,
+)
 from .stack import Stack
 
 class BadYardData:
     overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]
     anomalous_stacks: list[Stack]
-    incompleteExistingContainer: IncompleteContainers
-    incompleteInboundContainer: IncompleteContainers
+    incompleteExistingContainer: IncompleteExistingContainers
+    incompleteInboundContainer: IncompleteInboundContainers
     yp_out_of_range: list[tuple[str,str,int,int]]
     container_coords_invalid: list[Container]
     total_yp: int
@@ -15,8 +18,8 @@ class BadYardData:
     def __init__(self, total_params: int, total_containers: int):
         self.overlapping_containers = {}
         self.anomalous_stacks = []
-        self.incompleteExistingContainer = IncompleteContainers()
-        self.incompleteInboundContainer = IncompleteContainers()
+        self.incompleteExistingContainer = IncompleteExistingContainers()
+        self.incompleteInboundContainer = IncompleteInboundContainers()
         self.yp_out_of_range = []
         self.container_coords_invalid = []
         self.total_yp = total_params

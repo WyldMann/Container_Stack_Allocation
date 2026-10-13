@@ -1,7 +1,11 @@
 import unittest
 from unittest.mock import Mock, call
 
-from entities import Container, IncompleteContainers
+from entities import (
+    Container,
+    IncompleteExistingContainers,
+    IncompleteInboundContainers,
+)
 from entities.yard import Yard
 from presenter import BadDataPresenter
 
@@ -25,6 +29,10 @@ class ContainerInputValidationTests(unittest.TestCase):
         yard = Yard([self.block], container_input=[record])
         self.assertEqual(record, original)
         self.assertTrue(yard.bad_data.anyBadData())
+        self.assertIsInstance(
+            yard.bad_data.incompleteExistingContainer,
+            IncompleteExistingContainers,
+        )
         self.assertEqual(yard.bad_data.getTotalIncompleteExisting(), 1)
         self.assertEqual(yard.bad_data.getTotalContainers(), 1)
         self.assertEqual(yard.containers, {})
@@ -74,7 +82,7 @@ class ContainerInputValidationTests(unittest.TestCase):
         )
 
     def test_completeness_check_does_not_record_or_modify_container(self):
-        collection = IncompleteContainers()
+        collection = IncompleteExistingContainers()
         container = Container(**(self.record | {"CONTSIZE": "45"}))
         original_coords = container.getCoordsStrTuple()
 
@@ -86,7 +94,7 @@ class ContainerInputValidationTests(unittest.TestCase):
         self.assertEqual(container.getContSize(), "45")
 
     def test_validation_records_rejections_and_leaves_complete_inputs_out(self):
-        collection = IncompleteContainers()
+        collection = IncompleteExistingContainers()
         incomplete = Container(**(self.record | {"CONTSIZE": "45"}))
         complete = Container(**self.record)
 
@@ -135,22 +143,23 @@ class ContainerInputValidationTests(unittest.TestCase):
                     if key not in ("BRANCH", "BLOK", "ROW", "SLOT", "TIER")
                 } | {"CONTSIZE": size}
                 container = Container(**record)
-                collection = IncompleteContainers()
+                inbound = IncompleteInboundContainers()
+                existing = IncompleteExistingContainers()
 
-                self.assertTrue(collection.isInboundComplete(container))
-                self.assertFalse(collection.isExistingComplete(container))
-                self.assertTrue(collection.validateInboundAndRecord(container))
-                self.assertFalse(collection)
+                self.assertTrue(inbound.isInboundComplete(container))
+                self.assertTrue(inbound.validateInboundAndRecord(container))
+                self.assertFalse(inbound)
                 self.assertEqual(container.getCoordsStr(), [""] * 5)
 
-                self.assertFalse(collection.validateExistingAndRecord(container))
-                self.assertIs(collection.containers[0], container)
+                self.assertFalse(existing.isExistingComplete(container))
+                self.assertFalse(existing.validateExistingAndRecord(container))
+                self.assertIs(existing.containers[0], container)
 
     def test_incomplete_inbound_is_recorded(self):
         for changes in ({"CONTNO": ""}, {"CONTSIZE": "45"}):
             with self.subTest(changes=changes):
                 container = Container(**(self.record | changes))
-                collection = IncompleteContainers()
+                collection = IncompleteInboundContainers()
 
                 self.assertFalse(
                     collection.validateInboundAndRecord(container)
@@ -160,6 +169,10 @@ class ContainerInputValidationTests(unittest.TestCase):
 
     def test_inbound_helpers_keep_existing_and_inbound_errors_separate(self):
         yard = self.assert_rejected(self.record | {"CONTSIZE": "45"})
+        self.assertIsInstance(
+            yard.bad_data.incompleteInboundContainer,
+            IncompleteInboundContainers,
+        )
         inbound = Container(**(self.record | {
             "CONTNO": "INBOUND", "CONTSIZE": "45",
         }))
