@@ -87,46 +87,46 @@ class YardPresenter(Presenter):
 class BadDataPresenter(Presenter):
 
     # ----- primitives -----
-    def printOverlappingContainers(self,overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]) -> None:
+    def printOverlappingContainers(self, baddata: BadYardData) -> None:
         self.out("\nOverlapping Containers:")
-        for coords, containers in overlapping_containers.items():
+        for coords, containers in baddata.getOverlappingContainers().items():
             self.out(coords, [str(x) for x in containers])
 
-    def printContainerCoordsInvalid(self, container_coords_invalid: list[Container]) -> None:
+    def printContainerCoordsInvalid(self, baddata: BadYardData) -> None:
         self.out("\nContainer Coordinates Invalid:")
-        for x in container_coords_invalid:
+        for x in baddata.getContainerCoordsInvalid():
             self.out(x.getId(), x.getCoordsStr())
 
-    def printYPOutOfRange(self, yp_out_of_range: list[tuple[str,str,int,int]]) -> None:
+    def printYPOutOfRange(self, baddata: BadYardData) -> None:
         self.out("\nYard Planning Out of Range:")
-        for yp_item in yp_out_of_range:
+        for yp_item in baddata.getYPOutOfRange():
             self.out("param_id:",yp_item[0],"block_id:",yp_item[1],"row:",yp_item[2] + 1, "slot:",  yp_item[3] + 1)
 
-    def printAnomalousStacks(self, anomalous_stacks: list[Stack]) -> None:
+    def printAnomalousStacks(self, baddata: BadYardData) -> None:
         self.out("\nAnomalous stacks:")
-        for x in anomalous_stacks:
+        for x in baddata.getAnomalousStacks():
             self.out(x.getCoords(), end = " ")
             self.outStackContents(x)
 
-    def printIncompleteExistingContainers(self, incomplete_existing_containers: list[Container]) -> None:
+    def printIncompleteExistingContainers(self, baddata: BadYardData) -> None:
         self.out("\nIncomplete Existing Containers:")
-        for x in incomplete_existing_containers:
+        for x in baddata.getIncompleteExistingContainers():
             self.out(x.getId(), x.getCoordsStr(), "CONTSIZE:", repr(x.getContSize()))
 
-    def printIncompleteInboundContainers(self, incomplete_inbound_containers: list[Container]) -> None:
+    def printIncompleteInboundContainers(self, baddata: BadYardData) -> None:
         self.out("\nIncomplete Inbound Containers:")
-        for x in incomplete_inbound_containers:
+        for x in baddata.getIncompleteInboundContainers():
             self.out(x.getId(), "CONTSIZE:", repr(x.getContSize()))
 
-    def printDuplicateExistingContainerIDs(self, containers: list[Container]) -> None:
+    def printDuplicateExistingContainerIDs(self, baddata: BadYardData) -> None:
         self.out("\nDuplicate Existing Container IDs:")
-        for container in containers:
+        for container in baddata.getDuplicateExistingContainerIDs():
             self.out(container.getId(), container.getCoordsStr(),
                      "CONTSIZE:", repr(container.getContSize()))
 
-    def printDuplicateInboundContainerIDs(self, containers: list[Container]) -> None:
+    def printDuplicateInboundContainerIDs(self, baddata: BadYardData) -> None:
         self.out("\nDuplicate Inbound Container IDs:")
-        for container in containers:
+        for container in baddata.getDuplicateInboundContainerIDs():
             self.out(container.getId(), "CONTSIZE:", repr(container.getContSize()))
 
     # ----- composites -----
@@ -136,18 +136,18 @@ class BadDataPresenter(Presenter):
             self.out("No Bad Data")
             return
 
-        if baddata.yp_out_of_range: self.printYPOutOfRange(baddata.yp_out_of_range)
+        if baddata.yp_out_of_range: self.printYPOutOfRange(baddata)
         if baddata.incompleteExistingContainer:
-            self.printIncompleteExistingContainers(baddata.getIncompleteExistingContainers())
+            self.printIncompleteExistingContainers(baddata)
         if baddata.incompleteInboundContainer:
-            self.printIncompleteInboundContainers(baddata.getIncompleteInboundContainers())
+            self.printIncompleteInboundContainers(baddata)
         if baddata.duplicateExistingContainerIDs:
-            self.printDuplicateExistingContainerIDs(baddata.getDuplicateExistingContainerIDs())
+            self.printDuplicateExistingContainerIDs(baddata)
         if baddata.duplicateInboundContainerIDs:
-            self.printDuplicateInboundContainerIDs(baddata.getDuplicateInboundContainerIDs())
-        if baddata.container_coords_invalid: self.printContainerCoordsInvalid(baddata.container_coords_invalid)
-        if baddata.overlapping_containers != {}: self.printOverlappingContainers(baddata.overlapping_containers)
-        if baddata.anomalous_stacks: self.printAnomalousStacks(baddata.anomalous_stacks)
+            self.printDuplicateInboundContainerIDs(baddata)
+        if baddata.container_coords_invalid: self.printContainerCoordsInvalid(baddata)
+        if baddata.overlapping_containers != {}: self.printOverlappingContainers(baddata)
+        if baddata.anomalous_stacks: self.printAnomalousStacks(baddata)
 
     def printStats(self,baddata: BadYardData) -> None:
         if not baddata.anyBadData():
