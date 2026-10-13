@@ -63,52 +63,52 @@ class PlacementFeasibility:
             self,
             container: Container,
             block: Block,
-            row: int,
-            slot: int,
+            row_index: int,
+            slot_index: int,
             *,
             loader_policy: LoaderBorderAccessPolicy | None = None,
             loader_context: LoaderAccessContext | None = None,
     ) -> FeasibilityResult:
-        size = container.getContSize()
-        if size not in ("20", "40"):
+        container_size = container.getContSize()
+        if container_size not in ("20", "40"):
             return FeasibilityResult(
                 rejection_reason=RejectionReason.UNSUPPORTED_SIZE
             )
 
         rows = block.getSlots()
-        if not 0 <= row < len(rows):
+        if not 0 <= row_index < len(rows):
             return FeasibilityResult(
                 rejection_reason=RejectionReason.INVALID_LOCATION
             )
 
-        slots = rows[row]
-        if not 0 <= slot < len(slots):
+        slots = rows[row_index]
+        if not 0 <= slot_index < len(slots):
             return FeasibilityResult(
                 rejection_reason=RejectionReason.INVALID_LOCATION
             )
 
-        stack = slots[slot]
-        tier = stack.availableTierInt()
-        if tier is None:
+        stack = slots[slot_index]
+        tier_index = stack.availableTierInt()
+        if tier_index is None:
             return FeasibilityResult(
                 rejection_reason=RejectionReason.STACK_UNAVAILABLE
             )
 
-        reason = self._check_size_compatibility(size, stack)
+        reason = self._check_size_compatibility(container_size, stack)
         if reason is not None:
             return FeasibilityResult(rejection_reason=reason)
 
-        if size == "40":
-            reason = self._check_forty_foot_pair(slots, stack, slot, tier)
+        if container_size == "40":
+            reason = self._check_forty_foot_pair(slots, stack, slot_index, tier_index)
             if reason is not None:
                 return FeasibilityResult(rejection_reason=reason)
 
         proposal = PlacementProposal(
             block_id=block.getId(),
-            row=row,
-            slot=slot,
-            tier=tier,
-            size=size,
+            row_index=row_index,
+            slot_index=slot_index,
+            tier_index=tier_index,
+            container_size=container_size,
         )
 
         if self.settings.stacking_safety:
@@ -144,12 +144,12 @@ class PlacementFeasibility:
 
     @staticmethod
     def _check_size_compatibility(
-            size: str,
+            container_size: str,
             stack: Stack,
     ) -> RejectionReason | None:
         mode = stack.getMode()
-        if (size == "40" and mode == "20") or (
-                size == "20" and mode == "40"
+        if (container_size == "40" and mode == "20") or (
+                container_size == "20" and mode == "40"
         ):
             return RejectionReason.SIZE_CONFLICT
         return None
@@ -158,17 +158,17 @@ class PlacementFeasibility:
     def _check_forty_foot_pair(
             slots: list[Stack],
             stack: Stack,
-            slot: int,
-            tier: int,
+            slot_index: int,
+            tier_index: int,
     ) -> RejectionReason | None:
-        if stack.getEven() or slot == 0:
+        if stack.getEven() or slot_index == 0:
             return RejectionReason.INVALID_FORTY_FOOT_ANCHOR
 
-        partner = slots[slot - 1]
+        partner = slots[slot_index - 1]
         if partner.getMode() not in ("0", "40"):
             return RejectionReason.PARTNER_SIZE_CONFLICT
 
-        if partner.availableTierInt() != tier:
+        if partner.availableTierInt() != tier_index:
             return RejectionReason.PARTNER_TIER_MISMATCH
 
         return None
@@ -178,6 +178,6 @@ class PlacementFeasibility:
             block: Block,
             proposal: PlacementProposal,
     ) -> RejectionReason | None:
-        if not block.safeMaxima(proposal.row, proposal.slot):
+        if not block.safeMaxima(proposal.row_index, proposal.slot_index):
             return RejectionReason.UNSAFE_STACKING
         return None

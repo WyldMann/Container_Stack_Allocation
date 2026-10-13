@@ -8,16 +8,16 @@ from entities.yard import Yard
 class YardFeasibilityIntegrationTests(unittest.TestCase):
     def test_candidate_selection_applies_feasibility(self):
         yard = Yard(
-            yard_block_input=[
+            yard_blocks_input=[
                 {
-                    'BRANCH_ID': 'B',
-                    'BLOCK_ID': 'A',
-                    'BLOCK_CODE': 'A',
-                    'SLOT_COUNT': '2',
-                    'ROW_COUNT': '1',
-                    'MAX_TIER': '5',
-                    'POS_X': '0',
-                    'POS_Y': '0',
+                    'branch_id': 'B',
+                    'block_id': 'A',
+                    'block_code': 'A',
+                    'slot_count': '2',
+                    'row_count': '1',
+                    'max_tier': '5',
+                    'pos_x': '0',
+                    'pos_y': '0',
                 }
             ]
         )
@@ -25,7 +25,7 @@ class YardFeasibilityIntegrationTests(unittest.TestCase):
         # A positive parameter score lets feasible stacks become candidates.
         parameter = Mock()
         parameter.evaluate.return_value = 1.0
-        yard.params['P'] = parameter
+        yard.parameters['P'] = parameter
 
         for stack in yard.getBlockByID('A').getSlots()[0]:
             stack.addParameter(parameter)
@@ -48,22 +48,22 @@ class YardFeasibilityIntegrationTests(unittest.TestCase):
 class UnplannedStackSelectionTests(unittest.TestCase):
     def setUp(self):
         self.yard = Yard([dict(
-            BRANCH_ID='B', BLOCK_ID='A', BLOCK_CODE='A',
-            SLOT_COUNT='3', ROW_COUNT='1', MAX_TIER='1',
-            POS_X='0', POS_Y='0',
+            branch_id='B', block_id='A', block_code='A',
+            slot_count='3', row_count='1', max_tier='1',
+            pos_x='0', pos_y='0',
         )])
         self.container = SimpleNamespace(getContSize=lambda: '20')
 
-    def add_parameter(self, slot, score):
+    def add_parameter(self, slot_index, score):
         parameter = Mock()
         parameter.evaluate.return_value = score
-        self.yard.params[str(parameter)] = parameter
-        self.yard.getStack('A', 0, slot).addParameter(parameter)
+        self.yard.parameters[str(parameter)] = parameter
+        self.yard.getStack('A', 0, slot_index).addParameter(parameter)
 
     def test_unplanned_stacks_are_candidates_with_zero_score(self):
         score, _, coordinates = self.yard.findCoordsCandidates(self.container)
         self.assertEqual(score, 0)
-        self.assertEqual(coordinates, [('A', 0, slot, 0) for slot in range(3)])
+        self.assertEqual(coordinates, [('A', 0, slot_index, 0) for slot_index in range(3)])
 
     def test_zero_scoring_parameterized_stacks_are_excluded(self):
         self.add_parameter(1, 0)

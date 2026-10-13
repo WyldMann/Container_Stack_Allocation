@@ -26,10 +26,10 @@ class ValidatedInboundPlacement:
 class BadYardData:
     overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]
     anomalous_stacks: list[Stack]
-    incompleteExistingContainer: IncompleteExistingContainers
-    incompleteInboundContainer: IncompleteInboundContainers
-    duplicateExistingContainerIDs: list[Container]
-    duplicateInboundContainerIDs: list[Container]
+    incomplete_existing_container: IncompleteExistingContainers
+    incomplete_inbound_container: IncompleteInboundContainers
+    duplicate_existing_container_i_ds: list[Container]
+    duplicate_inbound_container_i_ds: list[Container]
     yp_out_of_range: list[tuple[str,str,int,int]]
     container_coords_invalid: list[Container]
     total_yp: int
@@ -38,17 +38,17 @@ class BadYardData:
     def __init__(self, total_params: int, total_containers: int):
         self.overlapping_containers = {}
         self.anomalous_stacks = []
-        self.incompleteExistingContainer = IncompleteExistingContainers()
-        self.incompleteInboundContainer = IncompleteInboundContainers()
-        self.duplicateExistingContainerIDs = []
-        self.duplicateInboundContainerIDs = []
+        self.incomplete_existing_container = IncompleteExistingContainers()
+        self.incomplete_inbound_container = IncompleteInboundContainers()
+        self.duplicate_existing_container_i_ds = []
+        self.duplicate_inbound_container_i_ds = []
         self.yp_out_of_range = []
         self.container_coords_invalid = []
         self.total_yp = total_params
         self.total_containers = total_containers
 
     def validateInboundAndRecord(self, container: Container) -> bool:
-        return self.incompleteInboundContainer.validateInboundAndRecord(
+        return self.incomplete_inbound_container.validateInboundAndRecord(
             container
         )
 
@@ -88,7 +88,7 @@ class BadYardData:
     def validateInboundDestination(
         self,
         container,
-        coords,
+        coordinates,
         *,
         blocks_by_id,
         registered_containers,
@@ -97,9 +97,9 @@ class BadYardData:
     ) -> PlacementProposal:
         self.validateInboundContainer(container, registered_containers)
         try:
-            block_id, row, slot, tier = coords
+            block_id, row_index, slot_index, tier_index = coordinates
             proposal = PlacementProposal(
-                block_id, row, slot, tier, container.getContSize()
+                block_id, row_index, slot_index, tier_index, container.getContSize()
             )
             block = blocks_by_id[block_id]
         except (TypeError, ValueError, KeyError) as error:
@@ -109,8 +109,8 @@ class BadYardData:
         result = feasibility.evaluate(
             container,
             block,
-            row,
-            slot,
+            row_index,
+            slot_index,
             loader_policy=loader_policies.get(block_id),
         )
         if not result.feasible:
@@ -128,22 +128,22 @@ class BadYardData:
                 raise PlacementRejected(
                     "Repair floating containers before placing here."
                 )
-            if not stack.isTierEmpty(tier):
+            if not stack.isTierEmpty(tier_index):
                 raise PlacementRejected("A destination tier is already occupied.")
         return proposal
 
     @staticmethod
     def validateEquipmentMove(
         equipment,
-        coords,
+        coordinates,
         *,
         blocks_by_id,
         master_loaders,
     ) -> tuple[Block, Block]:
         if not isinstance(equipment, (RTG, Loader)):
             raise TypeError("Unsupported equipment type.")
-        block_id, row, slot = coords
-        if type(row) is not int or type(slot) is not int:
+        block_id, row_index, slot_index = coordinates
+        if type(row_index) is not int or type(slot_index) is not int:
             raise ValueError("Equipment row and slot must be integers.")
 
         source = blocks_by_id[equipment.getCoords()[0]]
@@ -167,7 +167,7 @@ class BadYardData:
     def validateInboundPlacement(
         self,
         container,
-        coords,
+        coordinates,
         equipment,
         *,
         blocks_by_id,
@@ -178,7 +178,7 @@ class BadYardData:
     ) -> ValidatedInboundPlacement:
         proposal = self.validateInboundDestination(
             container,
-            coords,
+            coordinates,
             blocks_by_id=blocks_by_id,
             registered_containers=registered_containers,
             feasibility=feasibility,
@@ -187,7 +187,7 @@ class BadYardData:
         try:
             source, destination = self.validateEquipmentMove(
                 equipment,
-                (proposal.block_id, proposal.row, proposal.slot),
+                (proposal.block_id, proposal.row_index, proposal.slot_index),
                 blocks_by_id=blocks_by_id,
                 master_loaders=master_loaders,
             )
@@ -202,13 +202,13 @@ class BadYardData:
     def getOverlappingContainers(self) -> dict[tuple[str,str,str,str,str],set[Container]]:
         return self.overlapping_containers
     def getIncompleteExistingContainers(self) -> list[Container]:
-        return self.incompleteExistingContainer.containers
+        return self.incomplete_existing_container.containers
     def getIncompleteInboundContainers(self) -> list[Container]:
-        return self.incompleteInboundContainer.containers
+        return self.incomplete_inbound_container.containers
     def getDuplicateExistingContainerIDs(self) -> list[Container]:
-        return self.duplicateExistingContainerIDs
+        return self.duplicate_existing_container_i_ds
     def getDuplicateInboundContainerIDs(self) -> list[Container]:
-        return self.duplicateInboundContainerIDs
+        return self.duplicate_inbound_container_i_ds
     def getYPOutOfRange(self) -> list[tuple[str,str,int,int]]:
         return self.yp_out_of_range
     def getContainerCoordsInvalid(self) -> list[Container]:
@@ -221,13 +221,13 @@ class BadYardData:
     def getTotalOverlapping(self) -> int:
         return len(self.overlapping_containers)
     def getTotalIncompleteExisting(self) -> int:
-        return len(self.incompleteExistingContainer)
+        return len(self.incomplete_existing_container)
     def getTotalIncompleteInbound(self) -> int:
-        return len(self.incompleteInboundContainer)
+        return len(self.incomplete_inbound_container)
     def getTotalDuplicateExistingContainerIDs(self) -> int:
-        return len(self.duplicateExistingContainerIDs)
+        return len(self.duplicate_existing_container_i_ds)
     def getTotalDuplicateInboundContainerIDs(self) -> int:
-        return len(self.duplicateInboundContainerIDs)
+        return len(self.duplicate_inbound_container_i_ds)
     def getTotalYPOutOfRange(self) -> int:
         return len(self.yp_out_of_range)
     def getTotalContainerCoordsInvalid(self) -> int:
@@ -236,21 +236,21 @@ class BadYardData:
         return len(self.anomalous_stacks)
 
     def addOverlappingContainer(self, container1: Container, container2: Container):
-        coords = container1.getCoordsStrTuple()
-        if coords in self.overlapping_containers:
-            self.overlapping_containers[coords].update({container1, container2})
+        coordinates = container1.getCoordsStrTuple()
+        if coordinates in self.overlapping_containers:
+            self.overlapping_containers[coordinates].update({container1, container2})
         else:
-            self.overlapping_containers[coords] = {container1, container2}
+            self.overlapping_containers[coordinates] = {container1, container2}
     def addIncompleteExistingContainer(self, container: Container):
-        self.incompleteExistingContainer.addContainer(container)
+        self.incomplete_existing_container.addContainer(container)
     def addIncompleteInboundContainer(self, container: Container):
-        self.incompleteInboundContainer.addContainer(container)
+        self.incomplete_inbound_container.addContainer(container)
     def addDuplicateExistingContainerID(self, container: Container) -> None:
-        if not any(item is container for item in self.duplicateExistingContainerIDs):
-            self.duplicateExistingContainerIDs.append(container)
+        if not any(item is container for item in self.duplicate_existing_container_i_ds):
+            self.duplicate_existing_container_i_ds.append(container)
     def addDuplicateInboundContainerID(self, container: Container) -> None:
-        if not any(item is container for item in self.duplicateInboundContainerIDs):
-            self.duplicateInboundContainerIDs.append(container)
+        if not any(item is container for item in self.duplicate_inbound_container_i_ds):
+            self.duplicate_inbound_container_i_ds.append(container)
     def addYPOutOfRange(self,yp_item: tuple[str,str,int,int]):
         self.yp_out_of_range.append(yp_item)
     def addContainerCoordsInvalid(self,container:Container):
@@ -261,10 +261,10 @@ class BadYardData:
     def anyBadData(self) -> bool:
         return bool(
             self.yp_out_of_range
-            or self.incompleteExistingContainer
-            or self.incompleteInboundContainer
-            or self.duplicateExistingContainerIDs
-            or self.duplicateInboundContainerIDs
+            or self.incomplete_existing_container
+            or self.incomplete_inbound_container
+            or self.duplicate_existing_container_i_ds
+            or self.duplicate_inbound_container_i_ds
             or self.anomalous_stacks
             or self.container_coords_invalid
             or self.overlapping_containers

@@ -28,9 +28,9 @@ class LoaderBorderAccessPolicy:
 class ReceivingLocation:
     """A potential destination, identified by its anchor and size."""
 
-    row: int
-    slot: int
-    size: str
+    row_index: int
+    slot_index: int
+    container_size: str
 
 
 @dataclass(frozen=True)
@@ -60,7 +60,7 @@ class LoaderAccessRule:
 
         self._validate_proposal(block, proposal)
         reachable_before = self._reachable_ground(block, policy)
-        destination = ReceivingLocation(proposal.row, proposal.slot, proposal.size)
+        destination = ReceivingLocation(proposal.row_index, proposal.slot_index, proposal.container_size)
         destination_accessible = self._can_serve(
             block, destination, reachable_before, policy
         )
@@ -84,8 +84,8 @@ class LoaderAccessRule:
             isolated_locations=tuple(
                 sorted(
                     isolated,
-                    key=lambda isolatedLocation: (
-                        isolatedLocation.row, isolatedLocation.slot, isolatedLocation.size
+                    key=lambda isolated_location: (
+                        isolated_location.row_index, isolated_location.slot_index, isolated_location.container_size
                     ),
                 )
             ),
@@ -98,16 +98,16 @@ class LoaderAccessRule:
             raise ValueError("Proposal belongs to a different block.")
 
         rows = block.getSlots()
-        for _, row, slot in proposal.footprint:
-            if not 0 <= row < len(rows):
+        for _, row_index, slot_index in proposal.footprint:
+            if not 0 <= row_index < len(rows):
                 raise ValueError("Proposal row is outside the block.")
-            if not 0 <= slot < len(rows[row]):
+            if not 0 <= slot_index < len(rows[row_index]):
                 raise ValueError("Proposal slot is outside the block.")
 
-            stack = rows[row][slot]
-            if stack.getMode() not in ("0", proposal.size):
+            stack = rows[row_index][slot_index]
+            if stack.getMode() not in ("0", proposal.container_size):
                 raise ValueError("Proposal conflicts with stack mode.")
-            if stack.availableTierInt() != proposal.tier:
+            if stack.availableTierInt() != proposal.tier_index:
                 raise ValueError(
                     "Proposal tier must be the next available tier."
                 )
@@ -115,15 +115,15 @@ class LoaderAccessRule:
     @staticmethod
     def _is_ground(
             block: Block,
-            row: int,
-            slot: int,
+            row_index: int,
+            slot_index: int,
             proposal: PlacementProposal | None,
     ) -> bool:
         if proposal is not None and proposal.occupies(
-                (block.getId(), row, slot)
+                (block.getId(), row_index, slot_index)
         ):
             return False
-        stack = block.getStack(row, slot)
+        stack = block.getStack(row_index, slot_index)
         # Removed slots are clear ground, never receiving destinations.
         return stack.getMode() == "X" or stack.occupancy() == 0
 
@@ -137,26 +137,26 @@ class LoaderAccessRule:
         reachable: set[Position] = set()
         queue: deque[Position] = deque()
 
-        for row, slots in enumerate(rows):
-            for slot in range(len(slots)):
+        for row_index, slots in enumerate(rows):
+            for slot_index in range(len(slots)):
                 on_entry_border = (
-                        (policy.above and row == 0)
-                        or (policy.below and row == len(rows) - 1)
-                        or (policy.left and slot == 0)
-                        or (policy.right and slot == len(slots) - 1)
+                        (policy.above and row_index == 0)
+                        or (policy.below and row_index == len(rows) - 1)
+                        or (policy.left and slot_index == 0)
+                        or (policy.right and slot_index == len(slots) - 1)
                 )
                 if on_entry_border and self._is_ground(
-                        block, row, slot, proposal
+                        block, row_index, slot_index, proposal
                 ):
-                    position = (row, slot)
+                    position = (row_index, slot_index)
                     reachable.add(position)
                     queue.append(position)
 
         while queue:
-            row, slot = queue.popleft()
+            row_index, slot_index = queue.popleft()
             for next_row, next_slot in (
-                    (row - 1, slot), (row + 1, slot),
-                    (row, slot - 1), (row, slot + 1),
+                    (row_index - 1, slot_index), (row_index + 1, slot_index),
+                    (row_index, slot_index - 1), (row_index, slot_index + 1),
             ):
                 if not 0 <= next_row < len(rows):
                     continue
@@ -173,19 +173,19 @@ class LoaderAccessRule:
     @staticmethod
     def _stack_state(
             block: Block,
-            row: int,
-            slot: int,
+            row_index: int,
+            slot_index: int,
             proposal: PlacementProposal | None,
     ) -> tuple[str, int | None]:
         """Return mode and next available tier for the chosen state."""
-        stack = block.getStack(row, slot)
+        stack = block.getStack(row_index, slot_index)
         if proposal is not None and proposal.occupies(
-                (block.getId(), row, slot)
+                (block.getId(), row_index, slot_index)
         ):
             next_tier = proposal.resulting_height
             if next_tier >= stack.getMaxTier():
                 next_tier = None
-            return proposal.size, next_tier
+            return proposal.container_size, next_tier
         return stack.getMode(), stack.availableTierInt()
 
     def _receiving_locations(
@@ -194,19 +194,19 @@ class LoaderAccessRule:
             proposal: PlacementProposal | None = None,
     ) -> set[ReceivingLocation]:
         locations: set[ReceivingLocation] = set()
-        for row, slots in enumerate(block.getSlots()):
-            for slot in range(len(slots)):
-                mode, tier = self._stack_state(block, row, slot, proposal)
-                if tier is None:
+        for row_index, slots in enumerate(block.getSlots()):
+            for slot_index in range(len(slots)):
+                mode, tier_index = self._stack_state(block, row_index, slot_index, proposal)
+                if tier_index is None:
                     continue
                 if mode in ("0", "20"):
-                    locations.add(ReceivingLocation(row, slot, "20"))
-                if slot % 2 == 1 and mode in ("0", "40"):
+                    locations.add(ReceivingLocation(row_index, slot_index, "20"))
+                if slot_index % 2 == 1 and mode in ("0", "40"):
                     partner_mode, partner_tier = self._stack_state(
-                        block, row, slot - 1, proposal
+                        block, row_index, slot_index - 1, proposal
                     )
-                    if partner_mode in ("0", "40") and partner_tier == tier:
-                        locations.add(ReceivingLocation(row, slot, "40"))
+                    if partner_mode in ("0", "40") and partner_tier == tier_index:
+                        locations.add(ReceivingLocation(row_index, slot_index, "40"))
         return locations
 
     @staticmethod
@@ -218,10 +218,10 @@ class LoaderAccessRule:
     ) -> bool:
         row_count = len(block.getSlots())
         working_slots = (
-            (location.slot,) if location.size == "20"
-            else (location.slot - 1, location.slot)
+            (location.slot_index,) if location.container_size == "20"
+            else (location.slot_index - 1, location.slot_index)
         )
-        for working_row in (location.row - 1, location.row + 1):
+        for working_row in (location.row_index - 1, location.row_index + 1):
             # Slot borders provide entry, but not direct service.
             if working_row == -1:
                 if policy.above:
@@ -231,7 +231,7 @@ class LoaderAccessRule:
                 if policy.below:
                     return True
                 continue
-            if all((working_row, slot) in reachable for slot in working_slots):
+            if all((working_row, slot_index) in reachable for slot_index in working_slots):
                 return True
         return False
 

@@ -6,44 +6,44 @@ from .container import Container
 
 @dataclass
 class CandidateEvaluation:
-    coords: tuple[str, int, int, int]
-    param: list[Parameter]
+    coordinates: tuple[str, int, int, int]
+    parameters: list[Parameter]
     delta_weight: float | None
     equipment: Equipment
     distance: float
     size_cluster_multiplier: float
-    eval_score: float
+    evaluation_score: float
 
     def getStrParameter(self) -> list[str]:
-        return [str(x) for x in self.param]
+        return [str(x) for x in self.parameters]
 
 @dataclass
 class AssignResult:
     container: Container
-    cont_scores: dict[str,float]
-    max_param_score: float
-    sortedCandidateEvaluations: list[CandidateEvaluation]
+    parameter_scores: dict[str,float]
+    max_parameter_score: float
+    sorted_candidate_evaluations: list[CandidateEvaluation]
 
     def getBestCandidate(self) -> CandidateEvaluation:
-        return self.sortedCandidateEvaluations[0]
+        return self.sorted_candidate_evaluations[0]
     def getBestCoordinate(self) -> tuple[str, int, int, int]:
-        return self.getBestCandidate().coords
+        return self.getBestCandidate().coordinates
     def getStrParameters(self) -> list[list[str]]:
-        return [x.getStrParameter() for x in self.sortedCandidateEvaluations]
+        return [x.getStrParameter() for x in self.sorted_candidate_evaluations]
     def getParameterNames(self) -> list[list[str]]:
-        return [[parameter.getName() for parameter in candidate.param]
-                for candidate in self.sortedCandidateEvaluations]
+        return [[parameter.getName() for parameter in candidate.parameters]
+                for candidate in self.sorted_candidate_evaluations]
     def getBestEquipment(self) -> Equipment:
         return self.getBestCandidate().equipment
     def getCoords(self) -> list[tuple[str,int,int,int]]:
-        return [x.coords for x in self.sortedCandidateEvaluations]
+        return [x.coordinates for x in self.sorted_candidate_evaluations]
     def getDeltaWeights(self) -> list[float|None]:
-        return [x.delta_weight for x in self.sortedCandidateEvaluations]
+        return [x.delta_weight for x in self.sorted_candidate_evaluations]
     def getEquipments(self) -> list[Equipment]:
-        return [x.equipment for x in self.sortedCandidateEvaluations]
+        return [x.equipment for x in self.sorted_candidate_evaluations]
     def getDistances(self) -> list[float]:
-        return [x.distance for x in self.sortedCandidateEvaluations]
+        return [x.distance for x in self.sorted_candidate_evaluations]
     def getScores(self) -> list[float]:
-        return [x.eval_score for x  in self.sortedCandidateEvaluations]
+        return [x.evaluation_score for x  in self.sorted_candidate_evaluations]
     def getSizeClusterMultipliers(self) -> list[float]:
-        return [x.size_cluster_multiplier for x in self.sortedCandidateEvaluations]
+        return [x.size_cluster_multiplier for x in self.sorted_candidate_evaluations]

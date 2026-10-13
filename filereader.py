@@ -92,11 +92,11 @@ class FileReader:
                         "too few values."
                     )
 
-                row = {
+                record = {
                     field: source_row[source] if source is not None else ""
                     for field, source in columns.items()
                 }
-                yield reader.line_num, row
+                yield reader.line_num, record
 
     def _coordinate(self, value: str, field: str, line: int) -> int:
         try:
@@ -109,15 +109,15 @@ class FileReader:
 
     def readCSV(self) -> list[dict[str, str]]:
         return [
-            {key: strGeneralize(value) for key, value in row.items()}
-            for _, row in self._iter_rows()
+            {key: strGeneralize(value) for key, value in record.items()}
+            for _, record in self._iter_rows()
         ]
 
     @staticmethod
     def group_rows(data):
         result = {}
-        for row in data:
-            result.setdefault(row[0], []).append(tuple(row[1:]))
+        for record in data:
+            result.setdefault(record[0], []).append(tuple(record[1:]))
         return result
 
     def readCSVTuple(self) -> list[Any]:
@@ -132,56 +132,56 @@ class ContainerFileReader(FileReader):
 
 
 class RemovedSlotsFileReader(FileReader):
-    required_fields = ("BLOCK_ID", "ROW_NO", "SLOT_NO")
+    required_fields = ("block_id", "row_no", "slot_no")
 
     def readCSVTuple(self) -> list[tuple[str, int, int]]:
         return [
             (
-                strGeneralize(row["BLOCK_ID"]),
-                self._coordinate(row["ROW_NO"], "ROW_NO", line),
-                self._coordinate(row["SLOT_NO"], "SLOT_NO", line),
+                strGeneralize(record["block_id"]),
+                self._coordinate(record["row_no"], "row_no", line),
+                self._coordinate(record["slot_no"], "slot_no", line),
             )
-            for line, row in self._iter_rows()
+            for line, record in self._iter_rows()
         ]
 
 
 class YardPlanningFileReader(FileReader):
-    required_fields = ("PARAM_ID", "BLOCK_ID", "ROW", "SLOT")
+    required_fields = ("parameter_id", "block_id", "row_no", "slot_no")
 
     def readCSVTuple(self) -> list[tuple[str, str, int, int]]:
         return [
             (
-                strGeneralize(row["PARAM_ID"]),
-                strGeneralize(row["BLOCK_ID"]),
-                self._coordinate(row["ROW"], "ROW", line),
-                self._coordinate(row["SLOT"], "SLOT", line),
+                strGeneralize(record["parameter_id"]),
+                strGeneralize(record["block_id"]),
+                self._coordinate(record["row_no"], "row_no", line),
+                self._coordinate(record["slot_no"], "slot_no", line),
             )
-            for line, row in self._iter_rows()
+            for line, record in self._iter_rows()
         ]
 
 
 class EquipmentMoveFileReader(FileReader):
-    required_fields = ("ALAT", "BRANCH", "BLOK", "ROW", "SLOT", "MOVE_DATE")
+    required_fields = ("equipment_code", "branch_id", "block_code", "row_no", "slot_no", "move_time")
 
     def readCSVDict(self) -> dict[str, tuple[str, str, int, int]]:
         result = {}
-        for line, row in self._iter_rows():
+        for line, record in self._iter_rows():
             try:
-                dt = parse_datetime(row["MOVE_DATE"])
+                dt = parse_datetime(record["move_time"])
             except (ValueError, OverflowError, OSError) as error:
                 raise CSVInputError(
                     f"{self.file_path}, line {line}: "
-                    f"invalid MOVE_DATE {row['MOVE_DATE']!r}."
+                    f"invalid MOVE_DATE {record['move_time']!r}."
                 ) from error
 
-            coords = (
-                row["BRANCH"],
-                row["BLOK"],
-                self._coordinate(row["ROW"], "ROW", line),
-                self._coordinate(row["SLOT"], "SLOT", line),
+            coordinates = (
+                record["branch_id"],
+                record["block_code"],
+                self._coordinate(record["row_no"], "row_no", line),
+                self._coordinate(record["slot_no"], "slot_no", line),
             )
-            id_ = row["ALAT"]
-            if id_ not in result or dt > result[id_][0]:
-                result[id_] = (dt, coords)
+            equipment_code = record["equipment_code"]
+            if equipment_code not in result or dt > result[equipment_code][0]:
+                result[equipment_code] = (dt, coordinates)
 
-        return {id_: coords for id_, (_, coords) in result.items()}
+        return {equipment_code: coordinates for equipment_code, (_, coordinates) in result.items()}

@@ -9,22 +9,22 @@ from entities.equipment import Equipment, Loader, RTG
 class PlacementAtomicityTests(unittest.TestCase):
     def setUp(self):
         self.record = dict(
-            CONTNO="NEW", PRINCIPAL="", DMG_FLAG="", FULLMT="",
-            CONTSIZE="20", CONT_GRADE="", POL="", POD="", VESSEL="",
-            VOYAGE="", WEIGHT="", MOVE_TIME="",
+            container_id="NEW", principal="", container_condition="", container_fill="",
+            container_size="20", container_grade="", pol="", pod="", vessel="",
+            voyage="", weight="", move_time="",
         )
 
-    def make_yard(self, size="20"):
+    def make_yard(self, container_size="20"):
         yard = Yard([
-            dict(BRANCH_ID="BR", BLOCK_ID=block_id, BLOCK_CODE=block_id,
-                 SLOT_COUNT="4", ROW_COUNT="2", MAX_TIER="3",
-                 POS_X="0", POS_Y="0")
+            dict(branch_id="BR", block_id=block_id, block_code=block_id,
+                 slot_count="4", row_count="2", max_tier="3",
+                 pos_x="0", pos_y="0")
             for block_id in ("A", "B")
         ])
         loader = Loader("L", ("A", 0, 0))
-        yard.masterLoader.append(loader)
+        yard.master_loaders.append(loader)
         yard.getBlockByID("A").addLoader(loader)
-        return yard, loader, Container(**(self.record | {"CONTSIZE": size}))
+        return yard, loader, Container(**(self.record | {"container_size": container_size}))
 
     def snapshot(self, yard, container, equipment):
         return (
@@ -33,11 +33,11 @@ class PlacementAtomicityTests(unittest.TestCase):
                   for item in yard.containers.values()),
             container.getCoordsStrTuple(),
             equipment.getCoords(),
-            tuple(yard.masterLoader),
+            tuple(yard.master_loaders),
             tuple(
                 (block.getId(), tuple(block.getLoaders()), block.getRTG(),
                  tuple((stack.getMode(), tuple(stack.getContainers()))
-                       for row in block.getSlots() for stack in row))
+                       for row_stacks in block.getSlots() for stack in row_stacks))
                 for block in yard.blocks_by_id.values()
             ),
         )
@@ -48,28 +48,28 @@ class PlacementAtomicityTests(unittest.TestCase):
         before = self.snapshot(yard, container, equipment)
         registry = yard.containers
         coordinates = container.getCoordsStr()
-        master_loaders = yard.masterLoader
+        master_loaders = yard.master_loaders
         loaders = [block.getLoaders() for block in yard.blocks_by_id.values()]
         contents = [stack.getContainers()
                     for block in yard.blocks_by_id.values()
-                    for row in block.getSlots() for stack in row]
+                    for row_stacks in block.getSlots() for stack in row_stacks]
         with self.assertRaises(error):
             action()
         self.assertEqual(self.snapshot(yard, container, equipment), before)
         self.assertIs(yard.containers, registry)
         self.assertIs(container.getCoordsStr(), coordinates)
-        self.assertIs(yard.masterLoader, master_loaders)
+        self.assertIs(yard.master_loaders, master_loaders)
         for block, original in zip(yard.blocks_by_id.values(), loaders):
             self.assertIs(block.getLoaders(), original)
         for stack, original in zip(
             (stack for block in yard.blocks_by_id.values()
-             for row in block.getSlots() for stack in row), contents,
+             for row_stacks in block.getSlots() for stack in row_stacks), contents,
         ):
             self.assertIs(stack.getContainers(), original)
 
     def test_incomplete_containers_are_rejected_at_every_entry_point_and_recorded_once(self):
-        for changes in ({"CONTNO": None}, {"CONTNO": "  "}, {"CONTNO": 123},
-                        {"CONTSIZE": "45"}):
+        for changes in ({"container_id": None}, {"container_id": "  "}, {"container_id": 123},
+                        {"container_size": "45"}):
             with self.subTest(changes=changes):
                 yard, equipment, _ = self.make_yard()
                 container = Container(**(self.record | changes))
@@ -102,19 +102,19 @@ class PlacementAtomicityTests(unittest.TestCase):
         )
 
     def test_invalid_coordinates_and_removed_destinations_preserve_state(self):
-        for size in ("20", "40"):
-            for coords in (("B", -1, 1, 0), ("B", 0, -1, 0), ("B", 0, 1, -1),
+        for container_size in ("20", "40"):
+            for coordinates in (("B", -1, 1, 0), ("B", 0, -1, 0), ("B", 0, 1, -1),
                            ("B", 0, 1, 3), ("B", True, 1, 0), ("B", 0, 1.5, 0),
                            ("UNKNOWN", 0, 1, 0)):
-                with self.subTest(size=size, coords=coords):
-                    yard, equipment, container = self.make_yard(size)
+                with self.subTest(container_size=container_size, coordinates=coordinates):
+                    yard, equipment, container = self.make_yard(container_size)
                     self.assert_unchanged_on_failure(
                         yard, container, equipment,
-                        lambda: yard.placeContainer(container, coords, equipment),
+                        lambda: yard.placeContainer(container, coordinates, equipment),
                     )
-            for removed_slot in ((1,) if size == "20" else (0, 1)):
-                with self.subTest(size=size, removed_slot=removed_slot):
-                    yard, equipment, container = self.make_yard(size)
+            for removed_slot in ((1,) if container_size == "20" else (0, 1)):
+                with self.subTest(container_size=container_size, removed_slot=removed_slot):
+                    yard, equipment, container = self.make_yard(container_size)
                     yard.getStack("B", 0, removed_slot).makeVoid()
                     self.assert_unchanged_on_failure(
                         yard, container, equipment,
@@ -135,9 +135,9 @@ class PlacementAtomicityTests(unittest.TestCase):
     def test_stale_assignment_with_occupied_partner_is_rejected(self):
         yard, equipment, container = self.make_yard("40")
         result = yard.assignContainer(container)
-        block_id, row, slot, tier = result.getBestCoordinate()
-        other = Container(**(self.record | {"CONTNO": "OTHER"}))
-        yard.addContainerByCoords(other, (block_id, row, slot - 1, tier))
+        block_id, row_index, slot_index, tier_index = result.getBestCoordinate()
+        other = Container(**(self.record | {"container_id": "OTHER"}))
+        yard.addContainerByCoords(other, (block_id, row_index, slot_index - 1, tier_index))
         self.assert_unchanged_on_failure(
             yard, container, equipment,
             lambda: yard.placeContainerWithAssignResult(result),
@@ -146,7 +146,7 @@ class PlacementAtomicityTests(unittest.TestCase):
     def test_stale_assignment_is_rejected_when_next_tier_changes(self):
         yard, equipment, container = self.make_yard("40")
         result = yard.assignContainer(container)
-        other = Container(**(self.record | {"CONTNO": "OTHER", "CONTSIZE": "40"}))
+        other = Container(**(self.record | {"container_id": "OTHER", "container_size": "40"}))
         yard.addContainerByCoords(other, result.getBestCoordinate())
         self.assert_unchanged_on_failure(
             yard, container, equipment,
@@ -158,8 +158,8 @@ class PlacementAtomicityTests(unittest.TestCase):
         stack = yard.getStack("B", 0, 1)
         original = stack.addContainer
 
-        def fail_after_write(item, tier):
-            original(item, tier)
+        def fail_after_write(item, tier_index):
+            original(item, tier_index)
             raise RuntimeError("Injected failure after second slot write")
 
         with patch.object(stack, "addContainer", side_effect=fail_after_write):
@@ -171,7 +171,7 @@ class PlacementAtomicityTests(unittest.TestCase):
 
     def test_failure_after_registry_update_restores_registry_and_coordinates(self):
         yard, equipment, container = self.make_yard()
-        other = Container(**(self.record | {"CONTNO": "OTHER"}))
+        other = Container(**(self.record | {"container_id": "OTHER"}))
         yard.addContainerByCoords(other, ("A", 0, 3, 0))
         original = yard.addContainer
 
@@ -197,8 +197,8 @@ class PlacementAtomicityTests(unittest.TestCase):
                     destination = "A"
                 original = yard.moveEquipment
 
-                def fail_after_move(item, coords):
-                    original(item, coords)
+                def fail_after_move(item, coordinates):
+                    original(item, coordinates)
                     raise RuntimeError("Injected failure after equipment move")
 
                 with patch.object(yard, "moveEquipment", side_effect=fail_after_move):
@@ -214,8 +214,8 @@ class PlacementAtomicityTests(unittest.TestCase):
         stack = yard.getStack("B", 0, 1)
         original = stack.addContainer
 
-        def fail_after_write(item, tier):
-            original(item, tier)
+        def fail_after_write(item, tier_index):
+            original(item, tier_index)
             raise RuntimeError("Injected direct placement failure")
 
         with patch.object(stack, "addContainer", side_effect=fail_after_write):
@@ -226,34 +226,34 @@ class PlacementAtomicityTests(unittest.TestCase):
             )
 
     def test_successful_placements_update_complete_footprint_and_equipment(self):
-        for size in ("20", "40"):
+        for container_size in ("20", "40"):
             for destination in ("A", "B"):
-                with self.subTest(size=size, destination=destination):
-                    yard, equipment, container = self.make_yard(size)
+                with self.subTest(container_size=container_size, destination=destination):
+                    yard, equipment, container = self.make_yard(container_size)
                     yard.placeContainer(container, (destination, 0, 1, 0), equipment)
                     self.assertEqual(yard.containers, {"NEW": container})
                     self.assertEqual(container.getCoordsStrTuple(),
                                      ("BR", destination, "1", "2", "1"))
                     self.assertEqual(equipment.getCoords(), (destination, 0, 1))
-                    self.assertEqual(yard.masterLoader, [equipment])
+                    self.assertEqual(yard.master_loaders, [equipment])
                     self.assertEqual(yard.getBlockByID(destination).getLoaders(),
                                      [equipment])
                     if destination == "B":
                         self.assertEqual(yard.getBlockByID("A").getLoaders(), [])
-                    for slot in ((1,) if size == "20" else (0, 1)):
-                        stack = yard.getStack(destination, 0, slot)
+                    for slot_index in ((1,) if container_size == "20" else (0, 1)):
+                        stack = yard.getStack(destination, 0, slot_index)
                         self.assertIs(stack.getContainer(0), container)
-                        self.assertEqual(stack.getMode(), size)
+                        self.assertEqual(stack.getMode(), container_size)
 
     def test_stack_rejections_preserve_mode_and_contents(self):
         yard, equipment, container = self.make_yard("40")
         stack = yard.getStack("B", 0, 1)
-        stack.addContainer(Container(**(self.record | {"CONTNO": "OTHER"})), 0)
-        for tier in (0, -1, 3, True):
-            with self.subTest(tier=tier):
+        stack.addContainer(Container(**(self.record | {"container_id": "OTHER"})), 0)
+        for tier_index in (0, -1, 3, True):
+            with self.subTest(tier_index=tier_index):
                 self.assert_unchanged_on_failure(
                     yard, container, equipment,
-                    lambda: stack.addContainer(container, tier),
+                    lambda: stack.addContainer(container, tier_index),
                     (TypeError, ValueError),
                 )
         stack.makeVoid()
@@ -269,7 +269,7 @@ class PlacementAtomicityTests(unittest.TestCase):
             container, ("B", 0, 1, 0), equipment,
             blocks_by_id=yard.blocks_by_id,
             registered_containers=yard.containers,
-            master_loaders=yard.masterLoader,
+            master_loaders=yard.master_loaders,
             feasibility=yard.feasibility,
             loader_policies=yard.loader_access_policies,
         )

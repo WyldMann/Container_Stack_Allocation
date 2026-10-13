@@ -17,9 +17,9 @@ class LoaderBorderAccessPolicy:
 class ReceivingLocation:
     """A potential destination, identified by its anchor and size."""
 
-    row: int
-    slot: int
-    size: str
+    row_index: int
+    slot_index: int
+    container_size: str
 
 
 @dataclass(frozen=True)

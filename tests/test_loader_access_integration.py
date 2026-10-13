@@ -11,27 +11,27 @@ from entities.yard import Yard
 class LoaderAccessIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.yard = Yard(
-            yard_block_input=[
+            yard_blocks_input=[
                 {
-                    'BRANCH_ID': 'B', 'BLOCK_ID': 'A', 'BLOCK_CODE': 'A',
-                    'SLOT_COUNT': '4', 'ROW_COUNT': '3', 'MAX_TIER': '3',
-                    'POS_X': '0', 'POS_Y': '0',
+                    'branch_id': 'B', 'block_id': 'A', 'block_code': 'A',
+                    'slot_count': '4', 'row_count': '3', 'max_tier': '3',
+                    'pos_x': '0', 'pos_y': '0',
                 }
             ]
         )
         self.block = self.yard.getBlockByID('A')
         self.container = SimpleNamespace(getContSize=lambda: '20')
-        for row in range(3):
-            for slot in range(4):
-                self.set_stack(row, slot, count=3)
+        for row_index in range(3):
+            for slot_index in range(4):
+                self.set_stack(row_index, slot_index, count=3)
 
-    def set_stack(self, row, slot, size='20', count=0):
-        stack = self.block.getStack(row, slot)
+    def set_stack(self, row_index, slot_index, container_size='20', count=0):
+        stack = self.block.getStack(row_index, slot_index)
         stack.containers = [None] * stack.getMaxTier()
         stack.setMode('0')
-        container = SimpleNamespace(getContSize=lambda: size)
-        for tier in range(count):
-            stack.addContainer(container, tier)
+        container = SimpleNamespace(getContSize=lambda: container_size)
+        for tier_index in range(count):
+            stack.addContainer(container, tier_index)
 
     def test_inaccessible_destination_is_rejected(self):
         self.set_stack(1, 1)
@@ -88,7 +88,7 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
         self.set_stack(0, 1)
         parameter = Mock()
         parameter.evaluate.return_value = 1.0
-        self.yard.params['P'] = parameter
+        self.yard.parameters['P'] = parameter
         self.block.getStack(0, 1).addParameter(parameter)
         _, _, coordinates = self.yard.findCoordsCandidates(self.container)
         self.assertEqual(coordinates, [('A', 0, 1, 0)])
@@ -103,7 +103,7 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
         self.set_stack(1, 1, count=1)
         parameter = Mock()
         parameter.evaluate.return_value = 1.0
-        self.yard.params['P'] = parameter
+        self.yard.parameters['P'] = parameter
         self.block.getStack(0, 1).addParameter(parameter)
         score, _, coordinates = self.yard.findCoordsCandidates(self.container)
         # Reject the positive-scoring placement that would isolate its neighbour,

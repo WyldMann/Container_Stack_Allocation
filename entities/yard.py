@@ -16,25 +16,25 @@ from .bad_yard_data import BadYardData
 # in this scope, there's only one yard
 class Yard:
     blocks_by_id: dict[str,Block]
-    blocks_by_code: dict[tuple[str,str], Block] # {(BRANCH_ID,BLOCK_CODE): Block}
-    params: dict[str,Parameter]
+    blocks_by_code: dict[tuple[str,str], Block] # {(branch_id, block_code): Block}
+    parameters: dict[str,Parameter]
     bad_data: BadYardData
     containers: dict[str,Container]
     dummy: DummyContainer
-    masterLoader: list[Loader]
+    master_loaders: list[Loader]
     model: HeuristicModel
 
     #block and parameters input: {"args":"values",...}
-    #removed_slots_input: [(block_id, row_no, slot_no),...]
-    #yard planning: {param_id:[(block_id, row_no, slot_no),[...],...],...}
+    #removed_slots_input: [(block_id, row_index, slot_index),...]
+    #yard planning: {parameter_id:[(block_id, row_index, slot_index),...],...}
     def __init__(self,
-                 yard_block_input: list[dict[str,str]],
+                 yard_blocks_input: list[dict[str,str]],
                  removed_slots_input: list[tuple[str,int,int]] | None = None,
                  parameters_input: list[dict[str,str]] | None = None,
                  yard_planning_input: dict[str,list[tuple[str,int,int]]] | None = None,
-                 container_input: list[dict[str,str]] | None = None,
-                 master_equipment: list[dict[str,str]] | None = None,
-                 equipment_history:dict[str,tuple[str,str,int,int]] | None = None,
+                 containers_input: list[dict[str,str]] | None = None,
+                 equipment_input: list[dict[str,str]] | None = None,
+                 equipment_locations_input:dict[str,tuple[str,str,int,int]] | None = None,
                  loader_access_policies: dict[str, LoaderBorderAccessPolicy] | None = None,
                  feasibility_settings: FeasibilitySettings | None = None,
                  heuristic_settings: HeuristicSettings | None = None) -> None:
@@ -42,9 +42,9 @@ class Yard:
         if removed_slots_input is None: removed_slots_input = []
         if parameters_input is None: parameters_input = []
         if yard_planning_input is None: yard_planning_input = {}
-        if container_input is None: container_input = []
-        if master_equipment is None: master_equipment = []
-        if equipment_history is None: equipment_history = {}
+        if containers_input is None: containers_input = []
+        if equipment_input is None: equipment_input = []
+        if equipment_locations_input is None: equipment_locations_input = {}
 
         self.feasibility = PlacementFeasibility(settings=feasibility_settings)
         self.model = HeuristicModel(settings=heuristic_settings)
@@ -52,14 +52,14 @@ class Yard:
             dict(loader_access_policies) if loader_access_policies is not None else {}
         )
 
-        self.bad_data = BadYardData(sum(len(yp) for yp in yard_planning_input.values()),len(container_input))
+        self.bad_data = BadYardData(sum(len(yp) for yp in yard_planning_input.values()),len(containers_input))
         self.dummy = DummyContainer()
 
         # initialize blocks and constructs 2 dict attributes to keep track
         self.blocks_by_id = {}
         self.blocks_by_code = {}
 
-        for inp in yard_block_input:
+        for inp in yard_blocks_input:
             block = Block(**inp)
             self.blocks_by_id[block.getId()] = block
             self.blocks_by_code[(block.getBranch(),block.getCode())] = block
@@ -69,31 +69,31 @@ class Yard:
             self.blocks_by_id[removed_slot[0]].getStack(removed_slot[1],removed_slot[2]).makeVoid()
 
         # assigns equipments
-        self.masterLoader = []
-        self.inputEquipment(master_equipment, equipment_history)
+        self.master_loaders = []
+        self.inputEquipment(equipment_input, equipment_locations_input)
 
         # initializes and stores Parameters
-        self.params = {}
+        self.parameters = {}
         for inp in parameters_input:
-            param_id = Parameter(**inp)
-            self.params[param_id.getId()] = param_id
+            parameter = Parameter(**inp)
+            self.parameters[parameter.getId()] = parameter
 
         # add parameters into stacks
-        for param_id in yard_planning_input:
-            parameter = self.params[param_id]
-            #stack: (block_id, row_no, slot_no)
-            for stack in yard_planning_input[param_id]:
+        for parameter_id in yard_planning_input:
+            parameter = self.parameters[parameter_id]
+            #stack: (block_id, row_index, slot_index)
+            for stack in yard_planning_input[parameter_id]:
                 try:
                     self.blocks_by_id[stack[0]].getStack(stack[1],stack[2]).addParameter(parameter)
                 except IndexError:
-                    self.bad_data.addYPOutOfRange((param_id,stack[0],stack[1],stack[2]))
+                    self.bad_data.addYPOutOfRange((parameter_id,stack[0],stack[1],stack[2]))
 
         # input containers already in the batabase
         self.containers = {}
-        for inp in container_input:
-            container = Container(**({"CONTSIZE": ""} | inp))
+        for inp in containers_input:
+            container = Container(**({"container_size": ""} | inp))
 
-            if not self.bad_data.incompleteExistingContainer.validateExistingAndRecord(
+            if not self.bad_data.incomplete_existing_container.validateExistingAndRecord(
                 container
             ):
                 continue
@@ -103,47 +103,47 @@ class Yard:
         self.anomalyCheck()
 
     def inputEquipment(self,
-                       master_equipment: list[dict[str,str]],
-                       history_move: dict[str,tuple[str,str,int,int]]):
-        for equipment in master_equipment:
+                       equipment_input: list[dict[str,str]],
+                       equipment_locations_input: dict[str,tuple[str,str,int,int]]):
+        for equipment in equipment_input:
 
-            equipment_code = equipment["EQUIPMENT_CODE"]
+            equipment_code = equipment["equipment_code"]
 
             try:
-                coordsBranchCode = history_move[equipment_code]
-                block = self.getBlockByCode(coordsBranchCode[0], coordsBranchCode[1])
-                coords = (self.getBlockIDbyCode(coordsBranchCode[0], coordsBranchCode[1]),
-                          coordsBranchCode[2],
-                          coordsBranchCode[3])
+                location_by_code = equipment_locations_input[equipment_code]
+                block = self.getBlockByCode(location_by_code[0], location_by_code[1])
+                coordinates = (self.getBlockIDbyCode(location_by_code[0], location_by_code[1]),
+                          location_by_code[2],
+                          location_by_code[3])
             except KeyError:
                 continue
 
             # if equipment is RTG
             # assumes there's only one RTG
-            if equipment["EQUIPMENT_TYPE"] == "RTG":
-                block.rtg = RTG(equipment_code, coords)
+            if equipment["equipment_type"] == "RTG":
+                block.rtg = RTG(equipment_code, coordinates)
 
             # if equipment is loader
             # can be more than one loader in one block
             else:
-                loader = Loader(equipment_code, coords)
+                loader = Loader(equipment_code, coordinates)
                 block.addLoader(loader)
-                self.masterLoader.append(loader)
+                self.master_loaders.append(loader)
 
-    def loadersByBlockID(self,blockID: str) -> list[Loader]:
-        return [loader for loader in self.masterLoader if loader.getCoords()[0] == blockID]
+    def loadersByBlockID(self,block_id: str) -> list[Loader]:
+        return [loader for loader in self.master_loaders if loader.getCoords()[0] == block_id]
 
     def getBadData(self) -> BadYardData: return self.bad_data
 
     def getBlockByID(self, block_id:str) -> Block:
         return self.blocks_by_id[block_id]
-    def getBlockByCode(self, branch:str,code:str) -> Block:
-        return self.blocks_by_code[(branch,code)]
+    def getBlockByCode(self, branch_id:str,block_code:str) -> Block:
+        return self.blocks_by_code[(branch_id,block_code)]
 
     def getBlockBranchCodebyID(self, block_id:str) -> tuple[str,str]:
         return self.blocks_by_id[block_id].getBranch(), self.blocks_by_id[block_id].getCode()
-    def getBlockIDbyCode(self, block_branch:str,block_code:str) -> str:
-        return self.blocks_by_code[(block_branch,block_code)].getId()
+    def getBlockIDbyCode(self, branch_id:str,block_code:str) -> str:
+        return self.blocks_by_code[(branch_id,block_code)].getId()
 
     def addContainerInput(self, container: Container):
         def reject():
@@ -156,48 +156,48 @@ class Yard:
             ):
                 return
 
-            branch, code, row, slot, tier = container.getCoordsInt()
-            block = self.getBlockByCode(branch, code)
+            branch_id, block_code, row_index, slot_index, tier_index = container.getCoordsInt()
+            block = self.getBlockByCode(branch_id, block_code)
             rows = block.getSlots()
-            size = container.getContSize()
+            container_size = container.getContSize()
 
-            if size not in ("20", "40"):
+            if container_size not in ("20", "40"):
                 reject()
                 return
 
-            if not 0 <= row < len(rows):
+            if not 0 <= row_index < len(rows):
                 reject()
                 return
 
-            if not 0 <= slot < len(rows[row]):
+            if not 0 <= slot_index < len(rows[row_index]):
                 reject()
                 return
 
             # A 40-foot container uses an odd zero-based anchor and
             # the immediately preceding slot.
-            if size == "40":
-                if slot == 0 or slot % 2 == 0:
+            if container_size == "40":
+                if slot_index == 0 or slot_index % 2 == 0:
                     reject()
                     return
-                slots = (slot, slot - 1)
+                slots = (slot_index, slot_index - 1)
             else:
-                slots = (slot,)
+                slots = (slot_index,)
 
-            stacks = [block.getStack(row, index) for index in slots]
+            stacks = [block.getStack(row_index, index) for index in slots]
 
             for stack in stacks:
-                if not 0 <= tier < stack.getMaxTier():
+                if not 0 <= tier_index < stack.getMaxTier():
                     reject()
                     return
 
-                if stack.getMode() not in ("0", size):
+                if stack.getMode() not in ("0", container_size):
                     reject()
                     return
 
                 # Floating containers may exist in a stack whose mode
                 # is still "0", so inspect its contents as well.
                 if any(
-                    item is not None and item.getContSize() != size
+                    item is not None and item.getContSize() != container_size
                     for item in stack.getContainers()
                 ):
                     reject()
@@ -209,12 +209,12 @@ class Yard:
 
         occupants: list[Container] = []
         for stack in stacks:
-            occupant = stack.getContainer(tier)
+            occupant = stack.getContainer(tier_index)
             if occupant is not None:
                 occupants.append(occupant)
 
         if occupants:
-            if size == "40":
+            if container_size == "40":
                 # Preserve existing containers, including when only
                 # the partner slot is occupied.
                 for existing in set(occupants):
@@ -228,7 +228,7 @@ class Yard:
                 return
 
             # Incoming 20-foot container wins on newer or equal time.
-            stacks[0].replaceContainer(container, tier)
+            stacks[0].replaceContainer(container, tier_index)
             del self.containers[existing.getId()]
             self.containers[container.getId()] = container
             self.bad_data.addOverlappingContainer(existing, container)
@@ -236,7 +236,7 @@ class Yard:
 
         # Every destination has passed validation and is empty.
         for stack in stacks:
-            stack.addContainer(container, tier)
+            stack.addContainer(container, tier_index)
 
         self.containers[container.getId()] = container
 
@@ -246,7 +246,7 @@ class Yard:
         proposal: PlacementProposal,
         movement: tuple[Equipment, Block, Block] | None = None,
     ) -> None:
-        stacks = [self.getStack(*coord) for coord in proposal.footprint]
+        stacks = [self.getStack(*coordinate) for coordinate in proposal.footprint]
         stack_before = [
             (stack, list(stack.getContainers()), stack.getMode())
             for stack in stacks
@@ -265,22 +265,22 @@ class Yard:
             equipment_snapshot = (
                 equipment,
                 equipment.getCoords(),
-                list(self.masterLoader),
+                list(self.master_loaders),
                 [(block, list(block.getLoaders())) for block in blocks.values()],
             )
 
         try:
             for stack in stacks:
-                stack.addContainer(container, proposal.tier)
+                stack.addContainer(container, proposal.tier_index)
             container.setCoordsInt(
                 self.getBlockBranchCodebyID(proposal.block_id)
-                + (proposal.row, proposal.slot, proposal.tier)
+                + (proposal.row_index, proposal.slot_index, proposal.tier_index)
             )
             self.addContainer(container)
             if movement is not None:
                 self.moveEquipment(
                     movement[0],
-                    (proposal.block_id, proposal.row, proposal.slot),
+                    (proposal.block_id, proposal.row_index, proposal.slot_index),
                 )
         except Exception:
             # Restore directly without calling update methods that may fail.
@@ -290,19 +290,19 @@ class Yard:
             self.containers.clear()
             self.containers.update(registry_before)
             coords_before[:] = coords_values_before
-            container.coordsStr = coords_before
+            container.coordinates_str = coords_before
             if equipment_snapshot is not None:
                 equipment, equipment_before, master_before, membership_before = equipment_snapshot
-                equipment.coords = equipment_before
-                self.masterLoader[:] = master_before
+                equipment.coordinates = equipment_before
+                self.master_loaders[:] = master_before
                 for block, loaders in membership_before:
                     block.loaders[:] = loaders
             raise
 
-    def addContainerByCoords(self, container, coords):
+    def addContainerByCoords(self, container, coordinates):
         proposal = self.bad_data.validateInboundDestination(
             container,
-            coords,
+            coordinates,
             blocks_by_id=self.blocks_by_id,
             registered_containers=self.containers,
             feasibility=self.feasibility,
@@ -328,84 +328,84 @@ class Yard:
         while len(self.bad_data.getAnomalousStacks()) != 0:
             self.bad_data.popAnomalousStack().anomalyDummyFill(self.dummy)
 
-    def distanceBetweenBlock(self, blockID1: str, blockID2: str) -> float:
-        block1 = self.blocks_by_id[blockID1]
-        block2 = self.blocks_by_id[blockID2]
+    def distanceBetweenBlock(self, first_block_id: str, second_block_id: str) -> float:
+        block1 = self.blocks_by_id[first_block_id]
+        block2 = self.blocks_by_id[second_block_id]
         return math.sqrt((block1.getPosX() - block2.getPosX()) ** 2 + (block1.getPosY() - block2.getPosY()) ** 2)
 
-    def getStack(self, blockID: str, row: int, slot:int) -> Stack:
-        return self.getBlockByID(blockID).getStack(row, slot)
+    def getStack(self, block_id: str, row_index: int, slot_index:int) -> Stack:
+        return self.getBlockByID(block_id).getStack(row_index, slot_index)
 
     def findCoordsCandidates(self, container: Container) -> tuple[float,dict[str,float],list[tuple[str,int,int,int]]]:
-        maxScore : float = 0
-        coordsCandidates : list[tuple[str,int,int,int]] = []
+        max_score : float = 0
+        candidate_coordinates : list[tuple[str,int,int,int]] = []
 
         #evaluate params first
-        contScores : dict[str,float] = {}
-        for param in self.params.values():
-            contScores[str(param)] = param.evaluate(container)
-        contScores = dict(sorted(contScores.items(), key=lambda item: item[1], reverse=True))
+        parameter_scores : dict[str,float] = {}
+        for parameter in self.parameters.values():
+            parameter_scores[str(parameter)] = parameter.evaluate(container)
+        parameter_scores = dict(sorted(parameter_scores.items(), key=lambda item: item[1], reverse=True))
 
         for block in self.blocks_by_id.values():
             loader_policy = self.loader_access_policies.get(block.getId())
             # This loop only evaluates candidates; no context survives a placement.
             loader_context = self.feasibility.prepare_loader_context(block, loader_policy)
-            for row, slots in enumerate(block.getSlots()):
-                for slot,stack in enumerate(slots):
+            for row_index, slots in enumerate(block.getSlots()):
+                for slot_index,stack in enumerate(slots):
 
                     # feasibility check
                     result = self.feasibility.evaluate(
-                        container, block, row, slot,
+                        container, block, row_index, slot_index,
                         loader_policy=loader_policy,
                         loader_context=loader_context,
                     )
-                    currentCoords = result.coordinates
-                    if currentCoords is None: continue
+                    current_coords = result.coordinates
+                    if current_coords is None: continue
 
                     # candidate scoring
-                    currentScore = max(
-                        (contScores[str(param)] for param in stack.getParameters()),
+                    current_score = max(
+                        (parameter_scores[str(parameter)] for parameter in stack.getParameters()),
                         default=0,
                     )
 
                     # if tie
-                    if maxScore == currentScore:
+                    if max_score == current_score:
                         # if container has no fulfillable parameters, put it in stacks with no parameters
-                        if maxScore == 0:
+                        if max_score == 0:
                             if not stack.getParameters():
-                                coordsCandidates.append(currentCoords)
+                                candidate_coordinates.append(current_coords)
                         # if container has fulfilabe parameters, stack is another candidate
                         else:
-                            coordsCandidates.append(currentCoords)
+                            candidate_coordinates.append(current_coords)
                     # if new stack with better higher parameter score is found, reset coordscandidates with new max parameter score
-                    elif maxScore < currentScore:
-                        maxScore = currentScore
-                        coordsCandidates = [currentCoords]
-        return maxScore,contScores,coordsCandidates
+                    elif max_score < current_score:
+                        max_score = current_score
+                        candidate_coordinates = [current_coords]
+        return max_score,parameter_scores,candidate_coordinates
 
     def assignContainer(self, container) -> AssignResult | None:
         self.bad_data.validateInboundContainer(container, self.containers)
-        maxScore, contScores, coordsCandidates = self.findCoordsCandidates(container)
-        if not coordsCandidates:
+        max_score, parameter_scores, candidate_coordinates = self.findCoordsCandidates(container)
+        if not candidate_coordinates:
             return None
         return AssignResult(
             container,
-            contScores,
-            maxScore,
-            self.bestCoordCandidate(container, coordsCandidates),
+            parameter_scores,
+            max_score,
+            self.bestCoordCandidate(container, candidate_coordinates),
         )
 
     def placeContainerWithAssignResult(self, result: AssignResult) -> None:
         self.placeContainer(result.container, result.getBestCoordinate(), result.getBestEquipment())
 
-    def placeContainer(self, container, coords, equipment):
+    def placeContainer(self, container, coordinates, equipment):
         validated = self.bad_data.validateInboundPlacement(
             container,
-            coords,
+            coordinates,
             equipment,
             blocks_by_id=self.blocks_by_id,
             registered_containers=self.containers,
-            master_loaders=self.masterLoader,
+            master_loaders=self.master_loaders,
             feasibility=self.feasibility,
             loader_policies=self.loader_access_policies,
         )
@@ -422,7 +422,7 @@ class Yard:
     def moveEquipment(
         self,
         equipment: Equipment,
-        coords: tuple[str, int, int],
+        coordinates: tuple[str, int, int],
     ) -> None:
         """Move registered equipment, including outside its block's storage grid.
 
@@ -431,56 +431,56 @@ class Yard:
         """
         source, destination = self.bad_data.validateEquipmentMove(
             equipment,
-            coords,
+            coordinates,
             blocks_by_id=self.blocks_by_id,
-            master_loaders=self.masterLoader,
+            master_loaders=self.master_loaders,
         )
-        block_id, row, slot = coords
+        block_id, row_index, slot_index = coordinates
         if source is destination:
-            equipment.inBlockMove(row, slot)
+            equipment.inBlockMove(row_index, slot_index)
         elif isinstance(equipment, Loader):
             source.removeLoader(equipment)
             destination.addLoader(equipment)
-            equipment.outBlockMove(block_id, row, slot)
+            equipment.outBlockMove(block_id, row_index, slot_index)
         else:
             raise ValueError("Only loaders can move between blocks.")
 
     # nearest equipment and its distance for a stack coord (without tier)
-    def nearestEquipmentDistance(self,blockID: str, row: int, slot: int) -> tuple[Equipment,float]:
-        block = self.getBlockByID(blockID)
+    def nearestEquipmentDistance(self,block_id: str, row_index: int, slot_index: int) -> tuple[Equipment,float]:
+        block = self.getBlockByID(block_id)
         # if no RTG is present use loaders
         if block.rtg is None:
             loaders = block.getLoaders()
             # if loader is present in block
             if loaders:
-                return  min(((loader,loader.inBlockDistance(row,slot)) for loader in loaders), key = lambda x : x[1])
+                return  min(((loader,loader.inBlockDistance(row_index,slot_index)) for loader in loaders), key = lambda x : x[1])
             # else find loader in the nearest block
             else:
-                return min(self.masterLoader, key = lambda loader: self.distanceBetweenBlock(blockID,loader.getCoordsStr()[0])),float("inf")
+                return min(self.master_loaders, key = lambda loader: self.distanceBetweenBlock(block_id,loader.getCoordsStr()[0])),float("inf")
         else:
-            return block.rtg, block.rtg.inBlockDistance(row, slot)
+            return block.rtg, block.rtg.inBlockDistance(row_index, slot_index)
 
     # returns deltaWeight, equipment, distance, multiplier, modelScore
     # attribute of candidateEvaluation other than coord and param
-    def modelEval(self, container:Container, coord: tuple[str,int,int,int]) -> tuple[float|None,Equipment,float,float,float]:
-        stack = self.getStack(coord[0],coord[1],coord[2])
-        deltaWeight = self.model.compareTopWeight(container,stack)
-        equipment, distance = self.nearestEquipmentDistance(coord[0],coord[1],coord[2])
-        multiplier = self.model.sizeCluster(container, self.getBlockByID(coord[0]), coord)
-        return (deltaWeight, equipment, distance, multiplier,
-                self.model.evaluate(deltaWeight, distance, multiplier))
+    def modelEval(self, container:Container, coordinate: tuple[str,int,int,int]) -> tuple[float|None,Equipment,float,float,float]:
+        stack = self.getStack(coordinate[0],coordinate[1],coordinate[2])
+        delta_weight = self.model.compareTopWeight(container,stack)
+        equipment, distance = self.nearestEquipmentDistance(coordinate[0],coordinate[1],coordinate[2])
+        multiplier = self.model.sizeCluster(container, self.getBlockByID(coordinate[0]), coordinate)
+        return (delta_weight, equipment, distance, multiplier,
+                self.model.evaluate(delta_weight, distance, multiplier))
 
     # returns a list of CandidateEvaluation with highest eval_score to lowest
-    def bestCoordCandidate(self,container, coordsCandidates: list[tuple[str,int,int,int]]) -> list[CandidateEvaluation]:
+    def bestCoordCandidate(self,container, candidate_coordinates: list[tuple[str,int,int,int]]) -> list[CandidateEvaluation]:
         # [(coord,eval_score)...] sorted from highest to lowest eval_score
-        sortedCandidateEvaluations = sorted(
-            [CandidateEvaluation(coord,
-                self.getStack(coord[0],coord[1],coord[2]).getParameters(),
-                                 *self.modelEval(container,coord)) for coord in coordsCandidates],
-            key = lambda candidate: candidate.eval_score,
+        sorted_candidate_evaluations = sorted(
+            [CandidateEvaluation(coordinate,
+                self.getStack(coordinate[0],coordinate[1],coordinate[2]).getParameters(),
+                                 *self.modelEval(container,coordinate)) for coordinate in candidate_coordinates],
+            key = lambda candidate: candidate.evaluation_score,
             reverse = True
         )
-        return sortedCandidateEvaluations
+        return sorted_candidate_evaluations
 
     def assign_and_place(self,container) -> AssignResult | None:
         result = self.assignContainer(container)

@@ -146,20 +146,20 @@ class ConfiguredHeuristicModelTests(unittest.TestCase):
 
     def test_custom_clustering_constants_and_zero_controls(self):
         block = Block(
-            BRANCH_ID='B', BLOCK_ID='A', BLOCK_CODE='A', SLOT_COUNT='4',
-            ROW_COUNT='3', MAX_TIER='3', POS_X='0', POS_Y='0',
+            branch_id='B', block_id='A', block_code='A', slot_count='4',
+            row_count='3', max_tier='3', pos_x='0', pos_y='0',
         )
         container = SimpleNamespace(getContSize=lambda: '20')
         block.getStack(1, 1).addContainer(container, 0)
-        coord = ('A', 1, 2, 0)
+        coordinate = ('A', 1, 2, 0)
         model = HeuristicModel(HeuristicSettings(
             size_cluster_radius=1, hl_size_cluster_distance=1,
             size_cluster_prior=4, size_cluster_bias=2,
         ))
-        self.assertAlmostEqual(model.sizeCluster(container, block, coord), 2 ** (2 * 0.5 / 4.5))
+        self.assertAlmostEqual(model.sizeCluster(container, block, coordinate), 2 ** (2 * 0.5 / 4.5))
         for settings in (HeuristicSettings(size_cluster_radius=0), HeuristicSettings(size_cluster_bias=0)):
             with self.subTest(settings=settings):
-                self.assertEqual(HeuristicModel(settings).sizeCluster(container, block, coord), 1)
+                self.assertEqual(HeuristicModel(settings).sizeCluster(container, block, coordinate), 1)
 
     def test_yards_have_independent_configured_models(self):
         first = Yard([], heuristic_settings=HeuristicSettings(w_delta_weight=20))
@@ -167,7 +167,7 @@ class ConfiguredHeuristicModelTests(unittest.TestCase):
         self.assertIsNot(first.model, second.model)
         self.assertEqual(first.model.evaluate(0, 0), 200)
         self.assertEqual(second.model.evaluate(0, 0), 100)
-        first.model.W_DELTA_WEIGHT = 30
+        first.model.w_delta_weight = 30
         self.assertEqual(second.model.evaluate(0, 0), 100)
 
     def test_file_settings_reach_yard_model(self):

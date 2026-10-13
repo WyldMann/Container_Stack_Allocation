@@ -44,11 +44,11 @@ class PlacementProposalTests(unittest.TestCase):
         self.assertFalse(proposal.occupies(("A", 2, 2)))
 
     def test_resulting_height_uses_zero_based_tier(self):
-        for tier in (0, 1, 4):
-            with self.subTest(tier=tier):
-                proposal = PlacementProposal("A", 0, 1, tier, "40")
+        for tier_index in (0, 1, 4):
+            with self.subTest(tier_index=tier_index):
+                proposal = PlacementProposal("A", 0, 1, tier_index, "40")
 
-                self.assertEqual(proposal.resulting_height, tier + 1)
+                self.assertEqual(proposal.resulting_height, tier_index + 1)
 
     def test_invalid_block_ids_are_rejected(self):
         for block_id in ("", " ", "\t\n", None, 123):
@@ -57,20 +57,20 @@ class PlacementProposalTests(unittest.TestCase):
                     PlacementProposal(block_id, 0, 1, 0, "40")
 
     def test_unsupported_sizes_are_rejected(self):
-        for size in ("", "45", "invalid", 20, 40, None):
-            with self.subTest(size=size):
+        for container_size in ("", "45", "invalid", 20, 40, None):
+            with self.subTest(container_size=container_size):
                 with self.assertRaises(ValueError):
-                    PlacementProposal("A", 0, 1, 0, size)
+                    PlacementProposal("A", 0, 1, 0, container_size)
 
     def test_negative_coordinates_are_rejected(self):
-        for field in ("row", "slot", "tier"):
+        for field in ("row_index", "slot_index", "tier_index"):
             with self.subTest(field=field):
                 values = {
                     "block_id": "A",
-                    "row": 0,
-                    "slot": 1,
-                    "tier": 0,
-                    "size": "40",
+                    "row_index": 0,
+                    "slot_index": 1,
+                    "tier_index": 0,
+                    "container_size": "40",
                 }
                 values[field] = -1
 
@@ -78,15 +78,15 @@ class PlacementProposalTests(unittest.TestCase):
                     PlacementProposal(**values)
 
     def test_non_integer_coordinates_are_rejected(self):
-        for field in ("row", "slot", "tier"):
+        for field in ("row_index", "slot_index", "tier_index"):
             for value in (1.0, "1", None, True, False):
                 with self.subTest(field=field, value=value):
                     values = {
                         "block_id": "A",
-                        "row": 0,
-                        "slot": 1,
-                        "tier": 0,
-                        "size": "40",
+                        "row_index": 0,
+                        "slot_index": 1,
+                        "tier_index": 0,
+                        "container_size": "40",
                     }
                     values[field] = value
 
@@ -94,19 +94,19 @@ class PlacementProposalTests(unittest.TestCase):
                         PlacementProposal(**values)
 
     def test_even_forty_foot_anchors_are_rejected(self):
-        for slot in (0, 2, 4):
-            with self.subTest(slot=slot):
+        for slot_index in (0, 2, 4):
+            with self.subTest(slot_index=slot_index):
                 with self.assertRaises(ValueError):
-                    PlacementProposal("A", 0, slot, 0, "40")
+                    PlacementProposal("A", 0, slot_index, 0, "40")
 
     def test_twenty_foot_accepts_either_slot_parity(self):
-        for slot in (0, 1, 2, 3):
-            with self.subTest(slot=slot):
-                proposal = PlacementProposal("A", 0, slot, 0, "20")
+        for slot_index in (0, 1, 2, 3):
+            with self.subTest(slot_index=slot_index):
+                proposal = PlacementProposal("A", 0, slot_index, 0, "20")
 
                 self.assertEqual(
                     proposal.footprint,
-                    (("A", 0, slot),),
+                    (("A", 0, slot_index),),
                 )
 
     def test_fields_cannot_be_reassigned(self):
@@ -114,10 +114,10 @@ class PlacementProposalTests(unittest.TestCase):
 
         for field, value in (
             ("block_id", "B"),
-            ("row", 3),
-            ("slot", 5),
-            ("tier", 2),
-            ("size", "20"),
+            ("row_index", 3),
+            ("slot_index", 5),
+            ("tier_index", 2),
+            ("container_size", "20"),
         ):
             with self.subTest(field=field):
                 with self.assertRaises(FrozenInstanceError):

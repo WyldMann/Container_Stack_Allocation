@@ -12,41 +12,41 @@ class FeasibilityTests(unittest.TestCase):
     def setUp(self):
         self.feasibility = PlacementFeasibility()
         self.block = Block(
-            BRANCH_ID='B', BLOCK_ID='A', BLOCK_CODE='A', SLOT_COUNT='4',
-            ROW_COUNT='3', MAX_TIER='5', POS_X='0', POS_Y='0',
+            branch_id='B', block_id='A', block_code='A', slot_count='4',
+            row_count='3', max_tier='5', pos_x='0', pos_y='0',
         )
         # These tests isolate size, pairing, and stacking safety from loader access.
         self.block.setRTG(RTG('RTG-1', ('A', 0, 0)))
 
-    def fill(self, row, slot, size, count):
-        container = SimpleNamespace(getContSize=lambda: size)
-        for tier in range(count):
-            self.block.getStack(row, slot).addContainer(container, tier)
+    def fill(self, row_index, slot_index, container_size, count):
+        container = SimpleNamespace(getContSize=lambda: container_size)
+        for tier_index in range(count):
+            self.block.getStack(row_index, slot_index).addContainer(container, tier_index)
 
-    def evaluate(self, size, row=0, slot=1):
+    def evaluate(self, container_size, row_index=0, slot_index=1):
         return self.feasibility.evaluate(
-            SimpleNamespace(getContSize=lambda: size), self.block, row, slot,
+            SimpleNamespace(getContSize=lambda: container_size), self.block, row_index, slot_index,
         )
 
-    def check(self, size, row=0, slot=1):
-        return self.evaluate(size, row, slot).coordinates
+    def check(self, container_size, row_index=0, slot_index=1):
+        return self.evaluate(container_size, row_index, slot_index).coordinates
 
-    def assert_rejected(self, size, reason, row=0, slot=1):
-        result = self.evaluate(size, row, slot)
+    def assert_rejected(self, container_size, reason, row_index=0, slot_index=1):
+        result = self.evaluate(container_size, row_index, slot_index)
         self.assertFalse(result.feasible)
         self.assertIsNone(result.coordinates)
         self.assertEqual(result.rejection_reason, reason)
 
     def test_unsupported_sizes_are_rejected(self):
-        for size in ('45', '', 'invalid'):
-            with self.subTest(size=size):
-                self.assert_rejected(size, RejectionReason.UNSUPPORTED_SIZE)
+        for container_size in ('45', '', 'invalid'):
+            with self.subTest(container_size=container_size):
+                self.assert_rejected(container_size, RejectionReason.UNSUPPORTED_SIZE)
 
     def test_empty_pair_accepts_forty_foot(self):
         self.assertEqual(self.check('40'), ('A', 0, 1, 0))
 
     def test_empty_stack_accepts_twenty_foot(self):
-        self.assertEqual(self.check('20', row=1, slot=2), ('A', 1, 2, 0))
+        self.assertEqual(self.check('20', row_index=1, slot_index=2), ('A', 1, 2, 0))
 
     def test_compatible_pair_accepts_forty_foot(self):
         self.fill(0, 0, '40', 1)
@@ -67,10 +67,10 @@ class FeasibilityTests(unittest.TestCase):
         self.assert_rejected('40', RejectionReason.PARTNER_TIER_MISMATCH)
 
     def test_even_anchor_is_rejected(self):
-        for slot in (0, 2):
-            with self.subTest(slot=slot):
+        for slot_index in (0, 2):
+            with self.subTest(slot_index=slot_index):
                 self.assert_rejected(
-                    '40', RejectionReason.INVALID_FORTY_FOOT_ANCHOR, slot=slot,
+                    '40', RejectionReason.INVALID_FORTY_FOOT_ANCHOR, slot_index=slot_index,
                 )
 
     def test_evaluation_does_not_modify_stacks(self):
@@ -99,9 +99,9 @@ class FeasibilityTests(unittest.TestCase):
 
     def test_opposite_slot_does_not_make_boundary_safe(self):
         self.fill(1, 0, '20', 2)
-        self.assert_rejected('20', RejectionReason.UNSAFE_STACKING, row=1, slot=0)
+        self.assert_rejected('20', RejectionReason.UNSAFE_STACKING, row_index=1, slot_index=0)
         self.fill(1, 3, '20', 2)
-        self.assert_rejected('20', RejectionReason.UNSAFE_STACKING, row=1, slot=0)
+        self.assert_rejected('20', RejectionReason.UNSAFE_STACKING, row_index=1, slot_index=0)
 
     def test_actual_neighbor_can_make_placement_safe(self):
         self.fill(0, 1, '20', 2)
@@ -109,10 +109,10 @@ class FeasibilityTests(unittest.TestCase):
         self.assertEqual(self.check('20'), ('A', 0, 1, 2))
 
     def test_invalid_locations_are_rejected(self):
-        for row, slot in ((-1, 1), (3, 1), (0, -1), (0, 4)):
-            with self.subTest(row=row, slot=slot):
+        for row_index, slot_index in ((-1, 1), (3, 1), (0, -1), (0, 4)):
+            with self.subTest(row_index=row_index, slot_index=slot_index):
                 self.assert_rejected(
-                    '20', RejectionReason.INVALID_LOCATION, row=row, slot=slot,
+                    '20', RejectionReason.INVALID_LOCATION, row_index=row_index, slot_index=slot_index,
                 )
 
     def test_full_anchor_is_rejected(self):

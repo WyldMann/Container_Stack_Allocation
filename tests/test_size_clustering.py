@@ -14,26 +14,26 @@ from presenter import YardPresenter
 class SizeClusteringTests(unittest.TestCase):
     def setUp(self):
         self.yard = Yard([{
-            'BRANCH_ID': 'B', 'BLOCK_ID': 'A', 'BLOCK_CODE': 'A',
-            'SLOT_COUNT': '12', 'ROW_COUNT': '5', 'MAX_TIER': '3',
-            'POS_X': '0', 'POS_Y': '0',
+            'branch_id': 'B', 'block_id': 'A', 'block_code': 'A',
+            'slot_count': '12', 'row_count': '5', 'max_tier': '3',
+            'pos_x': '0', 'pos_y': '0',
         }])
         self.yard.getBlockByID('A').setRTG(RTG('RTG', ('A', 2, 4)))
 
-    def container(self, size):
-        return SimpleNamespace(getContSize=lambda: size, getWeight=lambda: 10000)
+    def container(self, container_size):
+        return SimpleNamespace(getContSize=lambda: container_size, getWeight=lambda: 10000)
 
-    def cluster(self, container, coord):
+    def cluster(self, container, coordinate):
         return self.yard.model.sizeCluster(
-            container, self.yard.getBlockByID(coord[0]), coord,
+            container, self.yard.getBlockByID(coordinate[0]), coordinate,
         )
 
-    def occupy(self, row, anchor, size, height=1):
-        slots = (anchor - 1, anchor) if size == '40' else (anchor,)
-        container = self.container(size)
-        for slot in slots:
-            for tier in range(height):
-                self.yard.getStack('A', row, slot).addContainer(container, tier)
+    def occupy(self, row_index, anchor, container_size, height=1):
+        slots = (anchor - 1, anchor) if container_size == '40' else (anchor,)
+        container = self.container(container_size)
+        for slot_index in slots:
+            for tier_index in range(height):
+                self.yard.getStack('A', row_index, slot_index).addContainer(container, tier_index)
 
     def test_empty_neighborhood_preserves_previous_scoring(self):
         multiplier = self.cluster(self.container('40'), ('A', 2, 3, 0))
@@ -44,13 +44,13 @@ class SizeClusteringTests(unittest.TestCase):
                              model.deltaWeight(weight) * model.equipmentDistance(distance))
 
     def test_same_size_rewards_and_other_size_penalizes_both_sizes(self):
-        for size in ('20', '40'):
-            with self.subTest(size=size):
+        for container_size in ('20', '40'):
+            with self.subTest(container_size=container_size):
                 self.setUp()
-                self.occupy(2, 1, size)
-                multiplier = self.cluster(self.container(size), ('A', 2, 3, 0))
+                self.occupy(2, 1, container_size)
+                multiplier = self.cluster(self.container(container_size), ('A', 2, 3, 0))
                 self.assertGreater(multiplier, 1)
-                other_size = '40' if size == '20' else '20'
+                other_size = '40' if container_size == '20' else '20'
                 multiplier = self.cluster(self.container(other_size), ('A', 2, 3, 0))
                 self.assertLess(multiplier, 1)
 
@@ -63,17 +63,17 @@ class SizeClusteringTests(unittest.TestCase):
     def test_height_does_not_change_multiplier(self):
         self.occupy(2, 1, '20')
         container = self.container('20')
-        coord = ('A', 2, 3, 0)
-        before = self.cluster(container, coord)
+        coordinate = ('A', 2, 3, 0)
+        before = self.cluster(container, coordinate)
         self.yard.getStack('A', 2, 1).addContainer(container, 1)
-        self.assertEqual(self.cluster(container, coord), before)
+        self.assertEqual(self.cluster(container, coordinate), before)
 
     def test_own_supporting_footprint_is_excluded(self):
-        for size in ('20', '40'):
-            with self.subTest(size=size):
+        for container_size in ('20', '40'):
+            with self.subTest(container_size=container_size):
                 self.setUp()
-                self.occupy(2, 3, size)
-                self.assertEqual(self.cluster(self.container(size), ('A', 2, 3, 1)), 1)
+                self.occupy(2, 3, container_size)
+                self.assertEqual(self.cluster(self.container(container_size), ('A', 2, 3, 1)), 1)
 
     def test_neighbors_outside_radius_are_ignored(self):
         self.occupy(2, 9, '40')
@@ -97,10 +97,10 @@ class SizeClusteringTests(unittest.TestCase):
         candidates = self.yard.bestCoordCandidate(
             self.container('40'), [('A', 2, 7, 0), ('A', 2, 1, 0)],
         )
-        self.assertEqual(candidates[0].coords, ('A', 2, 1, 0))
+        self.assertEqual(candidates[0].coordinates, ('A', 2, 1, 0))
         self.assertEqual(candidates[0].distance, candidates[1].distance)
         for candidate in candidates:
-            self.assertAlmostEqual(candidate.eval_score,
+            self.assertAlmostEqual(candidate.evaluation_score,
                 self.yard.model.evaluate(candidate.delta_weight, candidate.distance)
                 * candidate.size_cluster_multiplier)
 

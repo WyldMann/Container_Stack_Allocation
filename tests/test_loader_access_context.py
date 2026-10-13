@@ -19,26 +19,26 @@ from tests.loader_access_reference import (
 
 def block_input(rows=3, slots=4, tiers=3, block_id='A'):
     return dict(
-        BRANCH_ID='B', BLOCK_ID=block_id, BLOCK_CODE=block_id,
-        SLOT_COUNT=str(slots), ROW_COUNT=str(rows), MAX_TIER=str(tiers),
-        POS_X='0', POS_Y='0',
+        branch_id='B', block_id=block_id, block_code=block_id,
+        slot_count=str(slots), row_count=str(rows), max_tier=str(tiers),
+        pos_x='0', pos_y='0',
     )
 
 
-def fill(block, row, slot, size='20', count=1):
-    container = SimpleNamespace(getContSize=lambda: size)
-    for tier in range(count):
-        block.getStack(row, slot).addContainer(container, tier)
+def fill(block, row_index, slot_index, container_size='20', count=1):
+    container = SimpleNamespace(getContSize=lambda: container_size)
+    for tier_index in range(count):
+        block.getStack(row_index, slot_index).addContainer(container, tier_index)
 
 
 def locations(values):
-    return {(location.row, location.slot, location.size) for location in values}
+    return {(location.row_index, location.slot_index, location.container_size) for location in values}
 
 
 def result_signature(result):
     return (
         result.destination_accessible,
-        tuple((loc.row, loc.slot, loc.size) for loc in result.isolated_locations),
+        tuple((loc.row_index, loc.slot_index, loc.container_size) for loc in result.isolated_locations),
     )
 
 
@@ -52,7 +52,7 @@ class LoaderAccessContextTests(unittest.TestCase):
         fill(self.block, 1, 1)
         before = [
             (stack.getMode(), tuple(stack.getContainers()))
-            for row in self.block.getSlots() for stack in row
+            for row_stacks in self.block.getSlots() for stack in row_stacks
         ]
         context = self.rule.prepare_context(self.block, self.policy)
         with self.assertRaises(FrozenInstanceError):
@@ -66,7 +66,7 @@ class LoaderAccessContextTests(unittest.TestCase):
         )
         after = [
             (stack.getMode(), tuple(stack.getContainers()))
-            for row in self.block.getSlots() for stack in row
+            for row_stacks in self.block.getSlots() for stack in row_stacks
         ]
         self.assertEqual(before, after)
 
@@ -91,9 +91,9 @@ class LoaderAccessContextTests(unittest.TestCase):
                 self.rule.evaluate(self.block, proposal, self.policy, context=context)
 
     def test_occupied_footprint_skips_search_but_checks_destination_access(self):
-        for row in range(3):
-            for slot in range(4):
-                fill(self.block, row, slot)
+        for row_index in range(3):
+            for slot_index in range(4):
+                fill(self.block, row_index, slot_index)
         context = self.rule.prepare_context(self.block, self.policy)
         with patch.object(self.rule, '_reachable_after', wraps=self.rule._reachable_after) as search:
             border = self.rule.evaluate(
@@ -138,33 +138,33 @@ class LoaderAccessContextTests(unittest.TestCase):
         for row_count, slot_count in ((1, 1), (1, 2), (2, 3), (3, 4), (4, 5)):
             for layout in range(5):
                 block = Block(**block_input(row_count, slot_count, tiers=1 + layout % 3))
-                for row in range(row_count):
-                    slot = 0
-                    while slot < slot_count:
+                for row_index in range(row_count):
+                    slot_index = 0
+                    while slot_index < slot_count:
                         choice = rng.randrange(4)
-                        count = rng.randrange(block.getStack(row, slot).getMaxTier() + 1)
+                        count = rng.randrange(block.getStack(row_index, slot_index).getMaxTier() + 1)
                         if choice == 0:
-                            block.getStack(row, slot).makeVoid()
-                        elif choice == 1 and slot % 2 == 0 and slot + 1 < slot_count:
-                            fill(block, row, slot, '40', count)
-                            fill(block, row, slot + 1, '40', count)
-                            slot += 1
+                            block.getStack(row_index, slot_index).makeVoid()
+                        elif choice == 1 and slot_index % 2 == 0 and slot_index + 1 < slot_count:
+                            fill(block, row_index, slot_index, '40', count)
+                            fill(block, row_index, slot_index + 1, '40', count)
+                            slot_index += 1
                         elif choice == 2:
-                            fill(block, row, slot, '20', count)
-                        slot += 1
+                            fill(block, row_index, slot_index, '20', count)
+                        slot_index += 1
 
                 for borders in itertools.product((False, True), repeat=4):
                     policy = LoaderBorderAccessPolicy(*borders)
                     context = self.rule.prepare_context(block, policy)
-                    for row in range(row_count):
-                        for slot in range(slot_count):
-                            tier = block.getStack(row, slot).availableTierInt()
-                            if tier is None:
+                    for row_index in range(row_count):
+                        for slot_index in range(slot_count):
+                            tier_index = block.getStack(row_index, slot_index).availableTierInt()
+                            if tier_index is None:
                                 continue
-                            for size in ('20', '40'):
-                                if size == '40' and slot % 2 == 0:
+                            for container_size in ('20', '40'):
+                                if container_size == '40' and slot_index % 2 == 0:
                                     continue
-                                proposal = PlacementProposal('A', row, slot, tier, size)
+                                proposal = PlacementProposal('A', row_index, slot_index, tier_index, container_size)
                                 try:
                                     reference._validate_proposal(block, proposal)
                                 except ValueError:
@@ -191,10 +191,10 @@ class LoaderAccessContextIntegrationTests(unittest.TestCase):
                     feasibility_settings=settings)
         parameter = Mock()
         parameter.evaluate.return_value = 1.0
-        yard.params['P'] = parameter
+        yard.parameters['P'] = parameter
         for block in yard.blocks_by_id.values():
-            for row in block.getSlots():
-                for stack in row:
+            for row_stacks in block.getSlots():
+                for stack in row_stacks:
                     stack.addParameter(parameter)
         return yard
 
@@ -246,8 +246,8 @@ class LoaderAccessContextIntegrationTests(unittest.TestCase):
         yard.loader_access_policies['B'] = LoaderBorderAccessPolicy(above=False)
         optimized = yard.feasibility
         reference = ReferencePlacementFeasibility(optimized.settings)
-        for size in ('20', '40'):
-            container = SimpleNamespace(getContSize=lambda: size)
+        for container_size in ('20', '40'):
+            container = SimpleNamespace(getContSize=lambda: container_size)
             yard.feasibility = optimized
             actual = yard.findCoordsCandidates(container)
             yard.feasibility = reference
@@ -255,11 +255,11 @@ class LoaderAccessContextIntegrationTests(unittest.TestCase):
             for block in yard.blocks_by_id.values():
                 policy = yard.loader_access_policies.get(block.getId())
                 context = optimized.prepare_loader_context(block, policy)
-                for row, stacks in enumerate(block.getSlots()):
-                    for slot in range(len(stacks)):
+                for row_index, stacks in enumerate(block.getSlots()):
+                    for slot_index in range(len(stacks)):
                         self.assertEqual(
-                            reference.evaluate(container, block, row, slot, loader_policy=policy),
-                            optimized.evaluate(container, block, row, slot,
+                            reference.evaluate(container, block, row_index, slot_index, loader_policy=policy),
+                            optimized.evaluate(container, block, row_index, slot_index,
                                                loader_policy=policy, loader_context=context),
                         )
 

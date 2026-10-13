@@ -15,23 +15,23 @@ from entities.yard import Yard
 class FeasibilityConfigIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.block_input = {
-            "BRANCH_ID": "B", "BLOCK_ID": "A", "BLOCK_CODE": "A",
-            "SLOT_COUNT": "4", "ROW_COUNT": "3", "MAX_TIER": "3",
-            "POS_X": "0", "POS_Y": "0",
+            "branch_id": "B", "block_id": "A", "block_code": "A",
+            "slot_count": "4", "row_count": "3", "max_tier": "3",
+            "pos_x": "0", "pos_y": "0",
         }
         self.block = Block(**self.block_input)
         self.container = SimpleNamespace(getContSize=lambda: "20")
 
-    def fill(self, row, slot, size, count):
-        container = SimpleNamespace(getContSize=lambda: size)
-        for tier in range(count):
-            self.block.getStack(row, slot).addContainer(container, tier)
+    def fill(self, row_index, slot_index, container_size, count):
+        container = SimpleNamespace(getContSize=lambda: container_size)
+        for tier_index in range(count):
+            self.block.getStack(row_index, slot_index).addContainer(container, tier_index)
 
     def prepare_inaccessible_destination(self):
-        for row in range(3):
-            for slot in range(4):
-                if (row, slot) != (1, 1):
-                    self.fill(row, slot, "20", 3)
+        for row_index in range(3):
+            for slot_index in range(4):
+                if (row_index, slot_index) != (1, 1):
+                    self.fill(row_index, slot_index, "20", 3)
 
     def test_defaults_preserve_loader_access_check(self):
         self.prepare_inaccessible_destination()
@@ -90,16 +90,16 @@ class FeasibilityConfigIntegrationTests(unittest.TestCase):
             settings = load_feasibility_settings(path)
 
         yard = Yard(
-            yard_block_input=[self.block_input],
+            yard_blocks_input=[self.block_input],
             feasibility_settings=settings,
         )
         block = yard.getBlockByID("A")
-        for row in range(3):
-            for slot in range(4):
-                if (row, slot) == (1, 1):
+        for row_index in range(3):
+            for slot_index in range(4):
+                if (row_index, slot_index) == (1, 1):
                     continue
-                for tier in range(3):
-                    block.getStack(row, slot).addContainer(self.container, tier)
+                for tier_index in range(3):
+                    block.getStack(row_index, slot_index).addContainer(self.container, tier_index)
 
         result = yard.feasibility.evaluate(self.container, block, 1, 1)
         self.assertEqual(result.coordinates, ("A", 1, 1, 0))

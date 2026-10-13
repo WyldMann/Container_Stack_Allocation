@@ -9,89 +9,88 @@ from utils.parse_optional_finite_float import parse_optional_finite_float
 
 
 class Container:
-    id: str
+    container_id: str
 
     #tier: Stack
     #tierHeight: int
 
     principal: str
-    cont_condition: str
-    cont_fill: str
-    cont_size: str
-    cont_grade: str
+    container_condition: str
+    container_fill: str
+    container_size: str
+    container_grade: str
     pol: str
     pod: str
     vessel: str
     voyage: str
     weight: float | None
-    # coordsStr = [Branch, Block, Row, Slot, Tier]
-    coordsStr: list[str]
+    # One-based coordinate strings: branch ID, block code, row, slot, tier.
+    coordinates_str: list[str]
     move_time: datetime
 
     def __init__(self,
-                 CONTNO: str,
-                 PRINCIPAL: str,
-                 DMG_FLAG: str,
-                 FULLMT: str,
-                 # OPERATION_TYPE:str,
-                 CONTSIZE: str,
-                 CONT_GRADE: str,
-                 POL: str,
-                 POD: str,
-                 VESSEL: str,
-                 VOYAGE: str,
-                 WEIGHT: str,
+                 container_id: str,
+                 principal: str,
+                 container_condition: str,
+                 container_fill: str,
+                 container_size: str,
+                 container_grade: str,
+                 pol: str,
+                 pod: str,
+                 vessel: str,
+                 voyage: str,
+                 weight: str,
 
-                 MOVE_TIME: str,
+                 move_time: str,
 
-                 BRANCH: str | None = None,
-                 BLOK: str | None = None,
-                 SLOT: str | None = None,
-                 ROW: str | None = None,
-                 TIER: str | None = None,
+                 branch_id: str | None = None,
+                 block_code: str | None = None,
+                 slot_no: str | None = None,
+                 row_no: str | None = None,
+                 tier_no: str | None = None,
 
-                 #TIER: Stack,
-                 #TIERHEIGHT: int,
-
+                 operation_type: str = "",
+                 pot: str = "",
+                 vessel_operator: str = "",
                  **_kwargs
                  ):
 
-        self.id = CONTNO
-        self.principal = PRINCIPAL
-        self.cont_condition = DMG_FLAG
-        self.cont_fill = FULLMT
-        self.operation_type = _kwargs.get("OPERATION_TYPE", "")
-        self.pot = _kwargs.get("POT", "")
-        self.vessel_operator = _kwargs.get("VESSEL_OPERATOR", "")
-        self.move_time_raw = MOVE_TIME
-        self.cont_size = CONTSIZE
-        self.cont_grade = CONT_GRADE
-        self.pol = POL
-        self.pod = POD
-        self.vessel = VESSEL
-        self.voyage = VOYAGE
-        self.weight = parse_optional_finite_float(WEIGHT)
-        self.move_time = parse_datetime(MOVE_TIME)
+        self.container_id = container_id
+        self.principal = principal
+        self.container_condition = container_condition
+        self.container_fill = container_fill
+        self.operation_type = operation_type
+        self.pot = pot
+        self.vessel_operator = vessel_operator
+        self.move_time_raw = move_time
+        self.container_size = container_size
+        self.container_grade = container_grade
+        self.pol = pol
+        self.pod = pod
+        self.vessel = vessel
+        self.voyage = voyage
+        self.weight = parse_optional_finite_float(weight)
+        self.move_time = parse_datetime(move_time)
 
-        if BRANCH is None: BRANCH = ""
-        if BLOK is None: BLOK = ""
-        if SLOT is None: SLOT = ""
-        if ROW is None: ROW = ""
-        if TIER is None: TIER = ""
+        if branch_id is None: branch_id = ""
+        if block_code is None: block_code = ""
+        if slot_no is None: slot_no = ""
+        if row_no is None: row_no = ""
+        if tier_no is None: tier_no = ""
 
-        self.coordsStr = [BRANCH, BLOK, ROW, SLOT, TIER]
+        self.coordinates_str = [branch_id, block_code, row_no, slot_no, tier_no]
 
     def getId(self) -> str:
-        return self.id
+        return self.container_id
 
     def getPrincipal(self) -> str:
         return self.principal
 
     def getContCondition(self) -> str:
-        return self.cont_condition
+        return self.container_condition
 
     def getContFill(self) -> str:
-        return self.cont_fill
+        return self.container_fill
 
     def getOpType(self) -> str:
         return self.operation_type
@@ -106,10 +105,10 @@ class Container:
         return self.move_time_raw
 
     def getContSize(self) -> str:
-        return self.cont_size
+        return self.container_size
 
     def getContGrade(self) -> str:
-        return self.cont_grade
+        return self.container_grade
 
     def getPol(self) -> str:
         return self.pol
@@ -130,47 +129,51 @@ class Container:
         return self.move_time
 
     def getCoordsStr(self) -> list[str]:
-        return self.coordsStr
+        return self.coordinates_str
 
-    def setCoordsStr(self, branch: str, block: str, row: str, slot: str, tier: str):
-        self.coordsStr = [branch, block, row, slot, tier]
+    def setCoordsStr(self, branch_id: str, block_code: str, row_no: str, slot_no: str, tier_no: str):
+        self.coordinates_str = [branch_id, block_code, row_no, slot_no, tier_no]
 
     def getCoordsStrTuple(self) -> tuple[str, str, str, str, str]:
-        return self.coordsStr[0], self.coordsStr[1], self.coordsStr[2], self.coordsStr[3], self.coordsStr[4]
+        return self.coordinates_str[0], self.coordinates_str[1], self.coordinates_str[2], self.coordinates_str[3], self.coordinates_str[4]
 
-    # coordsInt changes relevant data to str/int and follows 0-based indexing instead of database's 1-based indexing
+    # Integer coordinates use zero-based row, slot, and tier indices.
     def getCoordsInt(self) -> tuple[str, str, int, int, int]:
-        return self.coordsStr[0], self.coordsStr[1], int(self.coordsStr[2]) - 1, int(self.coordsStr[3]) - 1, int(
-            self.coordsStr[4]) - 1
+        return self.coordinates_str[0], self.coordinates_str[1], int(self.coordinates_str[2]) - 1, int(self.coordinates_str[3]) - 1, int(
+            self.coordinates_str[4]) - 1
 
-    def setCoordsInt(self, coordsInt: tuple[str, str, int, int, int]):
-        self.coordsStr = [coordsInt[0], coordsInt[1], str(coordsInt[2] + 1), str(coordsInt[3] + 1),
-                          str(coordsInt[4] + 1)]
+    def setCoordsInt(self, coordinates: tuple[str, str, int, int, int]):
+        self.coordinates_str = [coordinates[0], coordinates[1], str(coordinates[2] + 1), str(coordinates[3] + 1),
+                          str(coordinates[4] + 1)]
 
-    # same goes for tierInt for coordsStr[3]
-    def setTierInt(self, tierInt: int):
-        self.coordsStr[4] = str(tierInt + 1)
+    # Convert the zero-based tier index back to a one-based coordinate string.
+    def setTierInt(self, tier_index: int):
+        self.coordinates_str[4] = str(tier_index + 1)
 
     def __str__(self):
-        return self.id
+        return self.container_id
 
 
 # special container to be filled in gaps of anomalous stacks
 class DummyContainer(Container):
     #[(block_id,row,slot,tier),...]
-    coordsList: set[tuple[str, str, str, str]]
+    coordinates_list: set[tuple[str, str, str, str]]
 
     def __init__(self):
-        super().__init__("DUMMY", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "")
-        self.coordsList = set()
+        super().__init__(
+            container_id="DUMMY", principal="", container_condition="",
+            container_fill="", container_size="", container_grade="",
+            pol="", pod="", vessel="", voyage="", weight="", move_time="",
+        )
+        self.coordinates_list = set()
 
-    def addCoordList(self, coords: tuple[str, int, int], tier: int):
-        self.coordsList.add((coords[0], str(coords[1] + 1), str(coords[2] + 1), str(tier + 1)))
+    def addCoordList(self, coordinates: tuple[str, int, int], tier_index: int):
+        self.coordinates_list.add((coordinates[0], str(coordinates[1] + 1), str(coordinates[2] + 1), str(tier_index + 1)))
 
-    def removeCoordList(self, coords: tuple[str, str, str, str]): self.coordsList.remove(coords)
+    def removeCoordList(self, coordinates: tuple[str, str, str, str]): self.coordinates_list.remove(coordinates)
 
-    def replaceDummy(self, container: Container, blockID: str):
-        containerCoords = container.getCoordsStr()
-        self.removeCoordList((blockID, containerCoords[2], containerCoords[3], containerCoords[4]))
+    def replaceDummy(self, container: Container, block_id: str):
+        container_coords = container.getCoordsStr()
+        self.removeCoordList((block_id, container_coords[2], container_coords[3], container_coords[4]))
 
-    def getCoordsList(self) -> set[tuple[str, str, str, str]]: return self.coordsList
+    def getCoordsList(self) -> set[tuple[str, str, str, str]]: return self.coordinates_list

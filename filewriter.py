@@ -41,8 +41,8 @@ class ContainerFileWriter:
             if isinstance(container, DummyContainer):
                 continue
 
-            branch, block_code, row, slot, tier = container.getCoordsStrTuple()
-            block_id = yard.getBlockIDbyCode(branch, block_code)
+            branch_id, block_code, row_no, slot_no, tier_no = container.getCoordsStrTuple()
+            block_id = yard.getBlockIDbyCode(branch_id, block_code)
             weight = container.getWeight()
             weight_value: str | int | float
             if weight is None:
@@ -54,12 +54,12 @@ class ContainerFileWriter:
 
             rows.append({
                 "CONTNO": container.getId(),
-                "BRANCH": branch,
+                "BRANCH": branch_id,
                 "BLOK": block_code,
                 "BLOK_ID": block_id,
-                "SLOT": slot,
-                "ROW": row,
-                "TIER": tier,
+                "SLOT": slot_no,
+                "ROW": row_no,
+                "TIER": tier_no,
                 "PRINCIPAL": container.getPrincipal(),
                 "DMG_FLAG": container.getContCondition(),
                 "FULLMT": container.getContFill(),

@@ -11,38 +11,38 @@ from entities.feasibility.placement_proposal import PlacementProposal
 class LoaderAccessTests(unittest.TestCase):
     def setUp(self):
         self.block = Block(
-            BRANCH_ID='B', BLOCK_ID='A', BLOCK_CODE='A',
-            SLOT_COUNT='4', ROW_COUNT='5', MAX_TIER='3',
-            POS_X='0', POS_Y='0',
+            branch_id='B', block_id='A', block_code='A',
+            slot_count='4', row_count='5', max_tier='3',
+            pos_x='0', pos_y='0',
         )
         self.rule = LoaderAccessRule()
         self.policy = LoaderBorderAccessPolicy()
         # Full stacks form obstacles without receiving capacity.
-        for row in range(5):
-            for slot in range(4):
-                self.set_stack(row, slot, count=3)
+        for row_index in range(5):
+            for slot_index in range(4):
+                self.set_stack(row_index, slot_index, count=3)
 
-    def set_stack(self, row, slot, size='20', count=0):
-        stack = self.block.getStack(row, slot)
+    def set_stack(self, row_index, slot_index, container_size='20', count=0):
+        stack = self.block.getStack(row_index, slot_index)
         stack.containers = [None] * stack.getMaxTier()
         stack.setMode('0')
-        container = SimpleNamespace(getContSize=lambda: size)
-        for tier in range(count):
-            stack.addContainer(container, tier)
+        container = SimpleNamespace(getContSize=lambda: container_size)
+        for tier_index in range(count):
+            stack.addContainer(container, tier_index)
 
-    def proposal(self, row, slot, tier=0, size='20'):
-        return PlacementProposal('A', row, slot, tier, size)
+    def proposal(self, row_index, slot_index, tier_index=0, container_size='20'):
+        return PlacementProposal('A', row_index, slot_index, tier_index, container_size)
 
     def evaluate(self, proposal, policy=None):
         return self.rule.evaluate(
             self.block, proposal, self.policy if policy is None else policy,
         )
 
-    def can_serve(self, row, slot, size='20', policy=None):
+    def can_serve(self, row_index, slot_index, container_size='20', policy=None):
         policy = self.policy if policy is None else policy
         reachable = self.rule._reachable_ground(self.block, policy)
         return self.rule._can_serve(
-            self.block, ReceivingLocation(row, slot, size), reachable, policy,
+            self.block, ReceivingLocation(row_index, slot_index, container_size), reachable, policy,
         )
 
     def test_closing_final_row_approach_rejects_placement(self):
@@ -57,8 +57,8 @@ class LoaderAccessTests(unittest.TestCase):
     def test_alternate_row_approach_preserves_access(self):
         self.set_stack(0, 1)
         self.set_stack(1, 1, count=1)
-        for row in (2, 3, 4):
-            self.block.getStack(row, 1).makeVoid()
+        for row_index in (2, 3, 4):
+            self.block.getStack(row_index, 1).makeVoid()
         self.assertTrue(self.evaluate(self.proposal(0, 1)).allowed)
 
     def test_slot_side_ground_does_not_provide_service(self):
@@ -72,7 +72,7 @@ class LoaderAccessTests(unittest.TestCase):
         self.set_stack(0, 0)
         self.set_stack(0, 1)
         self.assertTrue(self.can_serve(1, 1, '40'))
-        result = self.evaluate(self.proposal(0, 1, size='40'))
+        result = self.evaluate(self.proposal(0, 1, container_size='40'))
         self.assertEqual(
             result.isolated_locations, (ReceivingLocation(1, 1, '40'),),
         )
@@ -119,7 +119,7 @@ class LoaderAccessTests(unittest.TestCase):
     def test_placement_above_ground_does_not_change_routes(self):
         self.set_stack(0, 1, count=1)
         self.set_stack(1, 1, count=1)
-        result = self.evaluate(self.proposal(0, 1, tier=1))
+        result = self.evaluate(self.proposal(0, 1, tier_index=1))
         self.assertTrue(result.destination_accessible)
         self.assertTrue(result.allowed)
 
@@ -141,7 +141,7 @@ class LoaderAccessTests(unittest.TestCase):
 
     def test_full_destination_is_excluded_from_remaining_capacity(self):
         self.set_stack(0, 1, count=2)
-        proposal = self.proposal(0, 1, tier=2)
+        proposal = self.proposal(0, 1, tier_index=2)
         self.assertNotIn(
             ReceivingLocation(0, 1, '20'),
             self.rule._receiving_locations(self.block, proposal),
@@ -175,8 +175,8 @@ class LoaderAccessTests(unittest.TestCase):
             PlacementProposal('B', 0, 1, 0, '20'),
             self.proposal(5, 1),
             self.proposal(0, 4),
-            self.proposal(0, 1, tier=1),
-            self.proposal(0, 3, size='40'),
+            self.proposal(0, 1, tier_index=1),
+            self.proposal(0, 3, container_size='40'),
         ):
             with self.subTest(proposal=proposal):
                 with self.assertRaises(ValueError):

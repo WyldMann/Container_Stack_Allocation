@@ -50,8 +50,8 @@ class YardPresenter(Presenter):
             self.outEquipment(rtg)
         for loader in block.getLoaders():
             self.outEquipment(loader)
-        for row in block.getSlots():
-            for stack in row:
+        for row_stacks in block.getSlots():
+            for stack in row_stacks:
                 self.outStackOccupancy(stack)
             self.out()
 
@@ -65,15 +65,15 @@ class YardPresenter(Presenter):
             return
 
         self.outContainer(result.container)
-        self.out(result.cont_scores)
+        self.out(result.parameter_scores)
 
-        self.out("Max Param Score:", result.max_param_score)
+        self.out("Max Param Score:", result.max_parameter_score)
 
-        coords = result.getBestCoordinate()
+        coordinates = result.getBestCoordinate()
         equipment = result.getBestEquipment()
 
         self.out(pd.DataFrame ({
-            "Coordinate": [toStrSlotRowTier(coord) for coord in result.getCoords()],
+            "Coordinate": [toStrSlotRowTier(coordinate) for coordinate in result.getCoords()],
             "Param ID": result.getStrParameters(),
             "Param Name": result.getParameterNames(),
             "Top Container ΔWeight": result.getDeltaWeights(),
@@ -81,7 +81,7 @@ class YardPresenter(Presenter):
             "Size Cluster Multiplier": result.getSizeClusterMultipliers(),
             "Score": result.getScores()
         }))
-        self.out("Container can be assigned to", toStrSlotRowTier(coords))
+        self.out("Container can be assigned to", toStrSlotRowTier(coordinates))
         self.out("using", equipment, "currently in", toIDSlotRow(equipment.getCoordsStr()))
 
 class BadDataPresenter(Presenter):
@@ -89,8 +89,8 @@ class BadDataPresenter(Presenter):
     # ----- primitives -----
     def printOverlappingContainers(self, baddata: BadYardData) -> None:
         self.out("\nOverlapping Containers:")
-        for coords, containers in baddata.getOverlappingContainers().items():
-            self.out(coords, [str(x) for x in containers])
+        for coordinates, containers in baddata.getOverlappingContainers().items():
+            self.out(coordinates, [str(x) for x in containers])
 
     def printContainerCoordsInvalid(self, baddata: BadYardData) -> None:
         self.out("\nContainer Coordinates Invalid:")
@@ -137,13 +137,13 @@ class BadDataPresenter(Presenter):
             return
 
         if baddata.yp_out_of_range: self.printYPOutOfRange(baddata)
-        if baddata.incompleteExistingContainer:
+        if baddata.incomplete_existing_container:
             self.printIncompleteExistingContainers(baddata)
-        if baddata.incompleteInboundContainer:
+        if baddata.incomplete_inbound_container:
             self.printIncompleteInboundContainers(baddata)
-        if baddata.duplicateExistingContainerIDs:
+        if baddata.duplicate_existing_container_i_ds:
             self.printDuplicateExistingContainerIDs(baddata)
-        if baddata.duplicateInboundContainerIDs:
+        if baddata.duplicate_inbound_container_i_ds:
             self.printDuplicateInboundContainerIDs(baddata)
         if baddata.container_coords_invalid: self.printContainerCoordsInvalid(baddata)
         if baddata.overlapping_containers != {}: self.printOverlappingContainers(baddata)

@@ -21,42 +21,46 @@ class CSVMappingProfile:
 
 CONTAINER_SCHEMA = CSVSchema(
     required=tuple(
-        "CONTNO PRINCIPAL DMG_FLAG FULLMT CONT_GRADE POL POD "
-        "VESSEL VOYAGE WEIGHT MOVE_TIME".split()
+        "container_id principal container_condition container_fill container_grade "
+        "pol pod vessel voyage weight move_time".split()
     ),
     optional=tuple(
-        "CONTSIZE BRANCH BLOK ROW SLOT TIER "
-        "OPERATION_TYPE POT VESSEL_OPERATOR".split()
+        "container_size branch_id block_code row_no slot_no tier_no "
+        "operation_type pot vessel_operator".split()
     ),
 )
 
 SCHEMAS = {
     "yard_blocks": CSVSchema(required=tuple(
-        "BLOCK_ID BRANCH_ID BLOCK_CODE ROW_COUNT SLOT_COUNT "
-        "MAX_TIER POS_X POS_Y".split()
+        "block_id branch_id block_code row_count slot_count "
+        "max_tier pos_x pos_y".split()
     )),
     "removed_slots": CSVSchema(
-        required=("BLOCK_ID", "ROW_NO", "SLOT_NO"),
+        required=("block_id", "row_no", "slot_no"),
     ),
     "parameters": CSVSchema(
         required=tuple(
-            "PARAM_ID PARAM_NAME PRINCIPAL PRINCIPAL_SCORE "
-            "CONT_CONDITION CONT_CONDITION_SCORE CONT_FILL CONT_FILL_SCORE "
-            "CONT_SIZE CONT_SIZE_SCORE CONT_GRADE CONT_GRADE_SCORE "
-            "POL POD ROUTE_SCORE VESSEL VOYAGE VESSEL_VOYAGE_SCORE "
-            "WEIGHT_START WEIGHT_END WEIGHT_RANGE_SCORE".split()
+            "parameter_id parameter_name principal principal_score "
+            "container_condition container_condition_score "
+            "container_fill container_fill_score "
+            "container_size container_size_score container_grade container_grade_score "
+            "pol pod route_score vessel voyage vessel_voyage_score "
+            "weight_start weight_end weight_range_score".split()
         ),
-        optional=("AND_SCORE",),
+        optional=("and_score",),
     ),
     "yard_planning": CSVSchema(
-        required=("PARAM_ID", "BLOCK_ID", "ROW", "SLOT"),
+        required=("parameter_id", "block_id", "row_no", "slot_no"),
     ),
     "existing_containers": CONTAINER_SCHEMA,
     "inbound_containers": CONTAINER_SCHEMA,
     "master_equipment": CSVSchema(
-        required=("EQUIPMENT_CODE", "EQUIPMENT_TYPE"),
+        required=("equipment_code", "equipment_type"),
     ),
     "equipment_history": CSVSchema(
-        required=("ALAT", "BRANCH", "BLOK", "ROW", "SLOT", "MOVE_DATE"),
+        required=(
+            "equipment_code", "branch_id", "block_code",
+            "row_no", "slot_no", "move_time",
+        ),
     ),
 }
