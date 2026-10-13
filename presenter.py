@@ -121,7 +121,7 @@ class BadDataPresenter(Presenter):
             return
 
         if baddata.yp_out_of_range: self.printYPOutOfRange(baddata.yp_out_of_range)
-        if baddata.incomplete_containers: self.printIncompleteContainers(baddata.incomplete_containers)
+        if baddata.incomplete_containers: self.printIncompleteContainers(baddata.getIncompleteContainers())
         if baddata.container_coords_invalid: self.printContainerCoordsInvalid(baddata.container_coords_invalid)
         if baddata.overlapping_containers != {}: self.printOverlappingContainers(baddata.overlapping_containers)
         if baddata.anomalous_stacks: self.printAnomalousStacks(baddata.anomalous_stacks)

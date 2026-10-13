@@ -7,4 +7,5 @@ from .equipment import Equipment, Loader, RTG
 from .heuristic_model import HeuristicModel
 from .assign_result import AssignResult, CandidateEvaluation
 from .bad_yard_data import BadYardData
-__all__ = ['Container','Parameter','Yard', 'Stack', 'Block','HeuristicModel','Equipment','Loader','RTG','AssignResult','CandidateEvaluation','BadYardData']
+from .incomplete_containers import IncompleteContainers
+__all__ = ['Container','Parameter','Yard', 'Stack', 'Block','HeuristicModel','Equipment','Loader','RTG','AssignResult','CandidateEvaluation','BadYardData','IncompleteContainers']

@@ -1,10 +1,11 @@
 from .container import Container
+from .incomplete_containers import IncompleteContainers
 from .stack import Stack
 
 class BadYardData:
     overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]
     anomalous_stacks: list[Stack]
-    incomplete_containers: list[Container]
+    incomplete_containers: IncompleteContainers
     yp_out_of_range: list[tuple[str,str,int,int]]
     container_coords_invalid: list[Container]
     total_yp: int
@@ -13,7 +14,7 @@ class BadYardData:
     def __init__(self, total_params: int, total_containers: int):
         self.overlapping_containers = {}
         self.anomalous_stacks = []
-        self.incomplete_containers = []
+        self.incomplete_containers = IncompleteContainers()
         self.yp_out_of_range = []
         self.container_coords_invalid = []
         self.total_yp = total_params
@@ -24,7 +25,7 @@ class BadYardData:
     def getOverlappingContainers(self) -> dict[tuple[str,str,str,str,str],set[Container]]:
         return self.overlapping_containers
     def getIncompleteContainers(self) -> list[Container]:
-        return self.incomplete_containers
+        return self.incomplete_containers.containers
     def getYPOutOfRange(self) -> list[tuple[str,str,int,int]]:
         return self.yp_out_of_range
     def getContainerCoordsInvalid(self) -> list[Container]:
@@ -52,7 +53,7 @@ class BadYardData:
         else:
             self.overlapping_containers[coords] = {container1, container2}
     def addIncompleteContainer(self, container: Container):
-        self.incomplete_containers.append(container)
+        self.incomplete_containers.addContainer(container)
     def addYPOutOfRange(self,yp_item: tuple[str,str,int,int]):
         self.yp_out_of_range.append(yp_item)
     def addContainerCoordsInvalid(self,container:Container):
@@ -61,8 +62,10 @@ class BadYardData:
     def popAnomalousStack(self) -> Stack: return self.anomalous_stacks.pop()
 
     def anyBadData(self) -> bool:
-        return (self.yp_out_of_range != [] or
-                self.incomplete_containers != [] or
-                self.anomalous_stacks != [] or
-                self.container_coords_invalid != [] or
-                self.overlapping_containers != {})
+        return bool(
+            self.yp_out_of_range
+            or self.incomplete_containers
+            or self.anomalous_stacks
+            or self.container_coords_invalid
+            or self.overlapping_containers
+        )

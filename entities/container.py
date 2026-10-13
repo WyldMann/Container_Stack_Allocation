@@ -123,13 +123,6 @@ class Container:
     def setTierInt(self,tierInt: int):
         self.coordsStr[4] = str(tierInt + 1)
 
-    def isIncomplete(self) -> bool:
-        return (
-            "" in self.coordsStr
-            or self.id == ""
-            or self.cont_size not in ("20", "40")
-        )
-
     def __str__(self):
         return self.id
 

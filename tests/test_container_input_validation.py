@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import Mock
 
+from entities import Container, IncompleteContainers
 from entities.yard import Yard
 from presenter import BadDataPresenter
 
@@ -71,6 +72,91 @@ class ContainerInputValidationTests(unittest.TestCase):
         output.assert_any_call(
             "C", ["BR", "A", "1", "2", "1"], "CONTSIZE:", "'45'"
         )
+
+    def test_completeness_check_does_not_record_or_modify_container(self):
+        collection = IncompleteContainers()
+        container = Container(**(self.record | {"CONTSIZE": "45"}))
+        original_coords = container.getCoordsStrTuple()
+
+        self.assertFalse(collection.isExistingComplete(container))
+        self.assertFalse(collection.isExistingComplete(container))
+
+        self.assertEqual(collection.containers, [])
+        self.assertEqual(container.getCoordsStrTuple(), original_coords)
+        self.assertEqual(container.getContSize(), "45")
+
+    def test_validation_records_rejections_and_leaves_complete_inputs_out(self):
+        collection = IncompleteContainers()
+        incomplete = Container(**(self.record | {"CONTSIZE": "45"}))
+        complete = Container(**self.record)
+
+        self.assertFalse(collection)
+        self.assertFalse(collection.validateExistingAndRecord(incomplete))
+        self.assertTrue(collection.validateExistingAndRecord(complete))
+
+        self.assertTrue(collection)
+        self.assertEqual(len(collection), 1)
+        self.assertIs(collection.containers[0], incomplete)
+
+    def test_incomplete_collections_are_independent_between_yards(self):
+        rejected_yard = self.assert_rejected(
+            self.record | {"CONTSIZE": "45"}
+        )
+        clean_yard = Yard([self.block], container_input=[self.record])
+
+        self.assertIsNot(
+            rejected_yard.bad_data.incomplete_containers.containers,
+            clean_yard.bad_data.incomplete_containers.containers,
+        )
+        self.assertEqual(rejected_yard.bad_data.getTotalIncomplete(), 1)
+        self.assertEqual(clean_yard.bad_data.getIncompleteContainers(), [])
+        self.assertFalse(clean_yard.bad_data.anyBadData())
+
+    def test_legacy_incomplete_helpers_use_the_dataclass_collection(self):
+        yard = Yard([self.block])
+        container = Container(**(self.record | {"CONTSIZE": "45"}))
+
+        yard.bad_data.addIncompleteContainer(container)
+
+        self.assertIs(
+            yard.bad_data.getIncompleteContainers(),
+            yard.bad_data.incomplete_containers.containers,
+        )
+        self.assertIs(yard.bad_data.getIncompleteContainers()[0], container)
+        self.assertEqual(yard.bad_data.getTotalIncomplete(), 1)
+        self.assertTrue(yard.bad_data.anyBadData())
+
+    def test_inbound_can_be_complete_without_coordinates(self):
+        for size in ("20", "40"):
+            with self.subTest(size=size):
+                record = {
+                    key: value
+                    for key, value in self.record.items()
+                    if key not in ("BRANCH", "BLOK", "ROW", "SLOT", "TIER")
+                } | {"CONTSIZE": size}
+                container = Container(**record)
+                collection = IncompleteContainers()
+
+                self.assertTrue(collection.isInboundComplete(container))
+                self.assertFalse(collection.isExistingComplete(container))
+                self.assertTrue(collection.validateInboundAndRecord(container))
+                self.assertFalse(collection)
+                self.assertEqual(container.getCoordsStr(), [""] * 5)
+
+                self.assertFalse(collection.validateExistingAndRecord(container))
+                self.assertIs(collection.containers[0], container)
+
+    def test_incomplete_inbound_is_recorded(self):
+        for changes in ({"CONTNO": ""}, {"CONTSIZE": "45"}):
+            with self.subTest(changes=changes):
+                container = Container(**(self.record | changes))
+                collection = IncompleteContainers()
+
+                self.assertFalse(
+                    collection.validateInboundAndRecord(container)
+                )
+                self.assertEqual(len(collection), 1)
+                self.assertIs(collection.containers[0], container)
 
 
 if __name__ == "__main__":

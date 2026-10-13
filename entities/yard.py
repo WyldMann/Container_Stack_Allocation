@@ -93,9 +93,9 @@ class Yard:
         for inp in container_input:
             container = Container(**({"CONTSIZE": ""} | inp))
 
-            # No containers in container_input can be incomplete
-            if container.isIncomplete():
-                self.bad_data.addIncompleteContainer(container)
+            if not self.bad_data.incomplete_containers.validateExistingAndRecord(
+                container
+            ):
                 continue
 
             self.addContainerInput(container)
