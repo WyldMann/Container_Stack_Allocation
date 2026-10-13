@@ -68,7 +68,7 @@ for x in inboundContRepo:
     yardPresenter.outYard(yard)
 
 if yard.bad_data.incompleteInboundContainer:
-    BadDataPresenter().printStats(yard.bad_data)
+    BadDataPresenter().printIncompleteInboundContainers(yard.bad_data.incompleteInboundContainer.containers)
 
 if yard.bad_data.duplicateInboundContainerIDs:
     BadDataPresenter().printDuplicateInboundContainerIDs(
