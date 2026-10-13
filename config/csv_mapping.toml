@@ -1,0 +1,120 @@
+# Mapping direction:
+# INTERNAL_FIELD = "CSV header"
+#
+# Required and optional fields are determined by the reader's schema,
+# not by whether a field appears in this mapping.
+
+
+[csv.yard_blocks.columns]
+BLOCK_ID = "BLOCK_ID"
+BRANCH_ID = "BRANCH_ID"
+BLOCK_CODE = "BLOCK_CODE"
+ROW_COUNT = "ROW_COUNT"
+SLOT_COUNT = "SLOT_COUNT"
+MAX_TIER = "MAX_TIER"
+POS_X = "POS_X"
+POS_Y = "POS_Y"
+
+
+[csv.removed_slots.columns]
+BLOCK_ID = "BLOCK_ID"
+ROW_NO = "ROW_NO"
+SLOT_NO = "SLOT_NO"
+
+
+[csv.parameters.columns]
+PARAM_ID = "PARAM_ID"
+PARAM_NAME = "PARAM_NAME"
+PRINCIPAL = "PRINCIPAL"
+PRINCIPAL_SCORE = "PRINCIPAL_SCORE"
+CONT_CONDITION = "CONT_CONDITION"
+CONT_CONDITION_SCORE = "CONT_CONDITION_SCORE"
+CONT_FILL = "CONT_FILL"
+CONT_FILL_SCORE = "CONT_FILL_SCORE"
+CONT_SIZE = "CONT_SIZE"
+CONT_SIZE_SCORE = "CONT_SIZE_SCORE"
+CONT_GRADE = "CONT_GRADE"
+CONT_GRADE_SCORE = "CONT_GRADE_SCORE"
+POL = "POL"
+POD = "POD"
+ROUTE_SCORE = "ROUTE_SCORE"
+VESSEL = "VESSEL"
+VOYAGE = "VOYAGE"
+VESSEL_VOYAGE_SCORE = "VESSEL_VOYAGE_SCORE"
+WEIGHT_START = "WEIGHT_START"
+WEIGHT_END = "WEIGHT_END"
+WEIGHT_RANGE_SCORE = "WEIGHT_RANGE_SCORE"
+AND_SCORE = "AND_SCORE"
+
+
+[csv.yard_planning.columns]
+PARAM_ID = "PARAM_ID"
+BLOCK_ID = "BLOCK_ID"
+ROW = "ROW"
+SLOT = "SLOT"
+
+
+[csv.existing_containers.columns]
+CONTNO = "CONTNO"
+BRANCH = "BRANCH"
+BLOK = "BLOK"
+ROW = "ROW"
+SLOT = "SLOT"
+TIER = "TIER"
+PRINCIPAL = "PRINCIPAL"
+DMG_FLAG = "DMG_FLAG"
+FULLMT = "FULLMT"
+CONTSIZE = "CONTSIZE"
+CONT_GRADE = "CONT_GRADE"
+POL = "POL"
+POD = "POD"
+VESSEL = "VESSEL"
+VOYAGE = "VOYAGE"
+WEIGHT = "WEIGHT"
+MOVE_TIME = "MOVE_TIME"
+
+# Additional fields consumed by Container through **_kwargs.
+OPERATION_TYPE = "OPERATION_TYPE"
+POT = "POT"
+VESSEL_OPERATOR = "VESSEL_OPERATOR"
+
+
+[csv.inbound_containers.columns]
+CONTNO = "CONTNO"
+PRINCIPAL = "PRINCIPAL"
+DMG_FLAG = "DMG_FLAG"
+FULLMT = "FULLMT"
+CONTSIZE = "CONTSIZE"
+CONT_GRADE = "CONT_GRADE"
+POL = "POL"
+POD = "POD"
+VESSEL = "VESSEL"
+VOYAGE = "VOYAGE"
+WEIGHT = "WEIGHT"
+MOVE_TIME = "MOVE_TIME"
+
+# Optional coordinates.
+BRANCH = "BRANCH"
+BLOK = "BLOK"
+ROW = "ROW"
+SLOT = "SLOT"
+TIER = "TIER"
+
+# Additional fields consumed by Container through **_kwargs.
+OPERATION_TYPE = "OPERATION_TYPE"
+POT = "POT"
+VESSEL_OPERATOR = "VESSEL_OPERATOR"
+
+
+[csv.master_equipment.columns]
+EQUIPMENT_CODE = "EQUIPMENT_CODE"
+EQUIPMENT_TYPE = "EQUIPMENT_TYPE"
+
+
+[csv.equipment_history.columns]
+ALAT = "ALAT"
+BRANCH = "BRANCH"
+BLOK = "BLOK"
+ROW = "ROW"
+SLOT = "SLOT"
+MOVE_DATE = "MOVE_DATE"

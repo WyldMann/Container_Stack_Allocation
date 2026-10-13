@@ -1,108 +1,187 @@
 import csv
-from typing import Any
-from utils import strGeneralize, parse_datetime
+from pathlib import Path
+from typing import Any, Iterator
+
+from config import CSVMappingProfile
+from utils import parse_datetime, strGeneralize
+
+
+class CSVInputError(ValueError):
+    """The CSV headers or rows do not match the expected input."""
 
 
 class FileReader:
-    def __init__(self, file_path):
-        self.file_path = file_path
+    required_fields: tuple[str, ...] = ()
 
-    def readCSV(self) -> list[dict[str,str]]:
-        data = []
-        with open(self.file_path) as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                data.append({key:strGeneralize(value) for key, value in row.items()})
-        return data
+    def __init__(
+        self,
+        file_path: str | Path,
+        profile: CSVMappingProfile | None = None,
+    ):
+        self.file_path = Path(file_path)
+        self.profile = profile
 
-    # group list into a dict with first element as key
+    def _resolve_columns(
+        self, headers: list[str] | None,
+    ) -> dict[str, str | None]:
+        if not headers:
+            raise CSVInputError(f"{self.file_path}: missing CSV header row.")
+
+        header_index = {}
+        for header in headers:
+            normalized = header.strip().casefold()
+            if not normalized:
+                continue
+            if normalized in header_index:
+                raise CSVInputError(
+                    f"{self.file_path}: ambiguous CSV headers "
+                    f"{header_index[normalized]!r} and {header!r}."
+                )
+            header_index[normalized] = header
+
+        if self.profile is None:
+            fields = tuple(dict.fromkeys((*headers, *self.required_fields)))
+            required = set(self.required_fields)
+            columns = {}
+        else:
+            schema = self.profile.schema
+            incompatible = set(self.required_fields) - set(schema.fields)
+            if incompatible:
+                raise CSVInputError(
+                    f"Profile {self.profile.name!r} does not define: "
+                    + ", ".join(sorted(incompatible))
+                )
+            fields = schema.fields
+            required = set(schema.required) | set(self.required_fields)
+            columns = self.profile.columns
+
+        resolved = {}
+        missing = []
+        for field in fields:
+            expected = columns.get(field, field)
+            source = header_index.get(expected.strip().casefold())
+            # Preserve a legacy unnamed column when no profile is supplied.
+            if self.profile is None and field == "":
+                source = ""
+
+            if source is None and field in required:
+                missing.append(f"{field} (CSV header {expected!r})")
+            resolved[field] = source
+
+        if missing:
+            raise CSVInputError(
+                f"{self.file_path}: missing required columns: "
+                + ", ".join(missing)
+            )
+        return resolved
+
+    def _iter_rows(self) -> Iterator[tuple[int, dict[str, str]]]:
+        with self.file_path.open(newline="", encoding="utf-8-sig") as file:
+            reader = csv.DictReader(file)
+            columns = self._resolve_columns(reader.fieldnames)
+
+            for source_row in reader:
+                if None in source_row:
+                    raise CSVInputError(
+                        f"{self.file_path}, line {reader.line_num}: "
+                        "too many values."
+                    )
+                if any(value is None for value in source_row.values()):
+                    raise CSVInputError(
+                        f"{self.file_path}, line {reader.line_num}: "
+                        "too few values."
+                    )
+
+                row = {
+                    field: source_row[source] if source is not None else ""
+                    for field, source in columns.items()
+                }
+                yield reader.line_num, row
+
+    def _coordinate(self, value: str, field: str, line: int) -> int:
+        try:
+            return int(value) - 1
+        except ValueError as error:
+            raise CSVInputError(
+                f"{self.file_path}, line {line}: "
+                f"{field} must be an integer; received {value!r}."
+            ) from error
+
+    def readCSV(self) -> list[dict[str, str]]:
+        return [
+            {key: strGeneralize(value) for key, value in row.items()}
+            for _, row in self._iter_rows()
+        ]
+
     @staticmethod
     def group_rows(data):
         result = {}
-
         for row in data:
-            key = row[0]
-            values = tuple(row[1:])
-
-            result.setdefault(key, []).append(values)
-
+            result.setdefault(row[0], []).append(tuple(row[1:]))
         return result
 
-    # meant to be overridden
     def readCSVTuple(self) -> list[Any]:
         raise NotImplementedError("Subclasses must override readCSVTuple()")
 
     def readCSVDictTuple(self):
         return self.group_rows(self.readCSVTuple())
 
-class ContainerFileReader(FileReader):
-    def readCSV(self) -> list[dict[str,str]]:
-        data = []
-        with open(self.file_path) as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                """
-                #stopgap data sampling fix
-                if row["BRANCH"] == "JKT64": row["BRANCH"] = "1"
-                elif row["BRANCH"] == "JKT74": row["BRANCH"] = "2"
-                elif row["BRANCH"] == "JKT56": row["BRANCH"] = "3"
-                """
-                data.append({key:strGeneralize(value) for key, value in row.items()})
 
-        return data
+class ContainerFileReader(FileReader):
+    pass
+
 
 class RemovedSlotsFileReader(FileReader):
+    required_fields = ("BLOCK_ID", "ROW_NO", "SLOT_NO")
 
-    #[(block_id, row_no, slot_no),....]
-    def readCSVTuple(self) -> list[tuple[str,int,int]]:
-        data = []
+    def readCSVTuple(self) -> list[tuple[str, int, int]]:
+        return [
+            (
+                strGeneralize(row["BLOCK_ID"]),
+                self._coordinate(row["ROW_NO"], "ROW_NO", line),
+                self._coordinate(row["SLOT_NO"], "SLOT_NO", line),
+            )
+            for line, row in self._iter_rows()
+        ]
 
-        # required field names as they appear in the csv
-        block_id = "BLOCK_ID"
-        row_no = "ROW_NO"
-        slot_no = "SLOT_NO"
-
-        with open(self.file_path) as csvfile:
-            reader = csv.DictReader(csvfile)
-            for line in reader:
-                data.append((strGeneralize(line[block_id]), int(line[row_no]) - 1, int(line[slot_no]) - 1))
-        return data
 
 class YardPlanningFileReader(FileReader):
+    required_fields = ("PARAM_ID", "BLOCK_ID", "ROW", "SLOT")
 
-    #[(param_id, block_id, slot, row), ... ]
-    # readCSVTuple().grouprows() {param_id:
-    def readCSVTuple(self) -> list[tuple[str,str,int,int]]:
-        data = []
+    def readCSVTuple(self) -> list[tuple[str, str, int, int]]:
+        return [
+            (
+                strGeneralize(row["PARAM_ID"]),
+                strGeneralize(row["BLOCK_ID"]),
+                self._coordinate(row["ROW"], "ROW", line),
+                self._coordinate(row["SLOT"], "SLOT", line),
+            )
+            for line, row in self._iter_rows()
+        ]
 
-        param_id = "PARAM_ID"
-        block_id = "BLOCK_ID"
-        row = "ROW"
-        slot = "SLOT"
 
-        with open(self.file_path) as csvfile:
-            reader = csv.DictReader(csvfile)
-            for line in reader:
-                data.append((strGeneralize(line[param_id]), strGeneralize(line[block_id]), int(line[row]) - 1, int(line[slot]) - 1))
-        return data
-# returns the latest location of each unique equipmentID
 class EquipmentMoveFileReader(FileReader):
-    # dict[id:tuple(branch,block,row,slot)]
-    def readCSVDict(self) -> dict[str,tuple[str,str,int,int]]:
+    required_fields = ("ALAT", "BRANCH", "BLOK", "ROW", "SLOT", "MOVE_DATE")
 
+    def readCSVDict(self) -> dict[str, tuple[str, str, int, int]]:
         result = {}
+        for line, row in self._iter_rows():
+            try:
+                dt = parse_datetime(row["MOVE_DATE"])
+            except (ValueError, OverflowError, OSError) as error:
+                raise CSVInputError(
+                    f"{self.file_path}, line {line}: "
+                    f"invalid MOVE_DATE {row['MOVE_DATE']!r}."
+                ) from error
 
-        with open(self.file_path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
+            coords = (
+                row["BRANCH"],
+                row["BLOK"],
+                self._coordinate(row["ROW"], "ROW", line),
+                self._coordinate(row["SLOT"], "SLOT", line),
+            )
+            id_ = row["ALAT"]
+            if id_ not in result or dt > result[id_][0]:
+                result[id_] = (dt, coords)
 
-            for movement in reader:
-                id_ = movement["ALAT"]
-                dt = parse_datetime(movement["MOVE_DATE"])
-                coords = (movement["BRANCH"], movement["BLOK"], int(movement["ROW"]) - 1, int(movement["SLOT"]) - 1)
-
-                if id_ not in result or dt > result[id_][0]:
-                    result[id_] = (dt, coords)
-
-        # Remove the dt
-        result = {id_: coords for id_, (dt, coords) in result.items()}
-        return result
+        return {id_: coords for id_, (_, coords) in result.items()}

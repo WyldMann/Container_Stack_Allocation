@@ -36,7 +36,7 @@ class HeuristicConfigTests(unittest.TestCase):
         self.assertEqual(result.heuristic.hl_delta_weight, 5000)
 
     def test_default_file_matches_default_settings(self):
-        path = Path(__file__).resolve().parents[1] / 'config.toml'
+        path = Path(__file__).resolve().parents[1] / 'config' / 'config.toml'
         self.assertEqual(load_config(path), ApplicationSettings())
 
     def test_unknown_options_and_wrong_section_type_are_rejected(self):

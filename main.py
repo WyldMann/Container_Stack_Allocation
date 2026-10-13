@@ -2,15 +2,20 @@ from pathlib import Path
 
 from filewriter import ContainerFileWriter
 
-from config import load_config
+from config import (
+    DEFAULT_CONFIG_FILE,
+    DEFAULT_CSV_MAPPING_FILE,
+    load_config,
+    load_csv_mapping,
+)
 
 from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader, EquipmentMoveFileReader
 from entities import Yard, Container
 from entities.bad_yard_data import PlacementRejected
 from presenter import YardPresenter, BadDataPresenter
 
-config_file = Path(__file__).resolve().parent / "config.toml"
-settings = load_config(config_file)
+settings = load_config(DEFAULT_CONFIG_FILE)
+csv_profiles = load_csv_mapping(DEFAULT_CSV_MAPPING_FILE)
 
 blockFile = Path(__file__).parent / "test_data" / "yard_block.csv"
 ypFile = Path(__file__).parent / "test_data" / "yard_planning.csv"
@@ -21,14 +26,45 @@ inboundContFile = Path(__file__).parent / "test_data" / "inbound.csv"
 masterEquipmentFile = Path(__file__).parent / "test_data" / "master_equipment.csv"
 equipmentHistoryFile = Path(__file__).parent / "test_data" / "equipment_history.csv"
 
-block_repo = FileReader(blockFile).readCSV()
-removed_repo = RemovedSlotsFileReader(removedFile).readCSVTuple()
-parameter_repo = FileReader(parameterFile).readCSV()
-yp_repo = YardPlanningFileReader(ypFile).readCSVDictTuple()
-containerRepo = ContainerFileReader(containerFile).readCSV()
-inboundContRepo = ContainerFileReader(inboundContFile).readCSV()
-masterEquipmentRepo = FileReader(masterEquipmentFile).readCSV()
-equipmentHistoryFile = EquipmentMoveFileReader(equipmentHistoryFile).readCSVDict()
+block_repo = FileReader(
+    blockFile,
+    profile=csv_profiles["yard_blocks"],
+).readCSV()
+
+removed_repo = RemovedSlotsFileReader(
+    removedFile,
+    profile=csv_profiles["removed_slots"],
+).readCSVTuple()
+
+parameter_repo = FileReader(
+    parameterFile,
+    profile=csv_profiles["parameters"],
+).readCSV()
+
+yp_repo = YardPlanningFileReader(
+    ypFile,
+    profile=csv_profiles["yard_planning"],
+).readCSVDictTuple()
+
+containerRepo = ContainerFileReader(
+    containerFile,
+    profile=csv_profiles["existing_containers"],
+).readCSV()
+
+inboundContRepo = ContainerFileReader(
+    inboundContFile,
+    profile=csv_profiles["inbound_containers"],
+).readCSV()
+
+masterEquipmentRepo = FileReader(
+    masterEquipmentFile,
+    profile=csv_profiles["master_equipment"],
+).readCSV()
+
+equipmentHistoryFile = EquipmentMoveFileReader(
+    equipmentHistoryFile,
+    profile=csv_profiles["equipment_history"],
+).readCSVDict()
 
 yard = Yard(
     yard_block_input=block_repo,
