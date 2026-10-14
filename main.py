@@ -17,14 +17,14 @@ from presenter import YardPresenter, BadDataPresenter
 settings = load_config(DEFAULT_CONFIG_FILE)
 csv_profiles = load_csv_mapping(DEFAULT_CSV_MAPPING_FILE)
 
-yard_blocks_file = Path(__file__).parent / "test_data" / "yard_block.csv"
-yard_planning_file = Path(__file__).parent / "test_data" / "yard_planning.csv"
-removed_slots_file = Path(__file__).parent / "test_data" / "removed_slots.csv"
-parameters_file = Path(__file__).parent / "test_data" / "parameters2.csv"
-containers_file = Path(__file__).parent / "test_data" / "containers.csv"
-inbound_containers_file = Path(__file__).parent / "test_data" / "inbound.csv"
-equipment_file = Path(__file__).parent / "test_data" / "master_equipment.csv"
-equipment_history_file = Path(__file__).parent / "test_data" / "equipment_history.csv"
+yard_blocks_file = Path(__file__).parent / "data_CY219" / "_TRM_MST_YARD_BLOCK__202610141439.csv"
+yard_planning_file = Path(__file__).parent / "data_CY219" / "_TRM_TRS_YARD_PLANNING_ITEM__202610141445.csv"
+removed_slots_file = Path(__file__).parent / "data_CY219" / "removed_slots.csv"
+parameters_file = Path(__file__).parent / "data_CY219" / "_TRM_MST_YARD_PARAMETER__202610141443.csv"
+containers_file = Path(__file__).parent / "data_CY219" / "containers.csv"
+inbound_containers_file = Path(__file__).parent / "data_CY219" / "inbound.csv"
+equipment_file = Path(__file__).parent / "data_CY219" / "master_equipment.csv"
+equipment_history_file = Path(__file__).parent / "data_CY219" / "equipment_history.csv"
 
 yard_block_records = FileReader(
     yard_blocks_file,
