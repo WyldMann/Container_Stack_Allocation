@@ -1,6 +1,6 @@
 import csv
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Sequence
 
 from config import CSVMappingProfile
 from utils import parse_datetime, strGeneralize
@@ -22,7 +22,7 @@ class FileReader:
         self.profile = profile
 
     def _resolve_columns(
-        self, headers: list[str] | None,
+        self, headers: Sequence[str] | None,
     ) -> dict[str, str | None]:
         if not headers:
             raise CSVInputError(f"{self.file_path}: missing CSV header row.")
