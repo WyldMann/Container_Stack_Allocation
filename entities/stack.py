@@ -72,7 +72,13 @@ class Stack:
 
     def removeContainer(self, tier_index: int):
         self.containers[tier_index] = None
-    def addParameter(self, parameter: Parameter):
+    def addParameter(self, parameter: Parameter) -> None:
+        if any(
+            existing.getId() == parameter.getId()
+            for existing in self.parameters
+        ):
+            return
+
         self.parameters.append(parameter)
 
     # returns number of empty vacancies
