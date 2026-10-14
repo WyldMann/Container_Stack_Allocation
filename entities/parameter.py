@@ -3,7 +3,6 @@ from .container import Container
 """
 missing parameters:
     container type: not in Parameter database
-    operation type: not in Container database
 """
 
 class Parameter:
@@ -15,6 +14,8 @@ class Parameter:
     container_condition_score: int
     container_fill: str
     container_fill_score: int
+    operation_type: str
+    operation_type_score: int
     container_size: str
     container_size_score: int
     container_grade: list[str]
@@ -39,8 +40,6 @@ class Parameter:
                  container_condition_score:str,
                  container_fill:str,
                  container_fill_score:str,
-                 # OPERATION_TYPE:str,
-                 # OPERATION_TYPE_SCORE:str,
                  container_size:str,
                  container_size_score:str,
                  container_grade:str,
@@ -55,6 +54,8 @@ class Parameter:
                  weight_range_score:str,
                  route_score:str,
                  and_score:str = "",
+                 operation_type:str = "",
+                 operation_type_score:str = "",
                  **_kwargs):
 
         self.parameter_id = parameter_id
@@ -65,8 +66,8 @@ class Parameter:
         self.container_condition_score = int(container_condition_score) if container_condition_score != '' else 0
         self.container_fill = container_fill
         self.container_fill_score = int(container_fill_score) if container_fill_score != '' else 0
-        # self.op_type = OPERATION_TYPE
-        # self.op_type_score = int(OPERATION_TYPE_SCORE) if OPERATION_TYPE_SCORE != '' else 0
+        self.operation_type = operation_type
+        self.operation_type_score = int(operation_type_score) if operation_type_score != '' else 0
         self.container_size = container_size
         self.container_size_score = int(container_size_score) if container_size_score != '' else 0
         self.container_grade = container_grade.split(",")
@@ -93,8 +94,8 @@ class Parameter:
     def getCondConditionScore(self) -> int: return self.container_condition_score
     def getCondFill(self) -> str: return self.container_fill
     def getCondFillScore(self) -> int: return self.container_fill_score
-    # def getOpType(self) -> str: return self.op_type
-    # def getOpTypeScore(self) -> int: return self.op_type_score
+    def getOpType(self) -> str: return self.operation_type
+    def getOpTypeScore(self) -> int: return self.operation_type_score
     def getContSize(self) -> str: return self.container_size
     def getContSizeScore(self) -> int: return self.container_size_score
     def getContGrade(self) -> list[str]: return self.container_grade
@@ -127,6 +128,10 @@ class Parameter:
             (
                 self.container_fill_score,
                 ((self.container_fill, container.getContFill()),),
+            ),
+            (
+                self.operation_type_score,
+                ((self.operation_type, container.getOpType()),),
             ),
             (
                 self.container_size_score,

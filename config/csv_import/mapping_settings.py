@@ -47,7 +47,7 @@ SCHEMAS = {
             "pol pod route_score vessel voyage vessel_voyage_score "
             "weight_start weight_end weight_range_score".split()
         ),
-        optional=("and_score",),
+        optional=("and_score", "operation_type", "operation_type_score"),
     ),
     "yard_planning": CSVSchema(
         required=("parameter_id", "block_id", "row_no", "slot_no"),

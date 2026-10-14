@@ -28,6 +28,34 @@ def make_container(**overrides):
 
 
 class ParameterEvaluationTests(unittest.TestCase):
+    def test_operation_type_defaults_preserve_existing_parameters(self):
+        parameter = make_parameter()
+        self.assertEqual(parameter.getOpType(), '')
+        self.assertEqual(parameter.getOpTypeScore(), 0)
+
+    def test_operation_type_matching_in_additive_and_and_modes(self):
+        for expected, score, actual, additive, and_result in (
+            ('D', '5', 'D', 8, 10),
+            ('D', '5', 'L', 3, 0),
+            ('D', '5', '', 3, 0),
+            ('', '5', 'L', 3, 10),
+            ('ALL', '5', 'L', 8, 10),
+            ('ALL', '5', '', 8, 10),
+            ('D', '0', 'D', 3, 10),
+            ('D', '0', 'L', 3, 0),
+            ('D', '', 'D', 3, 10),
+            ('D', '', 'L', 3, 0),
+        ):
+            with self.subTest(expected=expected, score=score, actual=actual):
+                parameter = make_parameter(
+                    principal='LINE', principal_score='3',
+                    operation_type=expected, operation_type_score=score,
+                )
+                container = make_container(operation_type=actual)
+                self.assertEqual(parameter.evaluate(container), additive)
+                parameter.and_score = 10
+                self.assertEqual(parameter.evaluate(container), and_result)
+
     def test_partial_match_adds_points_but_fails_and(self):
         parameter = make_parameter(
             principal='LINE', principal_score='3',

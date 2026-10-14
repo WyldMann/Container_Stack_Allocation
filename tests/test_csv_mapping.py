@@ -179,6 +179,37 @@ class CSVReaderMappingTests(unittest.TestCase):
             [{"equipment_code": "", "equipment_type": "RTG"}],
         )
 
+    def test_parameter_operation_type_columns_are_optional_and_mapped(self):
+        headers = (
+            "PARAM_ID,PARAM_NAME,PRINCIPAL,PRINCIPAL_SCORE,CONT_CONDITION,"
+            "CONT_CONDITION_SCORE,CONT_FILL,CONT_FILL_SCORE,CONT_SIZE,"
+            "CONT_SIZE_SCORE,CONT_GRADE,CONT_GRADE_SCORE,POL,POD,ROUTE_SCORE,"
+            "VESSEL,VOYAGE,VESSEL_VOYAGE_SCORE,WEIGHT_START,WEIGHT_END,"
+            "WEIGHT_RANGE_SCORE"
+        )
+        row = ",".join(["P1", "Operation"] + [""] * 19)
+        for extra_headers, extra_values, expected_type, expected_score in (
+            ("", "", "", 0),
+            (",OPERATION_TYPE,OPERATION_TYPE_SCORE", ",d,5", "D", 5),
+            (",OPERATION_TYPE,OPERATION_TYPE_SCORE", ",,", "", 0),
+            (",OPERATION_TYPE", ",d", "D", 0),
+            (",OPERATION_TYPE_SCORE", ",5", "", 5),
+        ):
+            with self.subTest(headers=extra_headers, values=extra_values):
+                record = self.read_text(
+                    FileReader,
+                    headers + extra_headers + "\n" + row + extra_values + "\n",
+                    "parameters",
+                )[0]
+                self.assertEqual(record["operation_type"], expected_type)
+                self.assertEqual(
+                    record["operation_type_score"],
+                    str(expected_score) if expected_score else "",
+                )
+                parameter = Parameter(**record)
+                self.assertEqual(parameter.getOpType(), expected_type)
+                self.assertEqual(parameter.getOpTypeScore(), expected_score)
+
     def container_record(self):
         return self.read_text(
             ContainerFileReader,
