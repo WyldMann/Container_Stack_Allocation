@@ -123,7 +123,7 @@ class Parameter:
             ),
             (
                 self.container_condition_score,
-                ((self.container_condition, container.getContCondition()),),
+                ((self.container_condition, container.getContCondition() or "AV"),),
             ),
             (
                 self.container_fill_score,
