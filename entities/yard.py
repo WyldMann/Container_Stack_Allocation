@@ -318,10 +318,10 @@ class Yard:
             for stack in block.anomalies():
                 self.bad_data.addAnomalousStack(stack)
 
-    # method 1: drop all flying containers
-    def fixAnomalies(self):
-        while len(self.bad_data.getAnomalousStacks()) != 0:
-            self.bad_data.popAnomalousStack().normalize()
+    # Disabled: unused repair leaves stack modes inconsistent with contents.
+    # def fixAnomalies(self):
+    #     while len(self.bad_data.getAnomalousStacks()) != 0:
+    #         self.bad_data.popAnomalousStack().normalize()
 
     # method 2: fit in dummy containers
     def fillDummyContainer(self) -> None:
