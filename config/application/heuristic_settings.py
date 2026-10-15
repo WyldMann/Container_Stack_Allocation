@@ -5,17 +5,17 @@ from dataclasses import dataclass, fields
 @dataclass(frozen=True)
 class HeuristicSettings:
     # Default values; options supplied in config.toml override these.
-    w_delta_weight: float = 10.0
-    hl_delta_weight: float = 5000.0
+    w_delta_container_mass: float = 10.0
+    hl_delta_container_mass: float = 5000.0
     w_equipment_distance: float = 10.0
     hl_equipment_distance: float = 5.0
     min_value: float = 0.001
-    no_delta_weight_value: float = 0.1
+    no_delta_container_mass_value: float = 0.1
     size_cluster_radius: int = 3
     hl_size_cluster_distance: float = 1.5
     size_cluster_prior: float = 2.0
     size_cluster_bias: float = 1.0
-    enable_delta_weight: bool = True
+    enable_delta_container_mass: bool = True
     enable_equipment_distance: bool = True
     enable_size_cluster: bool = True
 

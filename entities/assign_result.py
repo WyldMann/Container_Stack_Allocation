@@ -8,7 +8,7 @@ from .container import Container
 class CandidateEvaluation:
     coordinates: tuple[str, int, int, int]
     parameters: list[Parameter]
-    delta_weight: float | None
+    delta_container_mass: float | None
     equipment: Equipment
     distance: float
     size_cluster_multiplier: float
@@ -37,8 +37,8 @@ class AssignResult:
         return self.getBestCandidate().equipment
     def getCoords(self) -> list[tuple[str,int,int,int]]:
         return [x.coordinates for x in self.sorted_candidate_evaluations]
-    def getDeltaWeights(self) -> list[float|None]:
-        return [x.delta_weight for x in self.sorted_candidate_evaluations]
+    def getDeltaContainerMasses(self) -> list[float|None]:
+        return [x.delta_container_mass for x in self.sorted_candidate_evaluations]
     def getEquipments(self) -> list[Equipment]:
         return [x.equipment for x in self.sorted_candidate_evaluations]
     def getDistances(self) -> list[float]:

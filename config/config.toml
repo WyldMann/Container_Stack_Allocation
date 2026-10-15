@@ -9,18 +9,18 @@ loader_access = true
 
 [heuristic]
 # Disabled factors skip scoring and contribute a neutral multiplier of 1.
-enable_delta_weight = true
+enable_delta_container_mass = true
 enable_equipment_distance = true
 enable_size_cluster = true
 
-# Maximum weight-compatibility score, reached when the incoming
-# container and the supporting top container have equal weights.
-w_delta_weight = 10.0
+# Maximum mass-compatibility score, reached when the incoming
+# container and the supporting top container have equal masses.
+w_delta_container_mass = 10.0
 
-# Positive weight difference at which the weight score halves.
-# Difference = supporting container weight minus incoming weight.
-# Uses the same weight units as the container data.
-hl_delta_weight = 5000.0
+# Positive container-mass difference at which the mass score halves.
+# Difference = supporting top-container mass minus incoming mass.
+# Uses the same units as the container data's weight field.
+hl_delta_container_mass = 5000.0
 
 # Maximum equipment-distance score, reached at zero distance.
 w_equipment_distance = 10.0
@@ -34,8 +34,8 @@ hl_equipment_distance = 5.0
 # lower bound on all scores.
 min_value = 0.001
 
-# Weight-compatibility score when either container's weight is unknown.
-no_delta_weight_value = 0.1
+# Mass-compatibility score when either container's mass is unknown.
+no_delta_container_mass_value = 0.1
 
 # Maximum neighborhood distance considered for size clustering,
 # measured between the closest footprint cells in grid units.

@@ -11,32 +11,33 @@ class HeuristicModel:
     def __init__(self, settings: HeuristicSettings | None = None) -> None:
         self.settings = settings if settings is not None else HeuristicSettings()
         settings = self.settings
-        self.enable_delta_weight = settings.enable_delta_weight
+        self.enable_delta_container_mass = settings.enable_delta_container_mass
         self.enable_equipment_distance = settings.enable_equipment_distance
         self.enable_size_cluster = settings.enable_size_cluster
-        self.w_delta_weight = settings.w_delta_weight
-        self.hl_delta_weight = settings.hl_delta_weight
-        self.lambda_delta_weight = math.log(2) / self.hl_delta_weight
+        self.w_delta_container_mass = settings.w_delta_container_mass
+        self.hl_delta_container_mass = settings.hl_delta_container_mass
+        self.lambda_delta_container_mass = math.log(2) / self.hl_delta_container_mass
         self.w_equipment_distance = settings.w_equipment_distance
         self.hl_equipment_distance = settings.hl_equipment_distance
         self.lambda_equipment_distance = math.log(2) / self.hl_equipment_distance
         self.min_value = settings.min_value
-        self.no_delta_weight_value = settings.no_delta_weight_value
+        self.no_delta_container_mass_value = settings.no_delta_container_mass_value
         self.size_cluster_radius = settings.size_cluster_radius
         self.hl_size_cluster_distance = settings.hl_size_cluster_distance
         self.size_cluster_prior = settings.size_cluster_prior
         self.size_cluster_bias = settings.size_cluster_bias
 
     @staticmethod
-    def compareTopWeight(container:Container, stack:Stack) -> float | None:
+    def compareTopContainerMass(container:Container, stack:Stack) -> float | None:
+        """Return supporting top-container mass minus incoming container mass."""
         top_container = stack.getTopContainer()
-        top_weight = None if top_container is None else top_container.getWeight()
+        top_container_mass = None if top_container is None else top_container.getWeight()
 
-        container_weight = container.getWeight()
-        if container_weight is None or top_weight is None:
+        container_mass = container.getWeight()
+        if container_mass is None or top_container_mass is None:
             return None
         else:
-            return top_weight - container_weight
+            return top_container_mass - container_mass
 
     def sizeCluster(self, container: Container, block: Block,
                     coordinate: tuple[str,int,int,int]) -> float:
@@ -89,16 +90,19 @@ class HeuristicModel:
     def decayFormula(lambda_: float, variable:float) -> float:
         return math.exp(-lambda_*variable)
 
-    def deltaWeight(self, delta_weight: float | None) -> float:
-        if not self.enable_delta_weight:
+    def deltaContainerMass(self, delta_container_mass: float | None) -> float:
+        if not self.enable_delta_container_mass:
             return 1.0
 
-        if delta_weight is None:
-            return self.no_delta_weight_value
-        if delta_weight < 0:
+        if delta_container_mass is None:
+            return self.no_delta_container_mass_value
+        if delta_container_mass < 0:
             return self.min_value
 
-        else: return self.w_delta_weight * self.decayFormula(self.lambda_delta_weight,delta_weight)
+        else:
+            return self.w_delta_container_mass * self.decayFormula(
+                self.lambda_delta_container_mass, delta_container_mass,
+            )
 
     def equipmentDistance(self, equipment_distance: float) -> float:
         if not self.enable_equipment_distance:
@@ -110,9 +114,9 @@ class HeuristicModel:
             return self.w_equipment_distance * self.decayFormula(self.lambda_equipment_distance,equipment_distance)
 
     #multiplicative weights
-    def evaluate(self,delta_weight:float|None, equipment_distance:float,
+    def evaluate(self,delta_container_mass:float|None, equipment_distance:float,
                  size_cluster_multiplier: float = 1.0) -> float:
         cluster_score = size_cluster_multiplier if self.enable_size_cluster else 1.0
-        return (self.deltaWeight(delta_weight)
+        return (self.deltaContainerMass(delta_container_mass)
                 * self.equipmentDistance(equipment_distance)
                 * cluster_score)

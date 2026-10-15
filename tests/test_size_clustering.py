@@ -39,9 +39,9 @@ class SizeClusteringTests(unittest.TestCase):
         multiplier = self.cluster(self.container('40'), ('A', 2, 3, 0))
         self.assertEqual(multiplier, 1)
         model = HeuristicModel()
-        for weight, distance in ((0, 0), (5000, 5), (None, 0), (-1, 0), (0, math.inf)):
-            self.assertEqual(model.evaluate(weight, distance, multiplier),
-                             model.deltaWeight(weight) * model.equipmentDistance(distance))
+        for delta_container_mass, distance in ((0, 0), (5000, 5), (None, 0), (-1, 0), (0, math.inf)):
+            self.assertEqual(model.evaluate(delta_container_mass, distance, multiplier),
+                             model.deltaContainerMass(delta_container_mass) * model.equipmentDistance(distance))
 
     def test_same_size_rewards_and_other_size_penalizes_both_sizes(self):
         for container_size in ('20', '40'):
@@ -91,7 +91,7 @@ class SizeClusteringTests(unittest.TestCase):
         right = self.cluster(self.container('40'), ('A', 2, 3, 0))
         self.assertEqual(left, right)
 
-    def test_clustering_breaks_equal_weight_and_distance_tie(self):
+    def test_clustering_breaks_equal_mass_and_distance_tie(self):
         self.occupy(2, 3, '40')
         self.occupy(2, 8, '20')
         candidates = self.yard.bestCoordCandidate(
@@ -101,7 +101,7 @@ class SizeClusteringTests(unittest.TestCase):
         self.assertEqual(candidates[0].distance, candidates[1].distance)
         for candidate in candidates:
             self.assertAlmostEqual(candidate.evaluation_score,
-                self.yard.model.evaluate(candidate.delta_weight, candidate.distance)
+                self.yard.model.evaluate(candidate.delta_container_mass, candidate.distance)
                 * candidate.size_cluster_multiplier)
 
     def test_presenter_displays_multiplier_and_final_score(self):

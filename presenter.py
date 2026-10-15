@@ -76,7 +76,7 @@ class YardPresenter(Presenter):
             "Coordinate": [toStrSlotRowTier(coordinate) for coordinate in result.getCoords()],
             "Param ID": result.getStrParameters(),
             "Param Name": result.getParameterNames(),
-            "Top Container ΔWeight": result.getDeltaWeights(),
+            "Top Container ΔMass": result.getDeltaContainerMasses(),
             "Distance": result.getDistances(),
             "Size Cluster Multiplier": result.getSizeClusterMultipliers(),
             "Score": result.getScores()
