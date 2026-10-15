@@ -59,14 +59,22 @@ class Yard:
         self.blocks_by_id = {}
         self.blocks_by_code = {}
 
-        for inp in yard_blocks_input:
-            block = Block(**inp)
+        for record in yard_blocks_input:
+            block = self.bad_data.validateBlockAndRecord(
+                record, self.blocks_by_id, self.blocks_by_code
+            )
+            if block is None:
+                continue
             self.blocks_by_id[block.getId()] = block
             self.blocks_by_code[(block.getBranch(),block.getCode())] = block
 
         # remove the slots as per input
-        for removed_slot in removed_slots_input:
-            self.blocks_by_id[removed_slot[0]].getStack(removed_slot[1],removed_slot[2]).makeVoid()
+        for location in removed_slots_input:
+            stack = self.bad_data.validateRemovedSlotAndRecord(
+                location, self.blocks_by_id
+            )
+            if stack is not None:
+                stack.makeVoid()
 
         # assigns equipments
         self.master_loaders = []
@@ -74,19 +82,23 @@ class Yard:
 
         # initializes and stores Parameters
         self.parameters = {}
-        for inp in parameters_input:
-            parameter = Parameter(**inp)
-            self.parameters[parameter.getId()] = parameter
+        for record in parameters_input:
+            parameter = self.bad_data.validateParameterAndRecord(
+                record, self.parameters
+            )
+            if parameter is not None:
+                self.parameters[parameter.getId()] = parameter
 
         # add parameters into stacks
-        for parameter_id in yard_planning_input:
-            parameter = self.parameters[parameter_id]
-            #stack: (block_id, row_index, slot_index)
-            for stack in yard_planning_input[parameter_id]:
-                try:
-                    self.blocks_by_id[stack[0]].getStack(stack[1],stack[2]).addParameter(parameter)
-                except IndexError:
-                    self.bad_data.addYPOutOfRange((parameter_id,stack[0],stack[1],stack[2]))
+        for parameter_id, locations in yard_planning_input.items():
+            for location in locations:
+                validated = self.bad_data.validateYardPlanningAndRecord(
+                    parameter_id, location, self.parameters, self.blocks_by_id
+                )
+                if validated is None:
+                    continue
+                parameter, stack = validated
+                stack.addParameter(parameter)
 
         # input containers already in the batabase
         self.containers = {}

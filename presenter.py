@@ -87,6 +87,13 @@ class YardPresenter(Presenter):
 class BadDataPresenter(Presenter):
 
     # ----- primitives -----
+    def printImportErrors(self, baddata: BadYardData) -> None:
+        self.out("\nInvalid Import Records:")
+        for issue in baddata.getImportErrors():
+            self.out(
+                issue.category, "|", issue.reason, "|", repr(issue.record)
+            )
+
     def printOverlappingContainers(self, baddata: BadYardData) -> None:
         self.out("\nOverlapping Containers:")
         for coordinates, containers in baddata.getOverlappingContainers().items():
@@ -136,6 +143,7 @@ class BadDataPresenter(Presenter):
             self.out("No Bad Data")
             return
 
+        if baddata.getImportErrors(): self.printImportErrors(baddata)
         if baddata.yp_out_of_range: self.printYPOutOfRange(baddata)
         if baddata.incomplete_existing_container:
             self.printIncompleteExistingContainers(baddata)
@@ -160,6 +168,7 @@ class BadDataPresenter(Presenter):
             self.out("No Bad Data")
             return
 
+        self.out("Import Validation Errors:", baddata.getTotalImportErrors())
         self.out("Total Yard Planning Items:", baddata.getTotalYardPlanning())
         self.out("Yard Planning Errors:", baddata.getTotalYPOutOfRange())
         self.out("\nTotal Existing Containers:", baddata.getTotalContainers())

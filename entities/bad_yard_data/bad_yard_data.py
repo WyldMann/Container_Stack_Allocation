@@ -1,9 +1,11 @@
+from copy import deepcopy
 from dataclasses import dataclass
 
 from ..block import Block
 from ..container import Container
 from ..equipment import Equipment, Loader, RTG
 from ..feasibility import PlacementProposal
+from ..parameter import Parameter
 from .incomplete_containers import (
     IncompleteExistingContainers,
     IncompleteInboundContainers,
@@ -23,6 +25,13 @@ class ValidatedInboundPlacement:
     destination_block: Block
 
 
+@dataclass(frozen=True)
+class ImportIssue:
+    category: str
+    record: object
+    reason: str
+
+
 class BadYardData:
     overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]
     anomalous_stacks: list[Stack]
@@ -32,6 +41,7 @@ class BadYardData:
     duplicate_inbound_container_i_ds: list[Container]
     yp_out_of_range: list[tuple[str,str,int,int]]
     container_coords_invalid: list[Container]
+    import_errors: list[ImportIssue]
     total_yp: int
     total_containers: int
 
@@ -44,8 +54,167 @@ class BadYardData:
         self.duplicate_inbound_container_i_ds = []
         self.yp_out_of_range = []
         self.container_coords_invalid = []
+        self.import_errors = []
         self.total_yp = total_params
         self.total_containers = total_containers
+
+    def _rejectImport(self, category: str, record: object, reason: str) -> None:
+        self.import_errors.append(
+            ImportIssue(category, deepcopy(record), reason)
+        )
+
+    @staticmethod
+    def _validImportID(value: object) -> bool:
+        return isinstance(value, str) and bool(value.strip())
+
+    def validateBlockAndRecord(
+        self,
+        record: dict[str, str],
+        blocks_by_id: dict[str, Block],
+        blocks_by_code: dict[tuple[str, str], Block],
+    ) -> Block | None:
+        if not isinstance(record, dict):
+            return self._rejectImport("block", record, "Expected a dictionary.")
+
+        for field in ("block_id", "branch_id", "block_code"):
+            if not self._validImportID(record.get(field)):
+                return self._rejectImport(
+                    "block", record, f"{field} must be a nonblank string."
+                )
+
+        if record["block_id"] in blocks_by_id:
+            return self._rejectImport("block", record, "Duplicate block ID.")
+
+        code = (record["branch_id"], record["block_code"])
+        if code in blocks_by_code:
+            return self._rejectImport(
+                "block", record, "Duplicate branch/block code."
+            )
+
+        for field in ("row_count", "slot_count", "max_tier"):
+            value = record.get(field)
+            try:
+                valid = type(value) in (str, int) and int(value) > 0
+            except ValueError:
+                valid = False
+            if not valid:
+                return self._rejectImport(
+                    "block", record, f"{field} must be a positive integer."
+                )
+
+        try:
+            return Block(**record)
+        except (TypeError, ValueError) as error:
+            return self._rejectImport("block", record, str(error))
+
+    def validateParameterAndRecord(
+        self,
+        record: dict[str, str],
+        parameters: dict[str, Parameter],
+    ) -> Parameter | None:
+        if not isinstance(record, dict):
+            return self._rejectImport(
+                "parameter", record, "Expected a dictionary."
+            )
+        if not self._validImportID(record.get("parameter_id")):
+            return self._rejectImport(
+                "parameter", record, "Parameter ID must be a nonblank string."
+            )
+        if record["parameter_id"] in parameters:
+            return self._rejectImport(
+                "parameter", record, "Duplicate parameter ID."
+            )
+        if any(not isinstance(value, str) for value in record.values()):
+            return self._rejectImport(
+                "parameter", record, "Parameter input values must be strings."
+            )
+        try:
+            return Parameter(**record)
+        except (TypeError, ValueError) as error:
+            return self._rejectImport("parameter", record, str(error))
+
+    def _validateImportStack(
+        self,
+        category: str,
+        location: tuple[str, int, int],
+        blocks_by_id: dict[str, Block],
+        *,
+        parameter_id: str | None = None,
+    ) -> Stack | None:
+        record = (
+            {"parameter_id": parameter_id, "location": location}
+            if parameter_id is not None else location
+        )
+        if not isinstance(location, (tuple, list)) or len(location) != 3:
+            return self._rejectImport(
+                category, record, "Expected (block_id, row_index, slot_index)."
+            )
+
+        block_id, row_index, slot_index = location
+        if not self._validImportID(block_id) or block_id not in blocks_by_id:
+            return self._rejectImport(
+                category, record, f"Unknown block ID: {block_id!r}."
+            )
+        if type(row_index) is not int or type(slot_index) is not int:
+            return self._rejectImport(
+                category, record, "Row and slot indices must be integers."
+            )
+
+        rows = blocks_by_id[block_id].getSlots()
+        # Check before indexing so negative coordinates cannot wrap around.
+        if not (
+            0 <= row_index < len(rows)
+            and 0 <= slot_index < len(rows[row_index])
+        ):
+            if parameter_id is not None:
+                self.addYPOutOfRange(
+                    (parameter_id, block_id, row_index, slot_index)
+                )
+                return None
+            return self._rejectImport(
+                category, record, "Storage coordinates are outside the block."
+            )
+        return rows[row_index][slot_index]
+
+    def validateRemovedSlotAndRecord(
+        self,
+        location: tuple[str, int, int],
+        blocks_by_id: dict[str, Block],
+    ) -> Stack | None:
+        return self._validateImportStack(
+            "removed_slot", location, blocks_by_id
+        )
+
+    def validateYardPlanningAndRecord(
+        self,
+        parameter_id: str,
+        location: tuple[str, int, int],
+        parameters: dict[str, Parameter],
+        blocks_by_id: dict[str, Block],
+    ) -> tuple[Parameter, Stack] | None:
+        if (
+            not self._validImportID(parameter_id)
+            or parameter_id not in parameters
+        ):
+            return self._rejectImport(
+                "yard_planning",
+                {"parameter_id": parameter_id, "location": location},
+                f"Unknown parameter ID: {parameter_id!r}.",
+            )
+
+        stack = self._validateImportStack(
+            "yard_planning", location, blocks_by_id,
+            parameter_id=parameter_id,
+        )
+        if stack is None:
+            return None
+        return parameters[parameter_id], stack
+
+    def getImportErrors(self) -> tuple[ImportIssue, ...]:
+        return tuple(self.import_errors)
+
+    def getTotalImportErrors(self) -> int:
+        return len(self.import_errors)
 
     def validateInboundAndRecord(self, container: Container) -> bool:
         return self.incomplete_inbound_container.validateInboundAndRecord(
@@ -261,7 +430,8 @@ class BadYardData:
 
     def anyBadData(self) -> bool:
         return bool(
-            self.yp_out_of_range
+            self.import_errors
+            or self.yp_out_of_range
             or self.incomplete_existing_container
             or self.incomplete_inbound_container
             or self.duplicate_existing_container_i_ds

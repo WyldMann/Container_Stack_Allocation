@@ -2,6 +2,7 @@
 
 from .bad_yard_data import (
     BadYardData,
+    ImportIssue,
     PlacementRejected,
     ValidatedInboundPlacement,
 )
@@ -13,6 +14,7 @@ from .incomplete_containers import (
 
 __all__ = [
     'BadYardData',
+    'ImportIssue',
     'PlacementRejected',
     'ValidatedInboundPlacement',
     'IncompleteContainers',
