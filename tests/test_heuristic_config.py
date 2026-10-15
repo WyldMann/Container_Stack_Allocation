@@ -2,8 +2,10 @@ import math
 import tempfile
 import unittest
 from dataclasses import fields, FrozenInstanceError
+from itertools import product
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from config import (
     ApplicationSettings, ConfigurationError, FeasibilitySettings,
@@ -47,6 +49,8 @@ class HeuristicConfigTests(unittest.TestCase):
 
     def test_invalid_numeric_values_are_rejected(self):
         for field in fields(HeuristicSettings):
+            if field.type is bool:
+                continue
             values = ('true', '"1"', '[]', '-1')
             if field.name == 'size_cluster_radius':
                 values += ('1.5',)
@@ -58,6 +62,30 @@ class HeuristicConfigTests(unittest.TestCase):
                 with self.subTest(field=field.name, value=value):
                     with self.assertRaises(ConfigurationError):
                         self.load_text(f'[heuristic]\n{field.name} = {value}\n')
+
+    def test_factor_switches_accept_booleans_and_preserve_other_defaults(self):
+        for name in ('enable_delta_weight', 'enable_equipment_distance', 'enable_size_cluster'):
+            for enabled in (True, False):
+                with self.subTest(name=name, enabled=enabled):
+                    result = self.load_text(f'[heuristic]\n{name} = {str(enabled).lower()}\n')
+                    self.assertEqual(result.heuristic, HeuristicSettings(**{name: enabled}))
+
+    def test_factor_switches_reject_non_booleans(self):
+        for name in ('enable_delta_weight', 'enable_equipment_distance', 'enable_size_cluster'):
+            for value in ('0', '1', '1.0', '"false"', '[]', 'nan', 'inf'):
+                with self.subTest(name=name, value=value):
+                    with self.assertRaises(ConfigurationError):
+                        self.load_text(f'[heuristic]\n{name} = {value}\n')
+            for value in (0, 1, 1.0, 'false', None):
+                with self.subTest(name=name, direct_value=value):
+                    with self.assertRaises(TypeError):
+                        HeuristicSettings(**{name: value})
+
+    def test_disabled_factors_still_validate_numeric_settings(self):
+        with self.assertRaises(ConfigurationError):
+            self.load_text(
+                '[heuristic]\nenable_delta_weight = false\nhl_delta_weight = 0\n'
+            )
 
     def test_direct_settings_validation_and_immutability(self):
         for value in (True, '1', math.inf, math.nan, -1, 0, 10 ** 1000):
@@ -131,6 +159,51 @@ class ConfiguredHeuristicModelTests(unittest.TestCase):
                 )
                 self.assertEqual(model.evaluate(weight, distance), weight_score * distance_score)
 
+    def test_factor_switch_combinations(self):
+        for weight_enabled, distance_enabled, cluster_enabled in product((True, False), repeat=3):
+            with self.subTest(weight=weight_enabled, distance=distance_enabled, cluster=cluster_enabled):
+                model = HeuristicModel(HeuristicSettings(
+                    enable_delta_weight=weight_enabled,
+                    enable_equipment_distance=distance_enabled,
+                    enable_size_cluster=cluster_enabled,
+                ))
+                expected = (
+                    (5 if weight_enabled else 1)
+                    * (5 if distance_enabled else 1)
+                    * (1.5 if cluster_enabled else 1)
+                )
+                self.assertAlmostEqual(model.evaluate(5000, 5, 1.5), expected)
+
+    def test_disabled_weight_and_distance_skip_scoring_and_fallbacks(self):
+        model = HeuristicModel(HeuristicSettings(
+            enable_delta_weight=False, enable_equipment_distance=False,
+        ))
+        model.decayFormula = Mock(side_effect=AssertionError('Decay should be skipped.'))
+        for weight in (None, -1, 0, 5000):
+            with self.subTest(weight=weight):
+                self.assertEqual(model.deltaWeight(weight), 1.0)
+        for distance in (0, 5, math.inf):
+            with self.subTest(distance=distance):
+                self.assertEqual(model.equipmentDistance(distance), 1.0)
+        model.decayFormula.assert_not_called()
+
+    def test_disabled_clustering_skips_neighborhood_scan(self):
+        model = HeuristicModel(HeuristicSettings(enable_size_cluster=False))
+        container, block = Mock(), Mock()
+        self.assertEqual(model.sizeCluster(container, block, ('A', 1, 2, 0)), 1.0)
+        block.getSlots.assert_not_called()
+        container.getContSize.assert_not_called()
+
+    def test_all_factors_disabled_ignore_fallbacks_and_supplied_multiplier(self):
+        model = HeuristicModel(HeuristicSettings(
+            enable_delta_weight=False,
+            enable_equipment_distance=False,
+            enable_size_cluster=False,
+        ))
+        for weight, distance in ((0, 0), (None, math.inf), (-1, 5)):
+            with self.subTest(weight=weight, distance=distance):
+                self.assertEqual(model.evaluate(weight, distance, 0.25), 1.0)
+
     def test_custom_weights_and_half_lives(self):
         model = HeuristicModel(HeuristicSettings(
             w_delta_weight=20, hl_delta_weight=1000,
@@ -177,6 +250,21 @@ class ConfiguredHeuristicModelTests(unittest.TestCase):
             settings = load_config(path)
         yard = Yard([], feasibility_settings=settings.feasibility, heuristic_settings=settings.heuristic)
         self.assertEqual(yard.model.evaluate(0, 0), 250)
+
+    def test_file_factor_switches_reach_yard_model(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'config.toml'
+            path.write_text(
+                '[heuristic]\nenable_delta_weight = false\n'
+                'enable_equipment_distance = false\nenable_size_cluster = false\n',
+                encoding='utf-8',
+            )
+            settings = load_config(path)
+        yard = Yard([], heuristic_settings=settings.heuristic)
+        self.assertFalse(yard.model.enable_delta_weight)
+        self.assertFalse(yard.model.enable_equipment_distance)
+        self.assertFalse(yard.model.enable_size_cluster)
+        self.assertEqual(yard.model.evaluate(0, 0, 2), 1.0)
 
 
 if __name__ == '__main__':

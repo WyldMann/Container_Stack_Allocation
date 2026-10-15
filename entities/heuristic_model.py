@@ -11,6 +11,9 @@ class HeuristicModel:
     def __init__(self, settings: HeuristicSettings | None = None) -> None:
         self.settings = settings if settings is not None else HeuristicSettings()
         settings = self.settings
+        self.enable_delta_weight = settings.enable_delta_weight
+        self.enable_equipment_distance = settings.enable_equipment_distance
+        self.enable_size_cluster = settings.enable_size_cluster
         self.w_delta_weight = settings.w_delta_weight
         self.hl_delta_weight = settings.hl_delta_weight
         self.lambda_delta_weight = math.log(2) / self.hl_delta_weight
@@ -43,6 +46,9 @@ class HeuristicModel:
         Distances are measured between the closest cells of each footprint,
         within the candidate's block. Exclude its supporting footprint.
         """
+        if not self.enable_size_cluster:
+            return 1.0
+
         rows = block.getSlots()
         container_size = container.getContSize()
         candidate_slots = (coordinate[2] - 1, coordinate[2]) if container_size == '40' else (coordinate[2],)
@@ -83,7 +89,10 @@ class HeuristicModel:
     def decayFormula(lambda_: float, variable:float) -> float:
         return math.exp(-lambda_*variable)
 
-    def deltaWeight(self,delta_weight:float | None):
+    def deltaWeight(self, delta_weight: float | None) -> float:
+        if not self.enable_delta_weight:
+            return 1.0
+
         if delta_weight is None:
             return self.no_delta_weight_value
         if delta_weight < 0:
@@ -91,7 +100,10 @@ class HeuristicModel:
 
         else: return self.w_delta_weight * self.decayFormula(self.lambda_delta_weight,delta_weight)
 
-    def equipmentDistance(self,equipment_distance:float):
+    def equipmentDistance(self, equipment_distance: float) -> float:
+        if not self.enable_equipment_distance:
+            return 1.0
+
         if equipment_distance == float('inf'):
             return self.min_value
         else:
@@ -100,6 +112,7 @@ class HeuristicModel:
     #multiplicative weights
     def evaluate(self,delta_weight:float|None, equipment_distance:float,
                  size_cluster_multiplier: float = 1.0) -> float:
+        cluster_score = size_cluster_multiplier if self.enable_size_cluster else 1.0
         return (self.deltaWeight(delta_weight)
                 * self.equipmentDistance(equipment_distance)
-                * size_cluster_multiplier)
+                * cluster_score)

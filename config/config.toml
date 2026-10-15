@@ -8,6 +8,11 @@ loader_access = true
 
 
 [heuristic]
+# Disabled factors skip scoring and contribute a neutral multiplier of 1.
+enable_delta_weight = true
+enable_equipment_distance = true
+enable_size_cluster = true
+
 # Maximum weight-compatibility score, reached when the incoming
 # container and the supporting top container have equal weights.
 w_delta_weight = 10.0

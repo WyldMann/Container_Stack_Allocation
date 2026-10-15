@@ -15,6 +15,9 @@ class HeuristicSettings:
     hl_size_cluster_distance: float = 1.5
     size_cluster_prior: float = 2.0
     size_cluster_bias: float = 1.0
+    enable_delta_weight: bool = True
+    enable_equipment_distance: bool = True
+    enable_size_cluster: bool = True
 
     def __post_init__(self) -> None:
         radius = self.size_cluster_radius
@@ -25,9 +28,13 @@ class HeuristicSettings:
 
         for field in fields(self):
             name = field.name
+            value = getattr(self, name)
+            if field.type is bool:
+                if type(value) is not bool:
+                    raise TypeError(f"{name} must be a boolean.")
+                continue
             if name == "size_cluster_radius":
                 continue
-            value = getattr(self, name)
             if type(value) not in (int, float):
                 raise TypeError(f"{name} must be numeric.")
             try:
