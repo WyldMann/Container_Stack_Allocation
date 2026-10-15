@@ -146,9 +146,9 @@ class Container:
         self.coordinates_str = [coordinates[0], coordinates[1], str(coordinates[2] + 1), str(coordinates[3] + 1),
                           str(coordinates[4] + 1)]
 
-    # Convert the zero-based tier index back to a one-based coordinate string.
-    def setTierInt(self, tier_index: int):
-        self.coordinates_str[4] = str(tier_index + 1)
+    # Disabled: tier-only movement was used solely by anomaly repair.
+    # def setTierInt(self, tier_index: int):
+    #     self.coordinates_str[4] = str(tier_index + 1)
 
     def __str__(self):
         return self.container_id
@@ -167,13 +167,14 @@ class DummyContainer(Container):
         )
         self.coordinates_list = set()
 
-    def addCoordList(self, coordinates: tuple[str, int, int], tier_index: int):
-        self.coordinates_list.add((coordinates[0], str(coordinates[1] + 1), str(coordinates[2] + 1), str(tier_index + 1)))
+    # Disabled: coordinate helpers belonged to the unused dummy-repair path.
+    # def addCoordList(self, coordinates: tuple[str, int, int], tier_index: int):
+    #     self.coordinates_list.add((coordinates[0], str(coordinates[1] + 1), str(coordinates[2] + 1), str(tier_index + 1)))
 
-    def removeCoordList(self, coordinates: tuple[str, str, str, str]): self.coordinates_list.remove(coordinates)
+    # def removeCoordList(self, coordinates: tuple[str, str, str, str]): self.coordinates_list.remove(coordinates)
 
-    def replaceDummy(self, container: Container, block_id: str):
-        container_coords = container.getCoordsStr()
-        self.removeCoordList((block_id, container_coords[2], container_coords[3], container_coords[4]))
+    # def replaceDummy(self, container: Container, block_id: str):
+    #     container_coords = container.getCoordsStr()
+    #     self.removeCoordList((block_id, container_coords[2], container_coords[3], container_coords[4]))
 
-    def getCoordsList(self) -> set[tuple[str, str, str, str]]: return self.coordinates_list
+    # def getCoordsList(self) -> set[tuple[str, str, str, str]]: return self.coordinates_list

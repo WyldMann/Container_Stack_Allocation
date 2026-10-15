@@ -256,7 +256,8 @@ class BadYardData:
     def addContainerCoordsInvalid(self,container:Container):
         self.container_coords_invalid.append(container)
     def addAnomalousStack(self,stack: Stack): self.anomalous_stacks.append(stack)
-    def popAnomalousStack(self) -> Stack: return self.anomalous_stacks.pop()
+    # Disabled: only anomaly repair consumed recorded stacks.
+    # def popAnomalousStack(self) -> Stack: return self.anomalous_stacks.pop()
 
     def anyBadData(self) -> bool:
         return bool(

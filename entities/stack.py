@@ -1,4 +1,4 @@
-from .container import Container, DummyContainer
+from .container import Container
 from .parameter import Parameter
 
 class Stack:
@@ -97,15 +97,16 @@ class Stack:
             else: done_stacking = True
         return False
 
-    def anomalyDummyFill(self,dummy: DummyContainer):
-        start_stacking = False
-        for x in reversed(range(len(self.containers))):
-            if self.containers[x] is not None:
-                start_stacking = True
-            else:
-                if start_stacking:
-                    self.containers[x] = dummy
-                    dummy.addCoordList(self.coordinates,x)
+    # Disabled: dummy repair leaves stack modes inconsistent with contents.
+    # def anomalyDummyFill(self,dummy: DummyContainer):
+    #     start_stacking = False
+    #     for x in reversed(range(len(self.containers))):
+    #         if self.containers[x] is not None:
+    #             start_stacking = True
+    #         else:
+    #             if start_stacking:
+    #                 self.containers[x] = dummy
+    #                 dummy.addCoordList(self.coordinates,x)
 
     # use this instead if return type is definitely a container and not None
     def getContainerOrRaise(self,tier_index:int) -> Container:
@@ -115,17 +116,17 @@ class Stack:
         else:
             raise NotImplementedError
 
-    # used when correcting anomaly
-    def normalize(self):
-            while self.anomaly():
-                for x in range(len(self.containers) - 1):
-
-                    # a roundabout way to swap values, without raising possible type mismatch
-                    container = self.containers[x + 1]
-                    if self.containers[x] is None and container is not None:
-                        self.containers[x] = container
-                        self.containers[x + 1] = None
-                        container.setTierInt(x)     #update container tier
+    # Disabled: anomaly repair leaves stack modes inconsistent with contents.
+    # def normalize(self):
+    #         while self.anomaly():
+    #             for x in range(len(self.containers) - 1):
+    #
+    #                 # a roundabout way to swap values, without raising possible type mismatch
+    #                 container = self.containers[x + 1]
+    #                 if self.containers[x] is None and container is not None:
+    #                     self.containers[x] = container
+    #                     self.containers[x + 1] = None
+    #                     container.setTierInt(x)     #update container tier
 
     def makeVoid(self):
         self.max_tier = 0

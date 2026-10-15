@@ -323,10 +323,10 @@ class Yard:
     #     while len(self.bad_data.getAnomalousStacks()) != 0:
     #         self.bad_data.popAnomalousStack().normalize()
 
-    # method 2: fit in dummy containers
-    def fillDummyContainer(self) -> None:
-        while len(self.bad_data.getAnomalousStacks()) != 0:
-            self.bad_data.popAnomalousStack().anomalyDummyFill(self.dummy)
+    # Disabled: dummy repair leaves stack modes inconsistent with contents.
+    # def fillDummyContainer(self) -> None:
+    #     while len(self.bad_data.getAnomalousStacks()) != 0:
+    #         self.bad_data.popAnomalousStack().anomalyDummyFill(self.dummy)
 
     def distanceBetweenBlock(self, first_block_id: str, second_block_id: str) -> float:
         block1 = self.blocks_by_id[first_block_id]
