@@ -1,6 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
+from config import FeasibilitySettings
 from entities.block import Block
 from entities.equipment import RTG
 from entities.feasibility.placement_feasibility import (
@@ -52,6 +53,45 @@ class FeasibilityTests(unittest.TestCase):
         self.fill(0, 0, '40', 1)
         self.fill(0, 1, '40', 1)
         self.assertEqual(self.check('40'), ('A', 0, 1, 1))
+
+    def test_floating_twenty_foot_stack_is_rejected_without_modification(self):
+        stack = self.block.getStack(0, 1)
+        stack.addContainer(SimpleNamespace(getContSize=lambda: '20'), 2)
+        before = (stack.getMode(), tuple(stack.getContainers()))
+
+        self.assert_rejected('20', RejectionReason.ANOMALOUS_STACK)
+
+        self.assertEqual((stack.getMode(), tuple(stack.getContainers())), before)
+
+    def test_gap_above_ground_level_is_rejected(self):
+        self.fill(0, 1, '20', 1)
+        self.block.getStack(0, 1).addContainer(
+            SimpleNamespace(getContSize=lambda: '20'), 2,
+        )
+
+        self.assert_rejected('20', RejectionReason.ANOMALOUS_STACK)
+
+    def test_forty_foot_checks_anchor_and_partner_for_floating_contents(self):
+        for floating_slots in ((0,), (1,), (0, 1)):
+            with self.subTest(floating_slots=floating_slots):
+                for slot_index in (0, 1):
+                    self.block.getStack(0, slot_index).removeContainer(2)
+                for slot_index in floating_slots:
+                    self.block.getStack(0, slot_index).addContainer(
+                        SimpleNamespace(getContSize=lambda: '40'), 2,
+                    )
+
+                self.assert_rejected('40', RejectionReason.ANOMALOUS_STACK)
+
+    def test_optional_rules_cannot_enable_placement_below_floating_contents(self):
+        self.feasibility = PlacementFeasibility(FeasibilitySettings(
+            stacking_safety=False, loader_access=False,
+        ))
+        self.block.getStack(0, 1).addContainer(
+            SimpleNamespace(getContSize=lambda: '20'), 2,
+        )
+
+        self.assert_rejected('20', RejectionReason.ANOMALOUS_STACK)
 
     def test_equal_height_twenty_foot_partner_is_rejected(self):
         self.fill(0, 0, '20', 1)

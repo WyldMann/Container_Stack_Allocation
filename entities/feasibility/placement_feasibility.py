@@ -20,6 +20,7 @@ class RejectionReason(Enum):
     INVALID_FORTY_FOOT_ANCHOR = "invalid_forty_foot_anchor"
     PARTNER_SIZE_CONFLICT = "partner_size_conflict"
     PARTNER_TIER_MISMATCH = "partner_tier_mismatch"
+    ANOMALOUS_STACK = "anomalous_stack"
     UNSAFE_STACKING = "unsafe_stacking"
     LOADER_DESTINATION_INACCESSIBLE = "loader_destination_inaccessible"
     LOADER_ACCESS_BLOCKED = "loader_access_blocked"
@@ -110,6 +111,16 @@ class PlacementFeasibility:
             tier_index=tier_index,
             container_size=container_size,
         )
+
+        # Floating contents invalidate any stack in the footprint, regardless
+        # of the optional pyramid-safety and loader-access settings.
+        if any(
+            block.getStack(r, s).anomaly()
+            for _, r, s in proposal.footprint
+        ):
+            return FeasibilityResult(
+                rejection_reason=RejectionReason.ANOMALOUS_STACK
+            )
 
         if self.settings.stacking_safety:
             reason = self._check_stacking_safety(block, proposal)

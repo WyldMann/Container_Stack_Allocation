@@ -293,10 +293,6 @@ class BadYardData:
 
         for _, r, s in proposal.footprint:
             stack = block.getStack(r, s)
-            if stack.anomaly():
-                raise PlacementRejected(
-                    "Repair floating containers before placing here."
-                )
             if not stack.isTierEmpty(tier_index):
                 raise PlacementRejected("A destination tier is already occupied.")
         return proposal
