@@ -1,79 +1,30 @@
-from pathlib import Path
-
 from filewriter import ContainerFileWriter
 
 from config import (
     DEFAULT_CONFIG_FILE,
-    DEFAULT_CSV_MAPPING_FILE,
+    DEFAULT_INPUT_CONFIG_FILE,
     load_config,
-    load_csv_mapping,
+    load_input_config,
 )
 
-from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader, EquipmentMoveFileReader
+from repository import load_yard_inputs
 from entities import Yard, Container
 from entities.bad_yard_data import PlacementRejected
 from presenter import YardPresenter, BadDataPresenter
 
 settings = load_config(DEFAULT_CONFIG_FILE)
-csv_profiles = load_csv_mapping(DEFAULT_CSV_MAPPING_FILE)
-
-yard_blocks_file = Path(__file__).parent / "data_CY219" / "_TRM_MST_YARD_BLOCK__202610141439.csv"
-yard_planning_file = Path(__file__).parent / "data_CY219" / "_TRM_TRS_YARD_PLANNING_ITEM__202610141445.csv"
-removed_slots_file = Path(__file__).parent / "data_CY219" / "removed_slots.csv"
-parameters_file = Path(__file__).parent / "data_CY219" / "_TRM_MST_YARD_PARAMETER__202610141443.csv"
-containers_file = Path(__file__).parent / "data_CY219" / "containers.csv"
-inbound_containers_file = Path(__file__).parent / "data_CY219" / "inbound.csv"
-equipment_file = Path(__file__).parent / "data_CY219" / "master_equipment.csv"
-equipment_history_file = Path(__file__).parent / "data_CY219" / "equipment_history.csv"
-
-yard_block_records = FileReader(
-    yard_blocks_file,
-    profile=csv_profiles["yard_blocks"],
-).readCSV()
-
-removed_slots = RemovedSlotsFileReader(
-    removed_slots_file,
-    profile=csv_profiles["removed_slots"],
-).readCSVTuple()
-
-parameter_records = FileReader(
-    parameters_file,
-    profile=csv_profiles["parameters"],
-).readCSV()
-
-yard_planning = YardPlanningFileReader(
-    yard_planning_file,
-    profile=csv_profiles["yard_planning"],
-).readCSVDictTuple()
-
-container_records = ContainerFileReader(
-    containers_file,
-    profile=csv_profiles["existing_containers"],
-).readCSV()
-
-inbound_container_records = ContainerFileReader(
-    inbound_containers_file,
-    profile=csv_profiles["inbound_containers"],
-).readCSV()
-
-equipment_records = FileReader(
-    equipment_file,
-    profile=csv_profiles["master_equipment"],
-).readCSV()
-
-equipment_locations = EquipmentMoveFileReader(
-    equipment_history_file,
-    profile=csv_profiles["equipment_history"],
-).readCSVDict()
+input_settings = load_input_config(DEFAULT_INPUT_CONFIG_FILE)
+inputs = load_yard_inputs(input_settings)
+inbound_container_records = inputs["inbound_containers"]
 
 yard = Yard(
-    yard_blocks_input=yard_block_records,
-    removed_slots_input=removed_slots,
-    parameters_input=parameter_records,
-    yard_planning_input=yard_planning,
-    containers_input=container_records,
-    equipment_input=equipment_records,
-    equipment_locations_input=equipment_locations,
+    yard_blocks_input=inputs["yard_blocks"],
+    removed_slots_input=inputs["removed_slots"],
+    parameters_input=inputs["parameters"],
+    yard_planning_input=inputs["yard_planning"],
+    containers_input=inputs["existing_containers"],
+    equipment_input=inputs["master_equipment"],
+    equipment_locations_input=inputs["equipment_history"],
     feasibility_settings=settings.feasibility,
     heuristic_settings=settings.heuristic,
 )
@@ -106,6 +57,6 @@ for x in inbound_container_records:
 BadDataPresenter().printInbound(yard.bad_data)
 
 container_writer = ContainerFileWriter(
-    Path(__file__).parent / "output" / "result.csv"
+    input_settings["output_file"]
 )
 container_writer.writeCSV(yard)

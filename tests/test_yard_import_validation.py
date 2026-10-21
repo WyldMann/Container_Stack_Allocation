@@ -7,7 +7,8 @@ from unittest.mock import Mock, call
 from config import DEFAULT_CSV_MAPPING_FILE, load_csv_mapping
 from entities import Yard
 from entities.bad_yard_data import BadYardData, ImportIssue
-from filereader import RemovedSlotsFileReader
+from repository import CSVLoader
+from repository import RemovedSlotsRepository
 from presenter import BadDataPresenter
 
 
@@ -146,9 +147,9 @@ class YardImportValidationTests(unittest.TestCase):
                 "BLOCK_ID,ROW_NO,SLOT_NO\nA,0,0\nA,1,1\n",
                 encoding="utf-8",
             )
-            locations = RemovedSlotsFileReader(
-                path, profiles["removed_slots"]
-            ).readCSVTuple()
+            locations = RemovedSlotsRepository(
+                CSVLoader(path), profiles["removed_slots"]
+            ).read_tuples()
         yard = self.make_yard(removed_slots_input=locations)
 
         self.assertEqual(yard.getStack("A", 0, 0).getMode(), "X")

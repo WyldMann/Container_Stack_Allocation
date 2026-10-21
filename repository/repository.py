@@ -1,31 +1,27 @@
-import csv
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any, Iterator, Sequence
 
 from config import CSVMappingProfile
+from .loader import InputError, Loader
 from utils import parse_datetime, strGeneralize
 
 
-class CSVInputError(ValueError):
-    """The CSV headers or rows do not match the expected input."""
-
-
-class FileReader:
+class Repository:
     required_fields: tuple[str, ...] = ()
 
     def __init__(
         self,
-        file_path: str | Path,
+        loader: Loader,
         profile: CSVMappingProfile | None = None,
     ):
-        self.file_path = Path(file_path)
+        self.loader = loader
         self.profile = profile
 
     def _resolve_columns(
         self, headers: Sequence[str] | None,
     ) -> dict[str, str | None]:
         if not headers:
-            raise CSVInputError(f"{self.file_path}: missing CSV header row.")
+            raise InputError(f"{self.loader.source}: missing source columns.")
 
         header_index = {}
         for header in headers:
@@ -33,8 +29,8 @@ class FileReader:
             if not normalized:
                 continue
             if normalized in header_index:
-                raise CSVInputError(
-                    f"{self.file_path}: ambiguous CSV headers "
+                raise InputError(
+                    f"{self.loader.source}: ambiguous source columns "
                     f"{header_index[normalized]!r} and {header!r}."
                 )
             header_index[normalized] = header
@@ -47,7 +43,7 @@ class FileReader:
             schema = self.profile.schema
             incompatible = set(self.required_fields) - set(schema.fields)
             if incompatible:
-                raise CSVInputError(
+                raise InputError(
                     f"Profile {self.profile.name!r} does not define: "
                     + ", ".join(sorted(incompatible))
                 )
@@ -65,49 +61,44 @@ class FileReader:
                 source = ""
 
             if source is None and field in required:
-                missing.append(f"{field} (CSV header {expected!r})")
+                missing.append(f"{field} (source column {expected!r})")
             resolved[field] = source
 
         if missing:
-            raise CSVInputError(
-                f"{self.file_path}: missing required columns: "
+            raise InputError(
+                f"{self.loader.source}: missing required columns: "
                 + ", ".join(missing)
             )
         return resolved
 
-    def _iter_rows(self) -> Iterator[tuple[int, dict[str, str]]]:
-        with self.file_path.open(newline="", encoding="utf-8-sig") as file:
-            reader = csv.DictReader(file)
-            columns = self._resolve_columns(reader.fieldnames)
+    @staticmethod
+    def _text(value: object) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return str(value)
 
-            for source_row in reader:
-                if None in source_row:
-                    raise CSVInputError(
-                        f"{self.file_path}, line {reader.line_num}: "
-                        "too many values."
-                    )
-                if any(value is None for value in source_row.values()):
-                    raise CSVInputError(
-                        f"{self.file_path}, line {reader.line_num}: "
-                        "too few values."
-                    )
-
+    def _iter_rows(self) -> Iterator[tuple[str, dict[str, str]]]:
+        with self.loader.open() as (headers, rows):
+            columns = self._resolve_columns(headers)
+            for location, source_row in rows:
                 record = {
-                    field: source_row[source] if source is not None else ""
+                    field: self._text(source_row[source]) if source is not None else ""
                     for field, source in columns.items()
                 }
-                yield reader.line_num, record
+                yield location, record
 
-    def _coordinate(self, value: str, field: str, line: int) -> int:
+    def _coordinate(self, value: str, field: str, location: str) -> int:
         try:
             return int(value) - 1
         except ValueError as error:
-            raise CSVInputError(
-                f"{self.file_path}, line {line}: "
+            raise InputError(
+                f"{location}: "
                 f"{field} must be an integer; received {value!r}."
             ) from error
 
-    def readCSV(self) -> list[dict[str, str]]:
+    def read_records(self) -> list[dict[str, str]]:
         return [
             {key: strGeneralize(value) for key, value in record.items()}
             for _, record in self._iter_rows()
@@ -120,65 +111,78 @@ class FileReader:
             result.setdefault(record[0], []).append(tuple(record[1:]))
         return result
 
-    def readCSVTuple(self) -> list[Any]:
-        raise NotImplementedError("Subclasses must override readCSVTuple()")
+    def read_tuples(self) -> list[Any]:
+        raise NotImplementedError("Subclasses must override read_tuples()")
 
-    def readCSVDictTuple(self):
-        return self.group_rows(self.readCSVTuple())
+    def read_grouped(self):
+        return self.group_rows(self.read_tuples())
 
 
-class ContainerFileReader(FileReader):
+class ContainerRepository(Repository):
     pass
 
 
-class RemovedSlotsFileReader(FileReader):
+class RemovedSlotsRepository(Repository):
     required_fields = ("block_id", "row_no", "slot_no")
 
-    def readCSVTuple(self) -> list[tuple[str, int, int]]:
+    def read_tuples(self) -> list[tuple[str, int, int]]:
         return [
             (
                 strGeneralize(record["block_id"]),
-                self._coordinate(record["row_no"], "row_no", line),
-                self._coordinate(record["slot_no"], "slot_no", line),
+                self._coordinate(record["row_no"], "row_no", location),
+                self._coordinate(record["slot_no"], "slot_no", location),
             )
-            for line, record in self._iter_rows()
+            for location, record in self._iter_rows()
         ]
 
 
-class YardPlanningFileReader(FileReader):
+class YardPlanningRepository(Repository):
     required_fields = ("parameter_id", "block_id", "row_no", "slot_no")
 
-    def readCSVTuple(self) -> list[tuple[str, str, int, int]]:
+    def read_tuples(self) -> list[tuple[str, str, int, int]]:
         return [
             (
                 strGeneralize(record["parameter_id"]),
                 strGeneralize(record["block_id"]),
-                self._coordinate(record["row_no"], "row_no", line),
-                self._coordinate(record["slot_no"], "slot_no", line),
+                self._coordinate(record["row_no"], "row_no", location),
+                self._coordinate(record["slot_no"], "slot_no", location),
             )
-            for line, record in self._iter_rows()
+            for location, record in self._iter_rows()
         ]
 
 
-class EquipmentMoveFileReader(FileReader):
+class EquipmentMoveRepository(Repository):
     required_fields = ("equipment_code", "branch_id", "block_code", "row_no", "slot_no", "move_time")
 
-    def readCSVDict(self) -> dict[str, tuple[str, str, int, int]]:
+    def read_locations(self) -> dict[str, tuple[str, str, int, int]]:
         result = {}
-        for line, record in self._iter_rows():
+        timestamp_kinds = set()
+        for location, record in self._iter_rows():
             try:
                 dt = parse_datetime(record["move_time"])
             except (ValueError, OverflowError, OSError) as error:
-                raise CSVInputError(
-                    f"{self.file_path}, line {line}: "
+                raise InputError(
+                    f"{location}: "
                     f"invalid MOVE_DATE {record['move_time']!r}."
                 ) from error
+
+            # Empty dates remain older than real dates. Do not silently guess
+            # a timezone when a source mixes naive and aware timestamps.
+            if dt != datetime.min:
+                aware = dt.utcoffset() is not None
+                timestamp_kinds.add(aware)
+                if len(timestamp_kinds) > 1:
+                    raise InputError(
+                        f"{location}: mixed timezone-aware and naive movement times."
+                    )
+                if aware:
+                    dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
 
             coordinates = (
                 record["branch_id"],
                 record["block_code"],
-                self._coordinate(record["row_no"], "row_no", line),
-                self._coordinate(record["slot_no"], "slot_no", line),
+                self._coordinate(record["row_no"], "row_no", location),
+                self._coordinate(record["slot_no"], "slot_no", location),
             )
             equipment_code = record["equipment_code"]
             if equipment_code not in result or dt > result[equipment_code][0]:

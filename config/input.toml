@@ -1,0 +1,62 @@
+# Relative paths are resolved from this file's directory.
+[input]
+source = "csv" # "csv" or "sql"
+# These column mappings are shared by CSV and SQL input.
+mapping_file = "csv_mapping.toml"
+
+[csv.files]
+yard_blocks = "../data_CY219/_TRM_MST_YARD_BLOCK__202610141439.csv"
+yard_planning = "../data_CY219/_TRM_TRS_YARD_PLANNING_ITEM__202610141445.csv"
+removed_slots = "../data_CY219/removed_slots.csv"
+parameters = "../data_CY219/_TRM_MST_YARD_PARAMETER__202610141443.csv"
+existing_containers = "../data_CY219/containers.csv"
+inbound_containers = "../data_CY219/inbound.csv"
+master_equipment = "../data_CY219/master_equipment.csv"
+equipment_history = "../data_CY219/equipment_history.csv"
+
+# Example connection details: replace these before selecting source = "sql".
+# Requires requirements-sql.txt and the named password environment variable.
+[sql]
+host = "localhost"
+port = 5432
+dbname = "yard_management"
+user = "yard_reader"
+password_env = "YARD_DB_PASSWORD"
+connect_timeout = 10
+sslmode = "prefer"
+schema = "public"
+consistent_snapshot = true
+
+# Table/view names are inferred from the exports and must be verified.
+# Names are quoted exactly, including capitalization. A dataset can override
+# schema, add equality filters, or specify ascending order by SOURCE columns:
+# schema = "another_schema"
+# filters = { BRANCH = "CY219" }
+# order_by = ["MOVE_TIME", "CONTNO"]
+[sql.datasets.yard_blocks]
+relation = "TRM_MST_YARD_BLOCK"
+
+[sql.datasets.yard_planning]
+relation = "TRM_TRS_YARD_PLANNING_ITEM"
+
+[sql.datasets.removed_slots]
+relation = "removed_slots"
+
+[sql.datasets.parameters]
+relation = "TRM_MST_YARD_PARAMETER"
+
+[sql.datasets.existing_containers]
+relation = "containers"
+
+[sql.datasets.inbound_containers]
+relation = "inbound"
+order_by = ["MOVE_TIME", "CONTNO"]
+
+[sql.datasets.master_equipment]
+relation = "master_equipment"
+
+[sql.datasets.equipment_history]
+relation = "equipment_history"
+
+[output]
+containers_file = "../output/result.csv"
