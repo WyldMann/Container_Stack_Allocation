@@ -17,6 +17,12 @@ def parse_datetime(value: str) -> datetime:
         except OSError:
             return datetime.fromtimestamp(value_unix/1000)
 
+    # SQL timestamps are serialized without losing seconds or timezone offsets.
+    try:
+        return datetime.fromisoformat(value.strip())
+    except ValueError:
+        pass
+
     # value is in String
     formats = [
         "%d-%m-%Y %H:%M",

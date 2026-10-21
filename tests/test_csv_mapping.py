@@ -13,13 +13,14 @@ from config import (
 from config.csv_import.mapping_settings import SCHEMAS
 from entities import Block, Container, Parameter, Yard
 from filewriter import ContainerFileWriter
-from filereader import (
-    ContainerFileReader,
-    CSVInputError,
-    EquipmentMoveFileReader,
-    FileReader,
-    RemovedSlotsFileReader,
-    YardPlanningFileReader,
+from repository import CSVLoader
+from repository import (
+    ContainerRepository,
+    InputError,
+    EquipmentMoveRepository,
+    Repository,
+    RemovedSlotsRepository,
+    YardPlanningRepository,
 )
 
 
@@ -50,7 +51,7 @@ class CSVMappingLoaderTests(unittest.TestCase):
         csv_path = self.path.with_suffix(".csv")
         csv_path.write_text("Code,EQUIPMENT_TYPE\nrtg01,rtg\n", encoding="utf-8")
         self.assertEqual(
-            FileReader(csv_path, profiles["master_equipment"]).readCSV(),
+            Repository(CSVLoader(csv_path), profiles["master_equipment"]).read_records(),
             [{"equipment_code": "RTG01", "equipment_type": "RTG"}],
         )
 
@@ -114,7 +115,7 @@ class CSVReaderMappingTests(unittest.TestCase):
         self.path = Path(self.directory.name) / "input.csv"
 
     def read_text(self, reader_type, text, profile_name=None, columns=None,
-                  method="readCSV"):
+                  method="read_records"):
         self.path.write_text(text, encoding="utf-8")
         profile = None
         if profile_name is not None:
@@ -123,23 +124,23 @@ class CSVReaderMappingTests(unittest.TestCase):
             profile = CSVMappingProfile(
                 profile_name, SCHEMAS[profile_name], mapping,
             )
-        return getattr(reader_type(self.path, profile), method)()
+        return getattr(reader_type(CSVLoader(self.path), profile), method)()
 
     def test_legacy_call_preserves_values_and_unnamed_column(self):
         self.assertEqual(
-            self.read_text(FileReader, "ID,,VALUE\n0001,,abc\n"),
+            self.read_text(Repository, "ID,,VALUE\n0001,,abc\n"),
             [{"ID": "1", "": "", "VALUE": "ABC"}],
         )
 
     def test_renamed_reordered_headers_ignore_case_spaces_and_bom(self):
         self.assertEqual(
             self.read_text(
-                RemovedSlotsFileReader,
+                RemovedSlotsRepository,
                 "\ufeff bay ,row NUMBER,Yard BLOCK\n4,2,000A\n",
                 "removed_slots",
                 {"block_id": "Yard Block", "row_no": "Row Number",
                  "slot_no": "Bay"},
-                "readCSVTuple",
+                "read_tuples",
             ),
             [("A", 1, 3)],
         )
@@ -147,7 +148,7 @@ class CSVReaderMappingTests(unittest.TestCase):
     def test_configured_source_wins_over_unrelated_canonical_column(self):
         self.assertEqual(
             self.read_text(
-                FileReader,
+                Repository,
                 "EQUIPMENT_CODE,Equipment Code,Type\nWRONG,rtg01,rtg\n",
                 "master_equipment",
                 {"equipment_code": "Equipment Code", "equipment_type": "Type"},
@@ -157,7 +158,7 @@ class CSVReaderMappingTests(unittest.TestCase):
 
     def test_missing_optional_headers_still_construct_a_container(self):
         rows = self.read_text(
-            ContainerFileReader,
+            ContainerRepository,
             "CONTNO,PRINCIPAL,DMG_FLAG,FULLMT,CONT_GRADE,POL,POD,"
             "VESSEL,VOYAGE,WEIGHT,MOVE_TIME\n"
             "c001,ONE,AV,F,PG,JKT,SGR,MKL,V1,1000,\n",
@@ -173,7 +174,7 @@ class CSVReaderMappingTests(unittest.TestCase):
     def test_present_empty_cell_is_allowed_for_a_required_column(self):
         self.assertEqual(
             self.read_text(
-                FileReader, "Code,EQUIPMENT_TYPE\n,RTG\n",
+                Repository, "Code,EQUIPMENT_TYPE\n,RTG\n",
                 "master_equipment", {"equipment_code": "Code"},
             ),
             [{"equipment_code": "", "equipment_type": "RTG"}],
@@ -197,7 +198,7 @@ class CSVReaderMappingTests(unittest.TestCase):
         ):
             with self.subTest(headers=extra_headers, values=extra_values):
                 record = self.read_text(
-                    FileReader,
+                    Repository,
                     headers + extra_headers + "\n" + row + extra_values + "\n",
                     "parameters",
                 )[0]
@@ -212,7 +213,7 @@ class CSVReaderMappingTests(unittest.TestCase):
 
     def container_record(self):
         return self.read_text(
-            ContainerFileReader,
+            ContainerRepository,
             "CONTNO,PRINCIPAL,DMG_FLAG,FULLMT,CONT_GRADE,POL,POD,"
             "VESSEL,VOYAGE,WEIGHT,MOVE_TIME,CONTSIZE,BRANCH,BLOK,ROW,SLOT,TIER,"
             "OPERATION_TYPE,POT,VESSEL_OPERATOR\n"
@@ -266,39 +267,39 @@ class CSVReaderMappingTests(unittest.TestCase):
         )
 
     def test_missing_required_column_names_internal_and_source_fields(self):
-        with self.assertRaisesRegex(CSVInputError, "block_id.*Yard Block"):
+        with self.assertRaisesRegex(InputError, "block_id.*Yard Block"):
             self.read_text(
-                RemovedSlotsFileReader, "ROW_NO,SLOT_NO\n1,1\n",
-                "removed_slots", {"block_id": "Yard Block"}, "readCSVTuple",
+                RemovedSlotsRepository, "ROW_NO,SLOT_NO\n1,1\n",
+                "removed_slots", {"block_id": "Yard Block"}, "read_tuples",
             )
 
     def test_ambiguous_headers_are_rejected(self):
-        with self.assertRaisesRegex(CSVInputError, "ambiguous"):
-            self.read_text(FileReader, "BLOCK_ID, block_id \n1,2\n")
+        with self.assertRaisesRegex(InputError, "ambiguous"):
+            self.read_text(Repository, "BLOCK_ID, block_id \n1,2\n")
 
     def test_empty_file_and_malformed_rows_are_rejected(self):
         for text in ("", "a,b\n1\n", "a,b\n1,2,3\n"):
             with self.subTest(text=text):
-                with self.assertRaises(CSVInputError):
-                    self.read_text(FileReader, text)
+                with self.assertRaises(InputError):
+                    self.read_text(Repository, text)
 
     def test_invalid_coordinate_has_line_context(self):
-        with self.assertRaisesRegex(CSVInputError, "line 2.*row_no"):
+        with self.assertRaisesRegex(InputError, "line 2.*row_no"):
             self.read_text(
-                RemovedSlotsFileReader,
+                RemovedSlotsRepository,
                 "BLOCK_ID,ROW_NO,SLOT_NO\nA,invalid,1\n",
-                "removed_slots", method="readCSVTuple",
+                "removed_slots", method="read_tuples",
             )
 
     def test_yard_planning_mapping_and_grouping(self):
         self.assertEqual(
             self.read_text(
-                YardPlanningFileReader,
+                YardPlanningRepository,
                 "rule,block,slot,row\n001,000A,4,2\n001,000A,5,2\n",
                 "yard_planning",
                 {"parameter_id": "rule", "block_id": "block",
                  "slot_no": "slot", "row_no": "row"},
-                "readCSVDictTuple",
+                "read_grouped",
             ),
             {"1": [("A", 1, 3), ("A", 1, 4)]},
         )
@@ -315,59 +316,59 @@ class CSVReaderMappingTests(unittest.TestCase):
             "row_no": "row", "slot_no": "slot", "move_time": "time",
         }
         self.assertEqual(
-            self.read_text(EquipmentMoveFileReader, text,
-                           "equipment_history", columns, "readCSVDict"),
+            self.read_text(EquipmentMoveRepository, text,
+                           "equipment_history", columns, "read_locations"),
             {"rtg01": ("001", "a", 0, 1)},
         )
         self.assertEqual(
             self.read_text(
-                EquipmentMoveFileReader,
+                EquipmentMoveRepository,
                 text + "rtg01,001,a,2,3,2/8/2026 14:28\n",
-                "equipment_history", columns, "readCSVDict",
+                "equipment_history", columns, "read_locations",
             ),
             {"rtg01": ("001", "a", 1, 2)},
         )
 
     def test_incompatible_profile_is_rejected(self):
-        with self.assertRaisesRegex(CSVInputError, "does not define"):
+        with self.assertRaisesRegex(InputError, "does not define"):
             self.read_text(
-                RemovedSlotsFileReader,
+                RemovedSlotsRepository,
                 "EQUIPMENT_CODE,EQUIPMENT_TYPE\nRTG01,RTG\n",
-                "master_equipment", method="readCSVTuple",
+                "master_equipment", method="read_tuples",
             )
 
     def test_default_profiles_load_sample_inputs_into_yard(self):
         data = Path(__file__).resolve().parents[1] / "test_data"
         profiles = load_csv_mapping(DEFAULT_CSV_MAPPING_FILE)
         yard = Yard(
-            yard_blocks_input=FileReader(
-                data / "yard_block.csv", profiles["yard_blocks"],
-            ).readCSV(),
-            removed_slots_input=RemovedSlotsFileReader(
-                data / "removed_slots.csv", profiles["removed_slots"],
-            ).readCSVTuple(),
-            parameters_input=FileReader(
-                data / "parameters2.csv", profiles["parameters"],
-            ).readCSV(),
-            yard_planning_input=YardPlanningFileReader(
-                data / "yard_planning.csv", profiles["yard_planning"],
-            ).readCSVDictTuple(),
-            containers_input=ContainerFileReader(
-                data / "containers.csv", profiles["existing_containers"],
-            ).readCSV(),
-            equipment_input=FileReader(
-                data / "master_equipment.csv", profiles["master_equipment"],
-            ).readCSV(),
-            equipment_locations_input=EquipmentMoveFileReader(
-                data / "equipment_history.csv", profiles["equipment_history"],
-            ).readCSVDict(),
+            yard_blocks_input=Repository(
+                CSVLoader(data / "yard_block.csv"), profiles["yard_blocks"],
+            ).read_records(),
+            removed_slots_input=RemovedSlotsRepository(
+                CSVLoader(data / "removed_slots.csv"), profiles["removed_slots"],
+            ).read_tuples(),
+            parameters_input=Repository(
+                CSVLoader(data / "parameters2.csv"), profiles["parameters"],
+            ).read_records(),
+            yard_planning_input=YardPlanningRepository(
+                CSVLoader(data / "yard_planning.csv"), profiles["yard_planning"],
+            ).read_grouped(),
+            containers_input=ContainerRepository(
+                CSVLoader(data / "containers.csv"), profiles["existing_containers"],
+            ).read_records(),
+            equipment_input=Repository(
+                CSVLoader(data / "master_equipment.csv"), profiles["master_equipment"],
+            ).read_records(),
+            equipment_locations_input=EquipmentMoveRepository(
+                CSVLoader(data / "equipment_history.csv"), profiles["equipment_history"],
+            ).read_locations(),
         )
         self.assertTrue(yard.blocks_by_id)
         self.assertTrue(yard.parameters)
         self.assertTrue(yard.containers)
-        self.assertTrue(ContainerFileReader(
-            data / "inbound.csv", profiles["inbound_containers"],
-        ).readCSV())
+        self.assertTrue(ContainerRepository(
+            CSVLoader(data / "inbound.csv"), profiles["inbound_containers"],
+        ).read_records())
 
     def test_application_startup_loads_profiles_and_builds_yard(self):
         main_path = Path(__file__).resolve().parents[1] / "main.py"

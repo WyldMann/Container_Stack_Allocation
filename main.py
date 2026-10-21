@@ -9,7 +9,8 @@ from config import (
     load_csv_mapping,
 )
 
-from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader, EquipmentMoveFileReader
+from repository import CSVLoader
+from repository import Repository, RemovedSlotsRepository, YardPlanningRepository, ContainerRepository, EquipmentMoveRepository
 from entities import Yard, Container
 from entities.bad_yard_data import PlacementRejected
 from presenter import YardPresenter, BadDataPresenter
@@ -26,45 +27,45 @@ inbound_containers_file = Path(__file__).parent / "data_CY219" / "inbound.csv"
 equipment_file = Path(__file__).parent / "data_CY219" / "master_equipment.csv"
 equipment_history_file = Path(__file__).parent / "data_CY219" / "equipment_history.csv"
 
-yard_block_records = FileReader(
-    yard_blocks_file,
+yard_block_records = Repository(
+    CSVLoader(yard_blocks_file),
     profile=csv_profiles["yard_blocks"],
-).readCSV()
+).read_records()
 
-removed_slots = RemovedSlotsFileReader(
-    removed_slots_file,
+removed_slots = RemovedSlotsRepository(
+    CSVLoader(removed_slots_file),
     profile=csv_profiles["removed_slots"],
-).readCSVTuple()
+).read_tuples()
 
-parameter_records = FileReader(
-    parameters_file,
+parameter_records = Repository(
+    CSVLoader(parameters_file),
     profile=csv_profiles["parameters"],
-).readCSV()
+).read_records()
 
-yard_planning = YardPlanningFileReader(
-    yard_planning_file,
+yard_planning = YardPlanningRepository(
+    CSVLoader(yard_planning_file),
     profile=csv_profiles["yard_planning"],
-).readCSVDictTuple()
+).read_grouped()
 
-container_records = ContainerFileReader(
-    containers_file,
+container_records = ContainerRepository(
+    CSVLoader(containers_file),
     profile=csv_profiles["existing_containers"],
-).readCSV()
+).read_records()
 
-inbound_container_records = ContainerFileReader(
-    inbound_containers_file,
+inbound_container_records = ContainerRepository(
+    CSVLoader(inbound_containers_file),
     profile=csv_profiles["inbound_containers"],
-).readCSV()
+).read_records()
 
-equipment_records = FileReader(
-    equipment_file,
+equipment_records = Repository(
+    CSVLoader(equipment_file),
     profile=csv_profiles["master_equipment"],
-).readCSV()
+).read_records()
 
-equipment_locations = EquipmentMoveFileReader(
-    equipment_history_file,
+equipment_locations = EquipmentMoveRepository(
+    CSVLoader(equipment_history_file),
     profile=csv_profiles["equipment_history"],
-).readCSVDict()
+).read_locations()
 
 yard = Yard(
     yard_blocks_input=yard_block_records,

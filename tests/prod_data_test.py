@@ -1,7 +1,8 @@
 from pathlib import Path
 from config import DEFAULT_CSV_MAPPING_FILE, load_csv_mapping
 
-from filereader import FileReader, RemovedSlotsFileReader, YardPlanningFileReader, ContainerFileReader
+from repository import CSVLoader
+from repository import Repository, RemovedSlotsRepository, YardPlanningRepository, ContainerRepository
 from entities import Yard
 
 import matplotlib as plt
@@ -15,11 +16,11 @@ container_file = Path(__file__).parent.parent / "data" / "_TRM_TRS_TARGET_CONTAI
 prod_container_file = Path(__file__).parent.parent / "data" / "rpt-terminalapp-010926.csv"
 
 csv_profiles = load_csv_mapping(DEFAULT_CSV_MAPPING_FILE)
-yard_repo = FileReader(yardfile, profile=csv_profiles["yard_blocks"]).readCSV()
-removed_slot = RemovedSlotsFileReader(removed_slot_file, profile=csv_profiles["removed_slots"]).readCSVTuple()
-parameter_input = FileReader(parameter_file, profile=csv_profiles["parameters"]).readCSV()
-yard_planning_input = YardPlanningFileReader(yard_planning_input_file, profile=csv_profiles["yard_planning"]).readCSVDictTuple()
-container_repo = ContainerFileReader(prod_container_file, profile=csv_profiles["existing_containers"]).readCSV()
+yard_repo = Repository(CSVLoader(yardfile), profile=csv_profiles["yard_blocks"]).read_records()
+removed_slot = RemovedSlotsRepository(CSVLoader(removed_slot_file), profile=csv_profiles["removed_slots"]).read_tuples()
+parameter_input = Repository(CSVLoader(parameter_file), profile=csv_profiles["parameters"]).read_records()
+yard_planning_input = YardPlanningRepository(CSVLoader(yard_planning_input_file), profile=csv_profiles["yard_planning"]).read_grouped()
+container_repo = ContainerRepository(CSVLoader(prod_container_file), profile=csv_profiles["existing_containers"]).read_records()
 
 yard = Yard(yard_repo,removed_slot,parameter_input,yard_planning_input,container_repo)
 

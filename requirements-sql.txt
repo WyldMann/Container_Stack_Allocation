@@ -1,0 +1,2 @@
+# Optional dependency for SQLLoader; CSV loading uses the standard library.
+psycopg[binary]>=3.2,<4
