@@ -59,4 +59,5 @@ BadDataPresenter().printInbound(yard.bad_data)
 container_writer = ContainerFileWriter(
     input_settings["output_file"]
 )
+yard_presenter.outParameterCompliance(yard)
 container_writer.writeCSV(yard)

@@ -59,6 +59,20 @@ class YardPresenter(Presenter):
         for block in yard.blocks_by_id.values():
             self.outBlock(block)
 
+    def outParameterCompliance(self, yard: Yard) -> None:
+        """Display each block's average parameter compliance as a percentage."""
+        self.out("Parameter Compliance:")
+        if not yard.blocks_by_id:
+            self.out("No blocks found.")
+            return
+
+        for block in yard.blocks_by_id.values():
+            self.out(
+                "ID:", block.getId(),
+                "| Branch/Code:", f"{block.getBranch()}/{block.getCode()}",
+                "| Compliance:", f"{block.parameterCompliance():.1%}",
+            )
+
     def outAssignResult(self, result: AssignResult|None) -> None:
         if result is None:
             self.out("No Space Found")
