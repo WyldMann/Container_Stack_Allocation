@@ -30,6 +30,7 @@ class Parameter:
     weight_range_score: int
     route_score: int
     and_score: int|None
+    max_score: float
 
     def __init__(self,
                  parameter_id:str,
@@ -82,6 +83,7 @@ class Parameter:
         self.weight_range_score = int(weight_range_score) if weight_range_score != '' else 0
         self.route_score = int(route_score) if route_score != '' else 0
         self.and_score = int(and_score) if and_score != '' else None
+        self.max_score = self._calculateMaxScore()
 
     def __str__(self): return self.parameter_id
 
@@ -109,6 +111,37 @@ class Parameter:
     def getVesselVoyageScore(self) -> int: return self.vessel_voyage_score
     def getWeightRangeScore(self) -> int: return self.weight_range_score
     def getRouteScore(self) -> int: return self.route_score
+    def getMaxScore(self) -> float: return self.max_score
+
+    def _calculateMaxScore(self) -> float:
+        """Cache the fixed maximum; recalculate if criteria or scores change."""
+        if self.and_score is not None:
+            return float(self.and_score)
+
+        criteria = (
+            (self.principal_score, (self.principal,)),
+            (self.container_condition_score, (self.container_condition,)),
+            (self.container_fill_score, (self.container_fill,)),
+            (self.operation_type_score, (self.operation_type,)),
+            (self.container_size_score, (self.container_size,)),
+            (self.route_score, (self.pol, self.pod)),
+            (self.vessel_voyage_score, (self.vessel, self.voyage)),
+            (self.container_grade_score, self.container_grade),
+        )
+        return float(
+            sum(
+                score
+                for score, values in criteria
+                if any(value != "" for value in values)
+            )
+            + self.weight_range_score
+        )
+
+    def compliance(self, container: Container) -> float:
+        """Normalize evaluation using the cached maximum (nonnegative scores)."""
+        if self.max_score <= 0:
+            return 0.0
+        return self.evaluate(container) / self.max_score
 
     @staticmethod
     def _matchesText(expected: str, actual: str) -> bool:
