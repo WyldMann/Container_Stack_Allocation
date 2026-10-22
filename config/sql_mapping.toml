@@ -1,0 +1,144 @@
+# Mapping direction:
+# INTERNAL_FIELD = "SQL column"
+#
+# Required and optional fields are determined by the reader's schema.
+# Table/view names are inferred from the exports and must be verified.
+# Names are quoted exactly, including capitalization. Each dataset may override
+# schema and supply filters or order_by, referencing SQL source columns.
+
+[sql.yard_blocks]
+relation = "TRM_MST_YARD_BLOCK"
+
+[sql.yard_blocks.columns]
+block_id = "BLOCK_ID"
+branch_id = "BRANCH_ID"
+block_code = "BLOCK_CODE"
+row_count = "ROW_COUNT"
+slot_count = "SLOT_COUNT"
+max_tier = "MAX_TIER"
+pos_x = "POS_X"
+pos_y = "POS_Y"
+
+
+[sql.yard_planning]
+relation = "TRM_TRS_YARD_PLANNING_ITEM"
+
+[sql.yard_planning.columns]
+parameter_id = "PARAM_ID"
+block_id = "BLOCK_ID"
+row_no = "ROW"
+slot_no = "SLOT"
+
+
+[sql.removed_slots]
+relation = "removed_slots"
+
+[sql.removed_slots.columns]
+block_id = "BLOCK_ID"
+row_no = "ROW_NO"
+slot_no = "SLOT_NO"
+
+
+[sql.parameters]
+relation = "TRM_MST_YARD_PARAMETER"
+
+[sql.parameters.columns]
+parameter_id = "PARAM_ID"
+parameter_name = "PARAM_NAME"
+principal = "PRINCIPAL"
+principal_score = "PRINCIPAL_SCORE"
+container_condition = "CONT_CONDITION"
+container_condition_score = "CONT_CONDITION_SCORE"
+container_fill = "CONT_FILL"
+container_fill_score = "CONT_FILL_SCORE"
+operation_type = "OPERATION_TYPE"
+operation_type_score = "OPERATION_TYPE_SCORE"
+container_size = "CONT_SIZE"
+container_size_score = "CONT_SIZE_SCORE"
+container_grade = "CONT_GRADE"
+container_grade_score = "CONT_GRADE_SCORE"
+pol = "POL"
+pod = "POD"
+route_score = "ROUTE_SCORE"
+vessel = "VESSEL"
+voyage = "VOYAGE"
+vessel_voyage_score = "VESSEL_VOYAGE_SCORE"
+weight_start = "WEIGHT_START"
+weight_end = "WEIGHT_END"
+weight_range_score = "WEIGHT_RANGE_SCORE"
+and_score = "AND_SCORE"
+
+
+[sql.existing_containers]
+relation = "containers"
+# schema = "operations"
+# filters = { BRANCH = "CY219" }
+
+[sql.existing_containers.columns]
+container_id = "CONTNO"
+branch_id = "BRANCH"
+block_code = "BLOK"
+row_no = "ROW"
+slot_no = "SLOT"
+tier_no = "TIER"
+principal = "PRINCIPAL"
+container_condition = "DMG_FLAG"
+container_fill = "FULLMT"
+container_size = "CONTSIZE"
+container_grade = "CONT_GRADE"
+pol = "POL"
+pod = "POD"
+vessel = "VESSEL"
+voyage = "VOYAGE"
+weight = "WEIGHT"
+move_time = "MOVE_TIME"
+operation_type = "OPERATION_TYPE"
+pot = "POT"
+vessel_operator = "VESSEL_OPERATOR"
+
+
+[sql.inbound_containers]
+relation = "inbound"
+order_by = ["MOVE_TIME", "CONTNO"]
+
+[sql.inbound_containers.columns]
+container_id = "CONTNO"
+principal = "PRINCIPAL"
+container_condition = "DMG_FLAG"
+container_fill = "FULLMT"
+container_size = "CONTSIZE"
+container_grade = "CONT_GRADE"
+pol = "POL"
+pod = "POD"
+vessel = "VESSEL"
+voyage = "VOYAGE"
+weight = "WEIGHT"
+move_time = "MOVE_TIME"
+branch_id = "BRANCH"
+block_code = "BLOK"
+row_no = "ROW"
+slot_no = "SLOT"
+tier_no = "TIER"
+operation_type = "OPERATION_TYPE"
+pot = "POT"
+vessel_operator = "VESSEL_OPERATOR"
+
+
+[sql.master_equipment]
+relation = "master_equipment"
+
+[sql.master_equipment.columns]
+equipment_code = "EQUIPMENT_CODE"
+equipment_type = "EQUIPMENT_TYPE"
+
+
+[sql.equipment_history]
+relation = "equipment_history"
+
+[sql.equipment_history.columns]
+equipment_code = "ALAT"
+branch_id = "BRANCH"
+block_code = "BLOK"
+row_no = "ROW"
+slot_no = "SLOT"
+move_time = "MOVE_DATE"

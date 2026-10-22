@@ -1,7 +1,8 @@
 # Relative paths are resolved from this file's directory.
 [input]
 source = "csv" # "csv" or "sql"
-# These column mappings are shared by CSV and SQL input.
+
+[csv]
 mapping_file = "csv_mapping.toml"
 
 [csv.files]
@@ -17,6 +18,7 @@ equipment_history = "../data_CY219/equipment_history.csv"
 # Example connection details: replace these before selecting source = "sql".
 # Requires requirements-sql.txt and the named password environment variable.
 [sql]
+mapping_file = "sql_mapping.toml"
 host = "localhost"
 port = 5432
 dbname = "yard_management"
@@ -26,37 +28,6 @@ connect_timeout = 10
 sslmode = "prefer"
 schema = "public"
 consistent_snapshot = true
-
-# Table/view names are inferred from the exports and must be verified.
-# Names are quoted exactly, including capitalization. A dataset can override
-# schema, add equality filters, or specify ascending order by SOURCE columns:
-# schema = "another_schema"
-# filters = { BRANCH = "CY219" }
-# order_by = ["MOVE_TIME", "CONTNO"]
-[sql.datasets.yard_blocks]
-relation = "TRM_MST_YARD_BLOCK"
-
-[sql.datasets.yard_planning]
-relation = "TRM_TRS_YARD_PLANNING_ITEM"
-
-[sql.datasets.removed_slots]
-relation = "removed_slots"
-
-[sql.datasets.parameters]
-relation = "TRM_MST_YARD_PARAMETER"
-
-[sql.datasets.existing_containers]
-relation = "containers"
-
-[sql.datasets.inbound_containers]
-relation = "inbound"
-order_by = ["MOVE_TIME", "CONTNO"]
-
-[sql.datasets.master_equipment]
-relation = "master_equipment"
-
-[sql.datasets.equipment_history]
-relation = "equipment_history"
 
 [output]
 containers_file = "../output/result.csv"

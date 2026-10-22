@@ -2,7 +2,8 @@
 
 import os
 
-from config import ConfigurationError, load_csv_mapping
+from config import ConfigurationError
+from config.csv_import.mapping_loader import load_mapping
 
 from .csvloader import CSVLoader
 from .sqlloader import SQLLoader
@@ -52,7 +53,9 @@ def _sql_loader(connection, name, definition):
 
 
 def load_yard_inputs(settings):
-    profiles = load_csv_mapping(settings["mapping_file"])
+    profiles = load_mapping(
+        settings["mapping_file"], source=settings["source"]
+    )
     if settings["source"] == "csv":
         return _read_datasets(
             lambda name: CSVLoader(settings["csv_files"][name]), profiles

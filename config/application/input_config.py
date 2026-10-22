@@ -33,7 +33,7 @@ def load_input_config(path: str | Path) -> dict:
     unknown = set(document) - {"input", "csv", "sql", "output"}
     if unknown:
         raise ConfigurationError(f"Unknown input configuration sections: {sorted(unknown)}")
-    section = _read_section(document, "input", {"source", "mapping_file"})
+    section = _read_section(document, "input", {"source"})
     source = section.get("source")
     if source not in ("csv", "sql"):
         raise ConfigurationError("input.source must be 'csv' or 'sql'.")
@@ -44,15 +44,16 @@ def load_input_config(path: str | Path) -> dict:
     output = _read_section(document, "output", {"containers_file"})
     settings = {
         "source": source,
-        "mapping_file": resolve(section.get("mapping_file", "csv_mapping.toml"),
-                                "input.mapping_file"),
         "output_file": resolve(output.get("containers_file", "../output/result.csv"),
                                "output.containers_file"),
     }
 
     # Validate the selected source only, so CSV requires no SQL configuration.
     if source == "csv":
-        csv = _read_section(document, "csv", {"files"})
+        csv = _read_section(document, "csv", {"files", "mapping_file"})
+        settings["mapping_file"] = resolve(
+            csv.get("mapping_file", "csv_mapping.toml"), "csv.mapping_file"
+        )
         files = csv.get("files")
         _dataset_names(files, "csv.files")
         settings["csv_files"] = {
@@ -63,7 +64,7 @@ def load_input_config(path: str | Path) -> dict:
 
     sql = _read_section(document, "sql", {
         "host", "port", "dbname", "user", "password_env", "connect_timeout",
-        "sslmode", "schema", "consistent_snapshot", "datasets",
+        "sslmode", "schema", "consistent_snapshot", "mapping_file",
     })
     connection = {
         name: _string(sql.get(name), f"sql.{name}")
@@ -86,13 +87,21 @@ def load_input_config(path: str | Path) -> dict:
     if type(snapshot) is not bool:
         raise ConfigurationError("sql.consistent_snapshot must be true or false.")
     schema = _string(sql.get("schema", "public"), "sql.schema")
-    datasets = sql.get("datasets")
-    _dataset_names(datasets, "sql.datasets")
+    mapping_path = resolve(
+        sql.get("mapping_file", "sql_mapping.toml"), "sql.mapping_file"
+    )
+    mapping_document = _read_document(mapping_path)
+    if set(mapping_document) - {"sql"}:
+        raise ConfigurationError(
+            "Only the 'sql' section is allowed in SQL mappings."
+        )
+    datasets = _read_section(mapping_document, "sql", set(DATASETS))
+    _dataset_names(datasets, "sql")
     validated = {}
     for name, definition in datasets.items():
-        label = f"sql.datasets.{name}"
+        label = f"sql.{name}"
         if not isinstance(definition, dict) or set(definition) - {
-            "schema", "relation", "filters", "order_by",
+            "schema", "relation", "filters", "order_by", "columns",
         }:
             raise ConfigurationError(f"Invalid {label} settings.")
         filters = definition.get("filters", {})
@@ -113,6 +122,7 @@ def load_input_config(path: str | Path) -> dict:
             "filters": filters,
             "order_by": order,
         }
-    settings.update(connection=connection, password_env=password_env,
+    settings.update(mapping_file=mapping_path,
+                    connection=connection, password_env=password_env,
                     consistent_snapshot=snapshot, sql_datasets=validated)
     return settings

@@ -7,56 +7,68 @@ from .mapping_settings import CSVMappingProfile, SCHEMAS
 
 
 def load_csv_mapping(path: str | Path) -> dict[str, CSVMappingProfile]:
+    return load_mapping(path, source="csv")
+
+
+def load_mapping(
+    path: str | Path, *, source: str,
+) -> dict[str, CSVMappingProfile]:
+    if source not in ("csv", "sql"):
+        raise ConfigurationError("Mapping source must be 'csv' or 'sql'.")
+
     mapping_path = Path(path)
+    label = source.upper()
     try:
         with mapping_path.open("rb") as file:
             document = tomllib.load(file)
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
         raise ConfigurationError(
-            f"Cannot load CSV mappings from {mapping_path}: {error}"
+            f"Cannot load {label} mappings from {mapping_path}: {error}"
         ) from error
 
-    if set(document) - {"csv"}:
-        raise ConfigurationError("Only the 'csv' section is allowed.")
+    if set(document) - {source}:
+        raise ConfigurationError(f"Only the '{source}' section is allowed.")
 
-    definitions = document.get("csv")
+    definitions = document.get(source)
     if not isinstance(definitions, dict) or not definitions:
-        raise ConfigurationError("'csv' must contain at least one profile.")
+        raise ConfigurationError(f"'{source}' must contain at least one profile.")
+
+    allowed = {"columns"}
+    if source == "sql":
+        allowed |= {"schema", "relation", "filters", "order_by"}
 
     profiles = {}
     for name, definition in definitions.items():
         if name not in SCHEMAS:
-            raise ConfigurationError(f"Unknown CSV profile: {name!r}.")
-        if not isinstance(definition, dict) or set(definition) - {"columns"}:
-            raise ConfigurationError(
-                f"csv.{name} must contain only a 'columns' table."
-            )
+            raise ConfigurationError(f"Unknown {label} profile: {name!r}.")
+        if not isinstance(definition, dict) or set(definition) - allowed:
+            raise ConfigurationError(f"Invalid {source}.{name} settings.")
 
         columns = definition.get("columns", {})
         if not isinstance(columns, dict):
-            raise ConfigurationError(f"csv.{name}.columns must be a table.")
+            raise ConfigurationError(f"{source}.{name}.columns must be a table.")
 
         schema = SCHEMAS[name]
         unknown_fields = set(columns) - set(schema.fields)
         if unknown_fields:
             raise ConfigurationError(
-                f"Unknown fields in csv.{name}.columns: "
+                f"Unknown fields in {source}.{name}.columns: "
                 + ", ".join(sorted(unknown_fields))
             )
 
         sources = {}
         for field in schema.fields:
-            source = columns.get(field, field)
-            if not isinstance(source, str) or not source.strip():
+            column = columns.get(field, field)
+            if not isinstance(column, str) or not column.strip():
                 raise ConfigurationError(
-                    f"csv.{name}.columns.{field} must be a non-empty string."
+                    f"{source}.{name}.columns.{field} must be a non-empty string."
                 )
 
-            normalized = source.strip().casefold()
+            normalized = column.strip().casefold()
             if normalized in sources:
                 raise ConfigurationError(
-                    f"csv.{name}: {sources[normalized]} and {field} "
-                    f"both map to CSV header {source!r}."
+                    f"{source}.{name}: {sources[normalized]} and {field} "
+                    f"both map to {label} column {column!r}."
                 )
             sources[normalized] = field
 
