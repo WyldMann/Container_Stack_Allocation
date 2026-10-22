@@ -1,4 +1,5 @@
 import math
+import warnings
 
 from config import FeasibilitySettings, HeuristicSettings
 
@@ -117,9 +118,27 @@ class Yard:
     def inputEquipment(self,
                        equipment_input: list[dict[str,str]],
                        equipment_locations_input: dict[str,tuple[str,str,int,int]]):
+        registered_codes = {
+            loader.getCode() for loader in self.master_loaders
+        }
+        registered_codes.update(
+            block.rtg.getCode()
+            for block in self.blocks_by_id.values()
+            if block.rtg is not None
+        )
+
         for equipment in equipment_input:
 
             equipment_code = equipment["equipment_code"]
+
+            if equipment_code in registered_codes:
+                warnings.warn(
+                    f"Duplicate equipment ID {equipment_code!r}; "
+                    "record skipped. Existing equipment retained.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
 
             try:
                 location_by_code = equipment_locations_input[equipment_code]
@@ -141,6 +160,8 @@ class Yard:
                 loader = Loader(equipment_code, coordinates)
                 block.addLoader(loader)
                 self.master_loaders.append(loader)
+
+            registered_codes.add(equipment_code)
 
     def loadersByBlockID(self,block_id: str) -> list[Loader]:
         return [loader for loader in self.master_loaders if loader.getCoords()[0] == block_id]
