@@ -166,7 +166,7 @@ class DuplicateContainerIDTests(unittest.TestCase):
                 self.assertNotIn(call("No Bad Data"), output.call_args_list)
                 if category in ("existing", "both"):
                     output.assert_any_call("\nDuplicate Existing Container IDs:")
-                    output.assert_any_call("C", ["BR", "A", "1", "2", "1"],
+                    output.assert_any_call("C", ("BR", "A", "2", "1", "1"),
                                            "CONTSIZE:", "'20'")
                 if category in ("inbound", "both"):
                     output.assert_any_call("\nDuplicate Inbound Container IDs:")

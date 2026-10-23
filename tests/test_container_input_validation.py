@@ -78,7 +78,7 @@ class ContainerInputValidationTests(unittest.TestCase):
         output = Mock()
         BadDataPresenter(out=output).print(yard.bad_data)
         output.assert_any_call(
-            "C", ["BR", "A", "1", "2", "1"], "CONTSIZE:", "'45'"
+            "C", ("BR", "A", "2", "1", "1"), "CONTSIZE:", "'45'"
         )
 
     def test_completeness_check_does_not_record_or_modify_container(self):
@@ -240,7 +240,7 @@ class ContainerInputValidationTests(unittest.TestCase):
 
         output.assert_any_call("\nIncomplete Existing Containers:")
         output.assert_any_call(
-            "C", ["BR", "A", "1", "2", "1"], "CONTSIZE:", "'45'"
+            "C", ("BR", "A", "2", "1", "1"), "CONTSIZE:", "'45'"
         )
         output.assert_any_call("\nIncomplete Inbound Containers:")
         output.assert_any_call("INBOUND", "CONTSIZE:", "'45'")

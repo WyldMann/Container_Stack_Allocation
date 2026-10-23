@@ -1,6 +1,6 @@
 import pandas as pd
 from entities import Yard, Block, Stack, Container, Equipment, BadYardData, AssignResult
-from utils import toIDSlotRow,toStrSlotRowTier
+from utils import toBranchCodeSlotRowTier, toIDSlotRow, toStrSlotRow, toStrSlotRowTier
 from typing import Callable
 
 
@@ -25,7 +25,7 @@ class Presenter:
               "| Voyage:", container.getVoyage(),
               "| Weight:", container.getWeight() if container.getWeight() is not None else "None",
               "| MoveTime:", container.getMoveTime(),
-              "| CoordsStr:", container.getCoordsStr()[0], container.getCoordsStr()[1],container.getCoordsStr()[3],container.getCoordsStr()[2],container.getCoordsStr()[4])
+              "| CoordsStr:", *toBranchCodeSlotRowTier(container.getCoordsStr()))
 
     def outEquipment(self, equipment: Equipment) -> None:
         self.out(equipment.getCode(), "-", toIDSlotRow(equipment.getCoordsStr()))
@@ -111,28 +111,28 @@ class BadDataPresenter(Presenter):
     def printOverlappingContainers(self, baddata: BadYardData) -> None:
         self.out("\nOverlapping Containers:")
         for coordinates, containers in baddata.getOverlappingContainers().items():
-            self.out(coordinates, [str(x) for x in containers])
+            self.out(toBranchCodeSlotRowTier(coordinates), [str(x) for x in containers])
 
     def printContainerCoordsInvalid(self, baddata: BadYardData) -> None:
         self.out("\nContainer Coordinates Invalid:")
         for x in baddata.getContainerCoordsInvalid():
-            self.out(x.getId(), x.getCoordsStr())
+            self.out(x.getId(), toBranchCodeSlotRowTier(x.getCoordsStr()))
 
     def printYPOutOfRange(self, baddata: BadYardData) -> None:
         self.out("\nYard Planning Out of Range:")
         for yp_item in baddata.getYPOutOfRange():
-            self.out("param_id:",yp_item[0],"block_id:",yp_item[1],"row:",yp_item[2] + 1, "slot:",  yp_item[3] + 1)
+            self.out("param_id:",yp_item[0],"block_id:",yp_item[1],"slot:",yp_item[3] + 1, "row:",yp_item[2] + 1)
 
     def printAnomalousStacks(self, baddata: BadYardData) -> None:
         self.out("\nAnomalous stacks:")
         for x in baddata.getAnomalousStacks():
-            self.out(x.getCoords(), end = " ")
+            self.out(toStrSlotRow(x.getCoords()), end = " ")
             self.outStackContents(x)
 
     def printIncompleteExistingContainers(self, baddata: BadYardData) -> None:
         self.out("\nIncomplete Existing Containers:")
         for x in baddata.getIncompleteExistingContainers():
-            self.out(x.getId(), x.getCoordsStr(), "CONTSIZE:", repr(x.getContSize()))
+            self.out(x.getId(), toBranchCodeSlotRowTier(x.getCoordsStr()), "CONTSIZE:", repr(x.getContSize()))
 
     def printIncompleteInboundContainers(self, baddata: BadYardData) -> None:
         self.out("\nIncomplete Inbound Containers:")
@@ -142,7 +142,7 @@ class BadDataPresenter(Presenter):
     def printDuplicateExistingContainerIDs(self, baddata: BadYardData) -> None:
         self.out("\nDuplicate Existing Container IDs:")
         for container in baddata.getDuplicateExistingContainerIDs():
-            self.out(container.getId(), container.getCoordsStr(),
+            self.out(container.getId(), toBranchCodeSlotRowTier(container.getCoordsStr()),
                      "CONTSIZE:", repr(container.getContSize()))
 
     def printDuplicateInboundContainerIDs(self, baddata: BadYardData) -> None:
