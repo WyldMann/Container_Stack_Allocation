@@ -1,5 +1,6 @@
 """Read source selection and locations without opening any data sources."""
 
+import os
 from pathlib import Path
 
 from .config_loader import ConfigurationError, _read_document, _read_section
@@ -63,13 +64,18 @@ def load_input_config(path: str | Path) -> dict:
         return settings
 
     sql = _read_section(document, "sql", {
-        "host", "port", "dbname", "user", "password_env", "connect_timeout",
+        "host_env", "port", "dbname_env", "user_env",
+        "password_env", "connect_timeout",
         "sslmode", "schema", "consistent_snapshot", "mapping_file",
     })
-    connection = {
-        name: _string(sql.get(name), f"sql.{name}")
-        for name in ("host", "dbname", "user")
-    }
+    connection = {}
+    for name in ("host", "dbname", "user"):
+        setting = f"{name}_env"
+        env_name = _string(sql.get(setting), f"sql.{setting}")
+        connection[name] = _string(
+            os.environ.get(env_name),
+            f"Environment variable {env_name!r} for sql.{setting}",
+        )
     for name, default, maximum in (("port", 5432, 65535), ("connect_timeout", 10, None)):
         value = sql.get(name, default)
         if type(value) is not int or value <= 0 or (maximum and value > maximum):

@@ -15,14 +15,14 @@ inbound_containers = "../data_CY219/inbound.csv"
 master_equipment = "../data_CY219/master_equipment.csv"
 equipment_history = "../data_CY219/equipment_history.csv"
 
-# Example connection details: replace these before selecting source = "sql".
+# Before selecting source = "sql", set the named connection environment variables.
 # Requires requirements-sql.txt and the named password environment variable.
 [sql]
 mapping_file = "sql_mapping.toml"
-host = "localhost"
+host_env = "YARD_DB_HOST"
 port = 5432
-dbname = "yard_management"
-user = "yard_reader"
+dbname_env = "YARD_DB_NAME"
+user_env = "YARD_DB_USER"
 password_env = "YARD_DB_PASSWORD"
 connect_timeout = 10
 sslmode = "prefer"

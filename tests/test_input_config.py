@@ -26,6 +26,14 @@ class InputConfigTests(unittest.TestCase):
             "sql_mapping.toml"
         ).read_text(encoding="utf-8")
         self.mapping_path.write_text(self.mapping_template, encoding="utf-8")
+        self.sql_environment = {
+            "YARD_DB_HOST": "db.example.test",
+            "YARD_DB_NAME": "yard_test",
+            "YARD_DB_USER": "test_reader",
+        }
+        environment = patch.dict(os.environ, self.sql_environment)
+        environment.start()
+        self.addCleanup(environment.stop)
 
     def load_text(self, text):
         self.path.write_text(text, encoding="utf-8")
@@ -90,6 +98,51 @@ class InputConfigTests(unittest.TestCase):
         self.assertEqual(settings["source"], "sql")
         self.assertNotIn("csv_files", settings)
 
+    def test_csv_does_not_require_sql_environment_variables(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(self.load_text(self.template)["source"], "csv")
+
+    def test_sql_connection_uses_configured_environment_variable_names(self):
+        sql = self.template.replace('source = "csv"', 'source = "sql"')
+        environment = {}
+        for name, value in self.sql_environment.items():
+            sql = sql.replace(f'"{name}"', f'"CUSTOM_{name}"')
+            environment[f"CUSTOM_{name}"] = value
+        with patch.dict(os.environ, environment, clear=True):
+            settings = self.load_text(sql)
+        self.assertEqual(settings["connection"], {
+            "host": "db.example.test", "dbname": "yard_test", "user": "test_reader",
+            "port": 5432, "connect_timeout": 10, "sslmode": "prefer",
+        })
+
+    def test_sql_environment_values_must_be_present_and_non_empty(self):
+        sql = self.template.replace('source = "csv"', 'source = "sql"')
+        for name in self.sql_environment:
+            for value in (None, "", "   "):
+                with self.subTest(name=name, value=value):
+                    environment = dict(self.sql_environment)
+                    if value is None:
+                        del environment[name]
+                    else:
+                        environment[name] = value
+                    with patch.dict(os.environ, environment, clear=True):
+                        with self.assertRaisesRegex(ConfigurationError, name):
+                            self.load_text(sql)
+
+    def test_sql_environment_variable_names_must_be_non_empty_strings(self):
+        sql = self.template.replace('source = "csv"', 'source = "sql"')
+        for setting, name in (
+            ("host_env", "YARD_DB_HOST"),
+            ("dbname_env", "YARD_DB_NAME"),
+            ("user_env", "YARD_DB_USER"),
+        ):
+            original = f'{setting} = "{name}"'
+            for replacement in ("", f'{setting} = ""',
+                                f'{setting} = "   "', f'{setting} = 123'):
+                with self.subTest(setting=setting, replacement=replacement):
+                    with self.assertRaisesRegex(ConfigurationError, f"sql[.]{setting}"):
+                        self.load_text(sql.replace(original, replacement))
+
     def test_sql_settings_schema_override_filters_and_order(self):
         text = self.template.replace('source = "csv"', 'source = "sql"')
         mapping = self.mapping_template.replace('relation = "containers"', '''relation = "containers"
@@ -101,14 +154,14 @@ order_by = ["CONTNO"]''')
         source = settings["sql_datasets"]["existing_containers"]
         self.assertEqual(source, dict(schema="operations", relation="containers",
                                      filters={"BRANCH": "CY219"}, order_by=["CONTNO"]))
-        self.assertEqual(settings["connection"]["host"], "localhost")
+        self.assertEqual(settings["connection"]["host"], "db.example.test")
         self.assertNotIn("password", settings["connection"])
         self.assertEqual(settings["sql_datasets"]["yard_blocks"]["schema"], "public")
 
     def test_invalid_sql_configuration_is_rejected(self):
         sql = self.template.replace('source = "csv"', 'source = "sql"')
         for old, new in (
-            ('host = "localhost"', 'host = ""'),
+            ('host_env = "YARD_DB_HOST"', 'host = "localhost"'),
             ('port = 5432', 'port = true'),
             ('port = 5432', 'port = 65536'),
             ('consistent_snapshot = true', 'consistent_snapshot = "yes"'),
