@@ -31,7 +31,7 @@ slot_no = "SLOT"
 
 
 [sql.removed_slots]
-relation = "removed_slots"
+relation = "TRM_MST_YARD_BLOCK_REMOVED_SLOT"
 
 [sql.removed_slots.columns]
 block_id = "BLOCK_ID"
@@ -70,7 +70,7 @@ and_score = "AND_SCORE"
 
 
 [sql.existing_containers]
-relation = "containers"
+relation = "TRM_TRS_TARGET_CONTAINER"
 # schema = "operations"
 # filters = { BRANCH = "CY219" }
 

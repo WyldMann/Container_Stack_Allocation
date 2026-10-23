@@ -1,10 +1,10 @@
 # Relative paths are resolved from this file's directory.
 [input.sources]
 # Each dataset independently selects "csv" or "sql".
-yard_blocks = "csv"
-yard_planning = "csv"
-removed_slots = "csv"
-parameters = "csv"
+yard_blocks = "sql"
+yard_planning = "sql"
+removed_slots = "sql"
+parameters = "sql"
 existing_containers = "csv"
 inbound_containers = "csv"
 master_equipment = "csv"
@@ -35,7 +35,7 @@ user_env = "YARD_DB_USER"
 password_env = "YARD_DB_PASSWORD"
 connect_timeout = 10
 sslmode = "prefer"
-schema = "public"
+schema = "TERMINAL_APP"
 consistent_snapshot = true
 
 [output]
