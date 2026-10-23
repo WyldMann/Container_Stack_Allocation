@@ -1,6 +1,14 @@
 # Relative paths are resolved from this file's directory.
-[input]
-source = "csv" # "csv" or "sql"
+[input.sources]
+# Each dataset independently selects "csv" or "sql".
+yard_blocks = "csv"
+yard_planning = "csv"
+removed_slots = "csv"
+parameters = "csv"
+existing_containers = "csv"
+inbound_containers = "csv"
+master_equipment = "csv"
+equipment_history = "csv"
 
 [csv]
 mapping_file = "csv_mapping.toml"
@@ -15,7 +23,8 @@ inbound_containers = "../data_CY219/inbound.csv"
 master_equipment = "../data_CY219/master_equipment.csv"
 equipment_history = "../data_CY219/equipment_history.csv"
 
-# Before selecting source = "sql", set the named connection environment variables.
+# Required when any input.sources entry is "sql".
+# Set the named connection environment variables before running.
 # Requires requirements-sql.txt and the named password environment variable.
 [sql]
 mapping_file = "sql_mapping.toml"

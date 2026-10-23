@@ -1,6 +1,7 @@
 import csv
 import os
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -11,6 +12,7 @@ from config import (
     load_input_config,
 )
 from config.application.input_config import DATASETS
+from config.csv_import.mapping_loader import load_mapping
 from repository import load_yard_inputs
 from repository.input_loader import _sql_loader
 
@@ -39,10 +41,16 @@ class InputConfigTests(unittest.TestCase):
         self.path.write_text(text, encoding="utf-8")
         return load_input_config(self.path)
 
+    def sql_text(self, *names):
+        text = self.template
+        for name in names or DATASETS:
+            text = text.replace(f'{name} = "csv"', f'{name} = "sql"')
+        return text
+
     def test_relative_locations_are_based_on_config_directory(self):
         settings = self.load_text(self.template)
         base = self.path.parent
-        self.assertEqual(settings["mapping_file"], base / "csv_mapping.toml")
+        self.assertEqual(settings["mapping_files"]["csv"], base / "csv_mapping.toml")
         self.assertEqual(settings["csv_files"]["existing_containers"],
                          (base / "../data_CY219/containers.csv").resolve())
         self.assertEqual(settings["output_file"],
@@ -55,29 +63,33 @@ class InputConfigTests(unittest.TestCase):
 
     def test_source_specific_mapping_defaults(self):
         text = self.template.replace('mapping_file = "csv_mapping.toml"', '')
-        self.assertEqual(self.load_text(text)["mapping_file"],
+        self.assertEqual(self.load_text(text)["mapping_files"]["csv"],
                          self.path.parent / "csv_mapping.toml")
-        text = text.replace('source = "csv"', 'source = "sql"')
-        text = text.replace('mapping_file = "sql_mapping.toml"', '')
-        self.assertEqual(self.load_text(text)["mapping_file"], self.mapping_path)
+        text = self.sql_text().replace('mapping_file = "sql_mapping.toml"', '')
+        self.assertEqual(self.load_text(text)["mapping_files"]["sql"], self.mapping_path)
 
     def test_sql_mapping_location_is_relative_to_input_configuration(self):
         directory = self.path.parent / "mappings"
         directory.mkdir()
         mapping_path = directory / "database.toml"
         mapping_path.write_text(self.mapping_template, encoding="utf-8")
-        text = self.template.replace('source = "csv"', 'source = "sql"')
+        text = self.sql_text()
         text = text.replace('"sql_mapping.toml"', '"mappings/database.toml"')
-        self.assertEqual(self.load_text(text)["mapping_file"], mapping_path)
+        self.assertEqual(self.load_text(text)["mapping_files"]["sql"], mapping_path)
         text = text.replace('"mappings/database.toml"',
                             f'"{mapping_path.as_posix()}"')
-        self.assertEqual(self.load_text(text)["mapping_file"], mapping_path)
+        self.assertEqual(self.load_text(text)["mapping_files"]["sql"], mapping_path)
 
     def test_invalid_source_and_incomplete_csv_are_rejected(self):
         for text in (
-            self.template.replace('source = "csv"', 'source = "other"'),
+            self.template.replace('yard_blocks = "csv"', 'yard_blocks = "other"'),
+            self.template.replace('yard_blocks = "csv"', 'yard_blocks = true'),
+            self.template.replace('yard_blocks = "csv"', ''),
+            self.template.replace('yard_blocks = "csv"', 'unknown = "csv"'),
+            self.template.replace('[input.sources]', '[input]'),
             self.template.replace('existing_containers = "../data_CY219/containers.csv"', ''),
-            self.template.replace('existing_containers = ', 'typo = '),
+            self.template.replace('existing_containers = "../data_CY219/containers.csv"',
+                                  'typo = "../data_CY219/containers.csv"'),
             self.template.replace('existing_containers = "../data_CY219/containers.csv"',
                                   'existing_containers = 123'),
             self.template + '\n[unknown]\nvalue = true\n',
@@ -89,21 +101,21 @@ class InputConfigTests(unittest.TestCase):
     def test_only_selected_source_requires_configuration(self):
         csv_text = self.template[:self.template.index("[sql]")]
         self.mapping_path.unlink()
-        self.assertEqual(self.load_text(csv_text)["source"], "csv")
+        self.assertEqual(set(self.load_text(csv_text)["sources"].values()), {"csv"})
         self.mapping_path.write_text(self.mapping_template, encoding="utf-8")
-        sql_text = self.template.replace('source = "csv"', 'source = "sql"')
+        sql_text = self.sql_text()
         start = sql_text.index("[csv]")
         end = sql_text.index("[sql]")
         settings = self.load_text(sql_text[:start] + sql_text[end:])
-        self.assertEqual(settings["source"], "sql")
+        self.assertEqual(set(settings["sources"].values()), {"sql"})
         self.assertNotIn("csv_files", settings)
 
     def test_csv_does_not_require_sql_environment_variables(self):
         with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(self.load_text(self.template)["source"], "csv")
+            self.assertEqual(set(self.load_text(self.template)["sources"].values()), {"csv"})
 
     def test_sql_connection_uses_configured_environment_variable_names(self):
-        sql = self.template.replace('source = "csv"', 'source = "sql"')
+        sql = self.sql_text()
         environment = {}
         for name, value in self.sql_environment.items():
             sql = sql.replace(f'"{name}"', f'"CUSTOM_{name}"')
@@ -116,7 +128,7 @@ class InputConfigTests(unittest.TestCase):
         })
 
     def test_sql_environment_values_must_be_present_and_non_empty(self):
-        sql = self.template.replace('source = "csv"', 'source = "sql"')
+        sql = self.sql_text()
         for name in self.sql_environment:
             for value in (None, "", "   "):
                 with self.subTest(name=name, value=value):
@@ -130,7 +142,7 @@ class InputConfigTests(unittest.TestCase):
                             self.load_text(sql)
 
     def test_sql_environment_variable_names_must_be_non_empty_strings(self):
-        sql = self.template.replace('source = "csv"', 'source = "sql"')
+        sql = self.sql_text()
         for setting, name in (
             ("host_env", "YARD_DB_HOST"),
             ("dbname_env", "YARD_DB_NAME"),
@@ -144,22 +156,23 @@ class InputConfigTests(unittest.TestCase):
                         self.load_text(sql.replace(original, replacement))
 
     def test_sql_settings_schema_override_filters_and_order(self):
-        text = self.template.replace('source = "csv"', 'source = "sql"')
-        mapping = self.mapping_template.replace('relation = "containers"', '''relation = "containers"
+        text = self.sql_text()
+        mapping = self.mapping_template.replace('[sql.existing_containers]', '''[sql.existing_containers]
 schema = "operations"
 filters = { BRANCH = "CY219" }
 order_by = ["CONTNO"]''')
         self.mapping_path.write_text(mapping, encoding="utf-8")
         settings = self.load_text(text)
         source = settings["sql_datasets"]["existing_containers"]
-        self.assertEqual(source, dict(schema="operations", relation="containers",
+        relation = tomllib.loads(self.mapping_template)["sql"]["existing_containers"]["relation"]
+        self.assertEqual(source, dict(schema="operations", relation=relation,
                                      filters={"BRANCH": "CY219"}, order_by=["CONTNO"]))
         self.assertEqual(settings["connection"]["host"], "db.example.test")
         self.assertNotIn("password", settings["connection"])
         self.assertEqual(settings["sql_datasets"]["yard_blocks"]["schema"], "public")
 
     def test_invalid_sql_configuration_is_rejected(self):
-        sql = self.template.replace('source = "csv"', 'source = "sql"')
+        sql = self.sql_text()
         for old, new in (
             ('host_env = "YARD_DB_HOST"', 'host = "localhost"'),
             ('port = 5432', 'port = true'),
@@ -172,12 +185,12 @@ order_by = ["CONTNO"]''')
                     self.load_text(sql.replace(old, new))
 
     def test_invalid_sql_dataset_configuration_is_rejected(self):
-        sql = self.template.replace('source = "csv"', 'source = "sql"')
+        sql = self.sql_text()
         for old, new in (
-            ('relation = "containers"', 'relation = ""'),
-            ('relation = "containers"', 'table = "containers"'),
-            ('relation = "containers"', 'relation = "containers"\nfilters = []'),
-            ('relation = "containers"', 'relation = "containers"\nfilters = { BRANCH = [] }'),
+            ('relation = "TRM_MST_YARD_BLOCK"', 'relation = ""'),
+            ('relation = "TRM_MST_YARD_BLOCK"', 'table = "blocks"'),
+            ('[sql.yard_blocks]', '[sql.yard_blocks]\nfilters = []'),
+            ('[sql.yard_blocks]', '[sql.yard_blocks]\nfilters = { BRANCH = [] }'),
             ('order_by = ["MOVE_TIME", "CONTNO"]', 'order_by = "MOVE_TIME"'),
             ('[sql.yard_blocks]', '[sql.unknown]'),
             ('[sql.yard_blocks]', '[csv.yard_blocks]'),
@@ -192,18 +205,38 @@ order_by = ["CONTNO"]''')
 
     def test_missing_sql_mapping_is_reported(self):
         self.mapping_path.unlink()
-        sql = self.template.replace('source = "csv"', 'source = "sql"')
+        sql = self.sql_text()
         with self.assertRaisesRegex(ConfigurationError, "Cannot read.*sql_mapping"):
             self.load_text(sql)
 
-    def test_sql_mapping_requires_every_dataset(self):
+    def test_sql_mapping_requires_selected_dataset(self):
         self.mapping_path.write_text(
             self.mapping_template[self.mapping_template.index("[sql.yard_planning]"):],
             encoding="utf-8",
         )
-        sql = self.template.replace('source = "csv"', 'source = "sql"')
+        sql = self.sql_text("yard_blocks")
         with self.assertRaisesRegex(ConfigurationError, "missing datasets.*yard_blocks"):
             self.load_text(sql)
+
+    def test_mixed_sources_require_only_selected_paths_and_relations(self):
+        text = self.sql_text("existing_containers", "equipment_history")
+        text = text.replace('existing_containers = "../data_CY219/containers.csv"', '')
+        text = text.replace('equipment_history = "../data_CY219/equipment_history.csv"', '')
+        self.mapping_path.write_text(
+            '[sql.existing_containers]\nrelation = "containers"\n'
+            '[sql.equipment_history]\nrelation = "equipment_moves"\n',
+            encoding="utf-8",
+        )
+        settings = self.load_text(text)
+        sql_names = {"existing_containers", "equipment_history"}
+        self.assertEqual(settings["sources"], {
+            name: "sql" if name in sql_names else "csv" for name in DATASETS
+        })
+        self.assertEqual(set(settings["csv_files"]), set(DATASETS) - sql_names)
+        self.assertEqual(set(settings["sql_datasets"]), sql_names)
+        self.assertEqual(settings["mapping_files"], {
+            "csv": self.path.parent / "csv_mapping.toml", "sql": self.mapping_path,
+        })
 
 
 class ConfiguredInputLoadingTests(unittest.TestCase):
@@ -224,14 +257,28 @@ class ConfiguredInputLoadingTests(unittest.TestCase):
         self.addCleanup(self.modules.stop)
         self.connection = self.driver.connect.return_value.__enter__.return_value
         self.settings = {
-            "source": "sql",
-            "mapping_file": DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml"),
+            "sources": dict.fromkeys(DATASETS, "sql"),
+            "mapping_files": {"sql": DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml")},
             "connection": {"host": "example", "port": 5432, "dbname": "yard", "user": "reader"},
             "password_env": "TEST_YARD_DB_PASSWORD", "consistent_snapshot": True,
             "sql_datasets": {
                 name: dict(schema="public", relation=name, filters={}, order_by=[])
                 for name in DATASETS
             },
+        }
+
+    def mixed_settings(self, *sql_names):
+        return {
+            **self.settings,
+            "sources": {name: "sql" if name in sql_names else "csv" for name in DATASETS},
+            "mapping_files": {
+                **self.csv_settings["mapping_files"], **self.settings["mapping_files"],
+            },
+            "csv_files": {
+                name: path for name, path in self.csv_settings["csv_files"].items()
+                if name not in sql_names
+            },
+            "sql_datasets": {name: self.settings["sql_datasets"][name] for name in sql_names},
         }
 
     def prepare_cursor(self, name):
@@ -269,14 +316,75 @@ class ConfiguredInputLoadingTests(unittest.TestCase):
         for context in contexts:
             context.__exit__.assert_called_once()
 
+    def test_csv_selection_does_not_require_sql_driver_or_environment(self):
+        with patch.dict("sys.modules", {"psycopg": None}), patch.dict(os.environ, {}, clear=True):
+            actual = load_yard_inputs(self.csv_settings)
+        self.assertEqual(set(actual), set(DATASETS))
+        self.driver.connect.assert_not_called()
+
+    def test_each_dataset_can_use_sql_while_others_use_csv(self):
+        expected = load_yard_inputs(self.csv_settings)
+        for name in DATASETS:
+            with self.subTest(name=name):
+                settings = self.mixed_settings(name)
+                context = self.prepare_cursor(name)
+                self.connection.cursor.return_value = context
+                self.driver.connect.reset_mock()
+                with patch.dict(os.environ, {"TEST_YARD_DB_PASSWORD": "test-password"}):
+                    self.assertEqual(load_yard_inputs(settings), expected)
+                self.driver.connect.assert_called_once_with(
+                    **settings["connection"], password="test-password"
+                )
+                self.connection.cursor.assert_called_once()
+                context.__exit__.assert_called_once()
+                self.driver.connect.return_value.__exit__.assert_called_once_with(None, None, None)
+
+    def test_mixed_sources_share_connection_and_use_independent_column_mappings(self):
+        expected = load_yard_inputs(self.csv_settings)
+        settings = self.mixed_settings("yard_blocks", "equipment_history")
+        contexts = [self.prepare_cursor(name) for name in ("yard_blocks", "equipment_history")]
+        contexts[0].__enter__.return_value.description[0].name = "DB_BLOCK_ID"
+        self.connection.cursor.side_effect = contexts
+        mapping = settings["mapping_files"]["sql"].read_text(encoding="utf-8").replace(
+            'block_id = "BLOCK_ID"', 'block_id = "DB_BLOCK_ID"', 1,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            mapping_path = Path(directory) / "sql_mapping.toml"
+            mapping_path.write_text(mapping, encoding="utf-8")
+            settings["mapping_files"]["sql"] = mapping_path
+            with patch.dict(os.environ, {"TEST_YARD_DB_PASSWORD": "test-password"}):
+                self.assertEqual(load_yard_inputs(settings), expected)
+        self.driver.connect.assert_called_once_with(**settings["connection"], password="test-password")
+        self.assertEqual(self.connection.cursor.call_count, 2)
+        for context in contexts:
+            context.__exit__.assert_called_once()
+        self.driver.connect.return_value.__exit__.assert_called_once_with(None, None, None)
+
+    def test_missing_selected_mapping_profile_fails_before_connecting(self):
+        settings = self.mixed_settings("yard_blocks")
+        for missing_source, name in (("csv", "inbound_containers"), ("sql", "yard_blocks")):
+            with self.subTest(source=missing_source):
+                def load_profiles(path, *, source):
+                    profiles = load_mapping(path, source=source)
+                    if source == missing_source:
+                        del profiles[name]
+                    return profiles
+
+                with patch("repository.input_loader.load_mapping", side_effect=load_profiles):
+                    with self.assertRaisesRegex(ConfigurationError, f"Missing {missing_source.upper()} mapping"):
+                        load_yard_inputs(settings)
+                self.driver.connect.assert_not_called()
+
     def test_failed_sql_load_exits_transaction_without_csv_fallback(self):
         context = MagicMock()
         context.__enter__.return_value.execute.side_effect = RuntimeError("query failed")
         self.connection.cursor.return_value = context
-        with patch.dict(os.environ, {"TEST_YARD_DB_PASSWORD": "test-password"}):
-            with self.assertRaisesRegex(RuntimeError, "query failed"):
-                load_yard_inputs(self.settings)
-        self.assertIs(self.driver.connect.return_value.__exit__.call_args.args[0], RuntimeError)
+        for settings in (self.settings, self.mixed_settings("yard_blocks")):
+            with self.subTest(sources=settings["sources"]):
+                with patch.dict(os.environ, {"TEST_YARD_DB_PASSWORD": "test-password"}):
+                    with self.assertRaisesRegex(RuntimeError, "query failed"):
+                        load_yard_inputs(settings)
+                self.assertIs(self.driver.connect.return_value.__exit__.call_args.args[0], RuntimeError)
 
     def test_sql_column_names_can_differ_from_csv(self):
         expected = load_yard_inputs(self.csv_settings)
@@ -285,13 +393,13 @@ class ConfiguredInputLoadingTests(unittest.TestCase):
         order = ("yard_blocks", "yard_planning", "removed_slots", "parameters",
                  "existing_containers", "inbound_containers", "master_equipment", "equipment_history")
         self.connection.cursor.side_effect = [contexts[name] for name in order]
-        mapping = self.settings["mapping_file"].read_text(encoding="utf-8").replace(
+        mapping = self.settings["mapping_files"]["sql"].read_text(encoding="utf-8").replace(
             'block_id = "BLOCK_ID"', 'block_id = "DB_BLOCK_ID"', 1
         )
         with tempfile.TemporaryDirectory() as directory:
             mapping_path = Path(directory) / "sql_mapping.toml"
             mapping_path.write_text(mapping, encoding="utf-8")
-            self.settings["mapping_file"] = mapping_path
+            self.settings["mapping_files"]["sql"] = mapping_path
             with patch.dict(os.environ, {"TEST_YARD_DB_PASSWORD": "test-password"}):
                 self.assertEqual(load_yard_inputs(self.settings), expected)
 

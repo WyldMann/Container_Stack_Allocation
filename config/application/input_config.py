@@ -16,10 +16,10 @@ def _string(value, name):
     return value
 
 
-def _dataset_names(definitions, name):
+def _dataset_names(definitions, name, required=DATASETS):
     if not isinstance(definitions, dict):
         raise ConfigurationError(f"{name} must be a table.")
-    missing = set(DATASETS) - set(definitions)
+    missing = set(required) - set(definitions)
     unknown = set(definitions) - set(DATASETS)
     if missing or unknown:
         raise ConfigurationError(
@@ -34,33 +34,43 @@ def load_input_config(path: str | Path) -> dict:
     unknown = set(document) - {"input", "csv", "sql", "output"}
     if unknown:
         raise ConfigurationError(f"Unknown input configuration sections: {sorted(unknown)}")
-    section = _read_section(document, "input", {"source"})
-    source = section.get("source")
-    if source not in ("csv", "sql"):
-        raise ConfigurationError("input.source must be 'csv' or 'sql'.")
+    section = _read_section(document, "input", {"sources"})
+    sources = section.get("sources")
+    _dataset_names(sources, "input.sources")
+    for name, source in sources.items():
+        if source not in ("csv", "sql"):
+            raise ConfigurationError(
+                f"input.sources.{name} must be 'csv' or 'sql'."
+            )
+    csv_names = {name for name, source in sources.items() if source == "csv"}
+    sql_names = {name for name, source in sources.items() if source == "sql"}
 
     def resolve(value, name):
         return (config_path.parent / _string(value, name)).resolve()
 
     output = _read_section(document, "output", {"containers_file"})
     settings = {
-        "source": source,
+        "sources": dict(sources),
+        "mapping_files": {},
         "output_file": resolve(output.get("containers_file", "../output/result.csv"),
                                "output.containers_file"),
     }
 
-    # Validate the selected source only, so CSV requires no SQL configuration.
-    if source == "csv":
+    # Require locations only for datasets using the corresponding source.
+    if csv_names:
         csv = _read_section(document, "csv", {"files", "mapping_file"})
-        settings["mapping_file"] = resolve(
+        settings["mapping_files"]["csv"] = resolve(
             csv.get("mapping_file", "csv_mapping.toml"), "csv.mapping_file"
         )
         files = csv.get("files")
-        _dataset_names(files, "csv.files")
+        _dataset_names(files, "csv.files", required=csv_names)
         settings["csv_files"] = {
             name: resolve(value, f"csv.files.{name}")
             for name, value in files.items()
+            if name in csv_names
         }
+
+    if not sql_names:
         return settings
 
     sql = _read_section(document, "sql", {
@@ -102,9 +112,11 @@ def load_input_config(path: str | Path) -> dict:
             "Only the 'sql' section is allowed in SQL mappings."
         )
     datasets = _read_section(mapping_document, "sql", set(DATASETS))
-    _dataset_names(datasets, "sql")
+    _dataset_names(datasets, "sql", required=sql_names)
     validated = {}
     for name, definition in datasets.items():
+        if name not in sql_names:
+            continue
         label = f"sql.{name}"
         if not isinstance(definition, dict) or set(definition) - {
             "schema", "relation", "filters", "order_by", "columns",
@@ -128,7 +140,7 @@ def load_input_config(path: str | Path) -> dict:
             "filters": filters,
             "order_by": order,
         }
-    settings.update(mapping_file=mapping_path,
-                    connection=connection, password_env=password_env,
+    settings["mapping_files"]["sql"] = mapping_path
+    settings.update(connection=connection, password_env=password_env,
                     consistent_snapshot=snapshot, sql_datasets=validated)
     return settings

@@ -53,13 +53,29 @@ def _sql_loader(connection, name, definition):
 
 
 def load_yard_inputs(settings):
-    profiles = load_mapping(
-        settings["mapping_file"], source=settings["source"]
-    )
-    if settings["source"] == "csv":
-        return _read_datasets(
-            lambda name: CSVLoader(settings["csv_files"][name]), profiles
-        )
+    sources = settings["sources"]
+    profiles_by_source = {
+        source: load_mapping(path, source=source)
+        for source, path in settings["mapping_files"].items()
+    }
+    profiles = {}
+    for name, source in sources.items():
+        if name not in profiles_by_source[source]:
+            raise ConfigurationError(
+                f"Missing {source.upper()} mapping profile: {name!r}."
+            )
+        profiles[name] = profiles_by_source[source][name]
+
+    def read_inputs(connection=None):
+        def make_loader(name):
+            if sources[name] == "csv":
+                return CSVLoader(settings["csv_files"][name])
+            return _sql_loader(connection, name, settings["sql_datasets"][name])
+
+        return _read_datasets(make_loader, profiles)
+
+    if "sql" not in sources.values():
+        return read_inputs()
 
     try:
         import psycopg
@@ -83,7 +99,4 @@ def load_yard_inputs(settings):
             if settings["consistent_snapshot"]
             else psycopg.IsolationLevel.READ_COMMITTED
         )
-        return _read_datasets(
-            lambda name: _sql_loader(connection, name, settings["sql_datasets"][name]),
-            profiles,
-        )
+        return read_inputs(connection)
