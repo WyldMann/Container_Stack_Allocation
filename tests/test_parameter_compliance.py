@@ -58,10 +58,10 @@ class BlockComplianceTests(unittest.TestCase):
 
     def test_empty_dummy_and_floating_containers(self):
         block = self.make_block()
-        self.assertEqual(block.parameterCompliance(), 0.0)
+        self.assertIsNone(block.parameterCompliance())
         stack = block.getStack(0, 0)
         stack.replaceContainer(DummyContainer(), 0)
-        self.assertEqual(block.parameterCompliance(), 0.0)
+        self.assertIsNone(block.parameterCompliance())
         stack.addContainer(make_container(container_size='20'), 2)
         stack.addParameter(make_parameter(and_score='5'))
         self.assertEqual(block.parameterCompliance(), 1.0)

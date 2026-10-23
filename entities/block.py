@@ -58,10 +58,10 @@ class Block:
                 if stack.anomaly(): anomalies.append(stack)
         return anomalies
 
-    def parameterCompliance(self) -> float:
+    def parameterCompliance(self) -> float | None:
         """Average each container's best normalized anchor-stack parameter score.
 
-        Containers without parameters contribute zero. Empty blocks return zero.
+        Containers without parameters contribute zero. Empty blocks return None.
         Parameter criteria and nonnegative scores must remain as initialized.
         """
         total_compliance = 0.0
@@ -83,7 +83,7 @@ class Block:
                     )
                     container_count += 1
 
-        return total_compliance / container_count if container_count else 0.0
+        return total_compliance / container_count if container_count else None
 
     def getRTG(self) -> RTG | None: return self.rtg
     def setRTG(self, rtg: RTG): self.rtg = rtg
