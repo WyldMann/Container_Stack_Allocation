@@ -1,4 +1,7 @@
 # Relative paths are resolved from this file's directory.
+[input]
+cy_name = "CY219"
+
 [input.sources]
 # Each dataset independently selects "csv" or "sql".
 yard_blocks = "sql"
@@ -12,6 +15,12 @@ equipment_history = "csv"
 
 [csv]
 mapping_file = "csv_mapping.toml"
+# Optional flat CSV for analysis; uncomment after supplying the file.
+# Required headers: cy_name,equipment_group,lifting_count,shifting_count
+# Optional metadata: report_month,week_number. All detail periods are loaded.
+# A week_number of TOTAL is excluded. Repeated observations are retained.
+# Counts must be non-negative integers or both blank for missing data.
+# shifting_summary_file = "../data_CY219/shifting_summary.csv"
 
 [csv.files]
 yard_blocks = "../data_CY219/_TRM_MST_YARD_BLOCK__202610141439.csv"

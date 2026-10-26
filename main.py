@@ -15,6 +15,7 @@ from presenter import YardPresenter, BadDataPresenter
 settings = load_config(DEFAULT_CONFIG_FILE)
 input_settings = load_input_config(DEFAULT_INPUT_CONFIG_FILE)
 inputs = load_yard_inputs(input_settings)
+shifting_summary = inputs.get("shifting_summary", [])
 inbound_container_records = inputs["inbound_containers"]
 
 yard = Yard(

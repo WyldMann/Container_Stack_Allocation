@@ -34,7 +34,10 @@ def load_input_config(path: str | Path) -> dict:
     unknown = set(document) - {"input", "csv", "sql", "output"}
     if unknown:
         raise ConfigurationError(f"Unknown input configuration sections: {sorted(unknown)}")
-    section = _read_section(document, "input", {"sources"})
+    section = _read_section(document, "input", {"sources", "cy_name"})
+    cy_name = section.get("cy_name")
+    if cy_name is not None:
+        cy_name = _string(cy_name, "input.cy_name").strip()
     sources = section.get("sources")
     _dataset_names(sources, "input.sources")
     for name, source in sources.items():
@@ -56,9 +59,22 @@ def load_input_config(path: str | Path) -> dict:
                                "output.containers_file"),
     }
 
+    settings["cy_name"] = cy_name
+    csv = _read_section(document, "csv", {
+        "files", "mapping_file", "shifting_summary_file",
+    })
+    shifting_file = csv.get("shifting_summary_file")
+    if shifting_file is not None:
+        if cy_name is None:
+            raise ConfigurationError(
+                "input.cy_name is required when csv.shifting_summary_file is set."
+            )
+        settings["shifting_summary_file"] = resolve(
+            shifting_file, "csv.shifting_summary_file"
+        )
+
     # Require locations only for datasets using the corresponding source.
     if csv_names:
-        csv = _read_section(document, "csv", {"files", "mapping_file"})
         settings["mapping_files"]["csv"] = resolve(
             csv.get("mapping_file", "csv_mapping.toml"), "csv.mapping_file"
         )
