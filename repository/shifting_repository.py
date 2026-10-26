@@ -1,7 +1,11 @@
 """Optional shifting summaries for analysis, scoped to one configured CY."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+from config import ConfigurationError
+from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
+
+from .csvloader import CSVLoader
 from .loader import InputError
 from .repository import Repository
 
@@ -9,11 +13,12 @@ from .repository import Repository
 @dataclass(frozen=True)
 class ShiftingSummary:
     cy_name: str
-    equipment_group: str
+    shifting_code: str
     lifting_count: int | None
     shifting_count: int | None
     report_month: str | None = None
     week_number: str | None = None
+    block_id: str | None = None
 
     @property
     def shifting_ratio(self) -> float | None:
@@ -24,9 +29,21 @@ class ShiftingSummary:
 
 class ShiftingRepository(Repository):
     required_fields = (
-        "cy_name", "equipment_group",
+        "cy_name",
         "lifting_count", "shifting_count",
     )
+
+    def _resolve_columns(self, headers):
+        columns = super()._resolve_columns(headers)
+        names = {header.strip().casefold(): header for header in headers}
+        aliases = [name for name in ("shifting_code", "equipment_group") if name in names]
+        if len(aliases) != 1:
+            raise InputError(
+                f"{self.loader.source}: provide exactly one shifting_code column "
+                "(legacy equipment_group is also accepted)."
+            )
+        columns["shifting_code"] = names[aliases[0]]
+        return columns
 
     @staticmethod
     def _count(value, field, location):
@@ -56,9 +73,9 @@ class ShiftingRepository(Repository):
             if row.get("week_number", "").strip().upper() == "TOTAL":
                 continue
 
-            equipment = row["equipment_group"].strip()
-            if not equipment:
-                raise InputError(f"{location}: equipment_group is required.")
+            shifting_code = row["shifting_code"].strip()
+            if not shifting_code:
+                raise InputError(f"{location}: shifting_code is required.")
 
             lifting = self._count(row["lifting_count"], "lifting_count", location)
             shifting = self._count(row["shifting_count"], "shifting_count", location)
@@ -69,7 +86,7 @@ class ShiftingRepository(Repository):
 
             result.append(ShiftingSummary(
                 cy_name=cy_name,
-                equipment_group=equipment,
+                shifting_code=shifting_code,
                 lifting_count=lifting,
                 shifting_count=shifting,
                 report_month=row.get("report_month", "").strip() or None,
@@ -79,3 +96,28 @@ class ShiftingRepository(Repository):
         if not result:
             raise InputError(f"{self.loader.source}: no records for CY {cy_name!r}.")
         return result
+
+
+def validate_shifting_blocks(observations, block_ids):
+    unknown = {row.block_id for row in observations} - set(block_ids)
+    if unknown:
+        raise InputError(f"Shifting observations reference blocks outside the loaded yard: {unknown}.")
+
+
+def load_shifting_summary(file_path, cy_name, mapping_path, block_ids):
+    mapping = load_shifting_block_mapping(mapping_path, cy_name)
+    unknown = set(mapping.values()) - set(block_ids)
+    if unknown:
+        raise ConfigurationError(
+            f"{mapping_path}: mapped block IDs are absent from the yard: {sorted(unknown)}."
+        )
+    observations = ShiftingRepository(CSVLoader(file_path)).read_summaries(cy_name)
+    result = []
+    for row in observations:
+        key = row.shifting_code.casefold()
+        if key not in mapping:
+            raise InputError(
+                f"{file_path}: unmapped shifting code {row.shifting_code!r} for {cy_name!r}."
+            )
+        result.append(replace(row, block_id=mapping[key]))
+    return result

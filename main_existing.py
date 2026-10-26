@@ -1,6 +1,6 @@
 """Record existing-yard compliance and all shifting observations for one CY."""
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import asdict
 from datetime import datetime, timezone
 import json
@@ -16,7 +16,18 @@ from repository import (
     CSVLoader, Repository, ContainerRepository, RemovedSlotsRepository,
     YardPlanningRepository, EquipmentMoveRepository,
 )
-from repository.shifting_repository import ShiftingRepository
+from repository.shifting_repository import load_shifting_summary
+
+
+def shifting_metrics(observations):
+    known = [row.shifting_count for row in observations if row.shifting_count is not None]
+    missing = len(observations) - len(known)
+    return {
+        "shifting_data_points": len(observations),
+        "shifting_count": sum(known) if observations and not missing else None,
+        "known_shifting_count": sum(known) if observations else None,
+        "missing_shifting_counts": missing,
+    }
 
 
 def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
@@ -40,6 +51,10 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
     shifting_path = resolve(
         csv_settings.get("shifting_summary_file"),
         "csv.shifting_summary_file",
+    )
+    shifting_mapping_path = resolve(
+        csv_settings.get("shifting_block_mapping_file", "shifting_block_mapping.toml"),
+        "csv.shifting_block_mapping_file",
     )
     profiles = load_csv_mapping(resolve(
         csv_settings.get("mapping_file", "csv_mapping.toml"),
@@ -67,10 +82,6 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
         )
         inputs[name] = getattr(reader, method)()
 
-    observations = ShiftingRepository(
-        CSVLoader(shifting_path)
-    ).read_summaries(cy_name)
-
     settings = load_config(DEFAULT_CONFIG_FILE)
     yard = Yard(
         yard_blocks_input=inputs["yard_blocks"],
@@ -83,6 +94,13 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
         feasibility_settings=settings.feasibility,
         heuristic_settings=settings.heuristic,
     )
+
+    observations = load_shifting_summary(
+        shifting_path, cy_name, shifting_mapping_path, yard.blocks_by_id,
+    )
+    by_block = defaultdict(list)
+    for row in observations:
+        by_block[row.block_id].append(row)
 
     # The accepted-container registry counts each 40-foot container once.
     counts = Counter(
@@ -101,17 +119,11 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
             "block_code": block.getCode(),
             "container_count": count,
             "parameter_compliance": compliance,
+            **shifting_metrics(by_block[block.getId()]),
         })
         if compliance is not None:
             weighted_compliance += compliance * count
             container_count += count
-
-    known_counts = [
-        row.shifting_count for row in observations
-        if row.shifting_count is not None
-    ]
-    missing_counts = len(observations) - len(known_counts)
-    known_total = sum(known_counts)
 
     return {
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -125,10 +137,8 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
         ),
         "blocks": blocks,
         "shifting_source": str(shifting_path),
-        "shifting_data_points": len(observations),
-        "shifting_count": known_total if not missing_counts else None,
-        "known_shifting_count": known_total,
-        "missing_shifting_counts": missing_counts,
+        "shifting_block_mapping_source": str(shifting_mapping_path),
+        **shifting_metrics(observations),
         "shifting_observations": [asdict(row) for row in observations],
     }
 

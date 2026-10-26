@@ -30,6 +30,7 @@ class ShiftingRepositoryTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0], rows[1])
         self.assertEqual(rows[0].cy_name, "CY219")
+        self.assertEqual(rows[0].shifting_code, "SL")
         self.assertEqual(rows[0].shifting_ratio, 0.1)
         self.assertIsNone(rows[0].report_month)
         self.assertIsNone(rows[0].week_number)
@@ -102,6 +103,10 @@ class ShiftingInputTests(unittest.TestCase):
         settings = self.settings(self.document)
         self.assertEqual(settings["cy_name"], "CY219")
         self.assertEqual(
+            settings["shifting_block_mapping_file"],
+            DEFAULT_INPUT_CONFIG_FILE.with_name("shifting_block_mapping.toml"),
+        )
+        self.assertEqual(
             settings["shifting_summary_file"],
             (DEFAULT_INPUT_CONFIG_FILE.parent / "../reports/shifting.csv").resolve(),
         )
@@ -118,9 +123,24 @@ class ShiftingInputTests(unittest.TestCase):
             with self.subTest(cy=cy, path=path), self.assertRaises(ConfigurationError):
                 self.settings(document)
 
+    def test_mapping_path_is_configurable_and_validated(self):
+        self.document["csv"]["shifting_summary_file"] = "shifting.csv"
+        self.document["csv"]["shifting_block_mapping_file"] = "mappings/blocks.toml"
+        self.assertEqual(
+            self.settings(self.document)["shifting_block_mapping_file"],
+            DEFAULT_INPUT_CONFIG_FILE.parent / "mappings" / "blocks.toml",
+        )
+        for value in ("", 123):
+            self.document["csv"]["shifting_block_mapping_file"] = value
+            with self.subTest(value=value), self.assertRaises(ConfigurationError):
+                self.settings(self.document)
+
     def test_report_loaded_with_existing_yard_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "shifting.csv"
+            mapping = Path(directory) / "mapping.toml"
+            mapping.write_text('[CY219]\nSL = "10"\n', encoding="utf-8")
+            self.document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()
             path.write_text(
                 HEADER + "\nCY219,SL,100,10\nCY218,SL,200,20\n"
                 "CY219,SL,100,10\n",
@@ -131,6 +151,7 @@ class ShiftingInputTests(unittest.TestCase):
         self.assertEqual(set(inputs), set(DATASETS) | {"shifting_summary"})
         self.assertEqual(len(inputs["shifting_summary"]), 2)
         self.assertEqual(inputs["shifting_summary"][0].lifting_count, 100)
+        self.assertEqual(inputs["shifting_summary"][0].block_id, "10")
 
 
 if __name__ == "__main__":

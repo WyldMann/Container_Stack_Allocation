@@ -16,11 +16,14 @@ equipment_history = "csv"
 [csv]
 mapping_file = "csv_mapping.toml"
 # Optional flat CSV for analysis; uncomment after supplying the file.
-# Required headers: cy_name,equipment_group,lifting_count,shifting_count
+# Required headers: cy_name,shifting_code,lifting_count,shifting_count
+# Legacy equipment_group header is also accepted instead of shifting_code.
+# These codes identify initial block assignments, not individual equipment.
 # Optional metadata: report_month,week_number. All detail periods are loaded.
 # A week_number of TOTAL is excluded. Repeated observations are retained.
 # Counts must be non-negative integers or both blank for missing data.
 # shifting_summary_file = "../data_CY219/shifting_summary.csv"
+shifting_block_mapping_file = "shifting_block_mapping.toml"
 
 [csv.files]
 yard_blocks = "../data_CY219/_TRM_MST_YARD_BLOCK__202610141439.csv"

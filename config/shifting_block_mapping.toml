@@ -1,0 +1,10 @@
+# Map report shifting codes to existing block_id strings for the selected CY.
+# Multiple codes may map to one block. Each code must identify exactly one block.
+# Match codes/CY names ignoring case and surrounding whitespace.
+# Block IDs must match the loaded yard. Do not infer them from equipment location.
+# Fill in verified assignments before enabling shifting_summary_file.
+
+[CY219]
+# "SL" = "<actual block_id>"
+# "RS MDL" = "<actual block_id>"
+# "RS TPK" = "<actual block_id>"

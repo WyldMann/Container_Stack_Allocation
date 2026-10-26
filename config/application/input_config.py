@@ -61,7 +61,7 @@ def load_input_config(path: str | Path) -> dict:
 
     settings["cy_name"] = cy_name
     csv = _read_section(document, "csv", {
-        "files", "mapping_file", "shifting_summary_file",
+        "files", "mapping_file", "shifting_summary_file", "shifting_block_mapping_file",
     })
     shifting_file = csv.get("shifting_summary_file")
     if shifting_file is not None:
@@ -71,6 +71,10 @@ def load_input_config(path: str | Path) -> dict:
             )
         settings["shifting_summary_file"] = resolve(
             shifting_file, "csv.shifting_summary_file"
+        )
+        settings["shifting_block_mapping_file"] = resolve(
+            csv.get("shifting_block_mapping_file", "shifting_block_mapping.toml"),
+            "csv.shifting_block_mapping_file",
         )
 
     # Require locations only for datasets using the corresponding source.

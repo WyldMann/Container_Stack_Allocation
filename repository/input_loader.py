@@ -7,7 +7,7 @@ from config.csv_import.mapping_loader import load_mapping
 
 from .csvloader import CSVLoader
 from .sqlloader import SQLLoader
-from .shifting_repository import ShiftingRepository
+from .shifting_repository import load_shifting_summary
 from .repository import (
     Repository, ContainerRepository, RemovedSlotsRepository,
     YardPlanningRepository, EquipmentMoveRepository,
@@ -76,9 +76,11 @@ def load_yard_inputs(settings):
         inputs = _read_datasets(make_loader, profiles)
         shifting_file = settings.get("shifting_summary_file")
         if shifting_file is not None:
-            inputs["shifting_summary"] = ShiftingRepository(
-                CSVLoader(shifting_file)
-            ).read_summaries(settings["cy_name"])
+            inputs["shifting_summary"] = load_shifting_summary(
+                shifting_file, settings["cy_name"],
+                settings["shifting_block_mapping_file"],
+                {row["block_id"] for row in inputs["yard_blocks"]},
+            )
         return inputs
 
     if "sql" not in sources.values():

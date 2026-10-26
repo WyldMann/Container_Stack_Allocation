@@ -8,6 +8,7 @@ from config import (
 )
 
 from repository import load_yard_inputs
+from repository.shifting_repository import validate_shifting_blocks
 from entities import Yard, Container
 from entities.bad_yard_data import PlacementRejected
 from presenter import YardPresenter, BadDataPresenter
@@ -29,6 +30,7 @@ yard = Yard(
     feasibility_settings=settings.feasibility,
     heuristic_settings=settings.heuristic,
 )
+validate_shifting_blocks(shifting_summary, yard.blocks_by_id)
 yard_presenter = YardPresenter()
 yard_presenter.outYard(yard)
 

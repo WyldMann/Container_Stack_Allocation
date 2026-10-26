@@ -21,6 +21,9 @@ class ExistingYardMainTests(unittest.TestCase):
         self.root = Path(directory.name)
         self.input_path = self.root / "input.toml"
         self.shifting_path = self.root / "shifting.csv"
+        self.mapping_path = self.root / "shifting_block_mapping.toml"
+        # Test-only assignments, not actual operational assignments.
+        self.mapping_path.write_text('[CY219]\nSL = "10"\nRS = "11"\n', encoding="utf-8")
         project = DEFAULT_INPUT_CONFIG_FILE.parent.parent
         template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
         template = template.replace(
@@ -109,15 +112,35 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertEqual(report["parameter_compliance"], 0.25)
         self.assertTrue(report["has_bad_data"])
 
-    def test_empty_yard_has_no_compliance(self):
+    def test_empty_yard_rejects_mapped_blocks(self):
         yard = SimpleNamespace(
             containers={}, blocks_by_id={},
             bad_data=SimpleNamespace(anyBadData=lambda: False),
         )
         with patch.object(main_existing, "Yard", return_value=yard):
-            report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["loaded_containers"], 0)
-        self.assertIsNone(report["parameter_compliance"])
+            with self.assertRaisesRegex(ConfigurationError, "absent from the yard"):
+                main_existing.build_report(self.input_path)
+
+    def test_shifting_counts_are_joined_to_blocks(self):
+        self.write_shifting(
+            "CY219,SL,100,10,,\nCY219,RS,100,30,,\nCY219,SL,100,20,,\n"
+        )
+        report = main_existing.build_report(self.input_path)
+        blocks = {block["block_id"]: block for block in report["blocks"]}
+        self.assertEqual(blocks["10"]["shifting_count"], 30)
+        self.assertEqual(blocks["10"]["shifting_data_points"], 2)
+        self.assertEqual(blocks["11"]["shifting_count"], 30)
+        self.assertEqual(report["shifting_count"], 60)
+        self.assertEqual(report["shifting_observations"][0]["shifting_code"], "SL")
+        self.assertEqual(report["shifting_observations"][0]["block_id"], "10")
+        self.assertNotIn("equipment_group", report["shifting_observations"][0])
+
+    def test_block_without_observations_is_not_reported_as_zero(self):
+        report = main_existing.build_report(self.input_path)
+        block = next(block for block in report["blocks"] if block["block_id"] == "11")
+        self.assertEqual(block["shifting_data_points"], 0)
+        self.assertIsNone(block["shifting_count"])
+        self.assertIsNone(block["known_shifting_count"])
 
     def test_shifting_path_is_required(self):
         text = self.input_path.read_text(encoding="utf-8")
