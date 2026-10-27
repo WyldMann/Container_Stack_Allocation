@@ -8,6 +8,12 @@ from .loader import InputError
 class CSVLoader:
     def __init__(self, file_path: str | Path):
         self.file_path = Path(file_path)
+        if self.file_path.suffix.casefold() in {".xlsx", ".xls", ".xlsm", ".xlsb"}:
+            raise InputError(
+                f"{self.file_path}: expected a UTF-8 CSV file, received an Excel workbook. "
+                "Convert the report to a flat CSV and configure the CSV path; "
+                "renaming the Excel file is not sufficient."
+            )
 
     @property
     def source(self) -> str:

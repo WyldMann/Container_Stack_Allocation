@@ -34,11 +34,11 @@ class ExistingYardMainTests(unittest.TestCase):
             DEFAULT_INPUT_CONFIG_FILE.with_name("csv_mapping.toml").as_posix() + '"',
         )
         # Keep operational SQL selectors to verify this entrypoint is CSV-only.
-        template = template.replace(
-            '# shifting_summary_file = "' +
-            (project / "data_CY219/shifting_summary.csv").as_posix() + '"',
-            'shifting_summary_file = "' + self.shifting_path.as_posix() + '"',
-        )
+        template = "\n".join(
+            'shifting_summary_file = "' + self.shifting_path.as_posix() + '"'
+            if line.lstrip("# ").startswith("shifting_summary_file =") else line
+            for line in template.splitlines()
+        ) + "\n"
         self.input_path.write_text(template, encoding="utf-8")
         self.write_shifting(
             "CY219,SL,100,10,2025-01,1\n"

@@ -18,6 +18,13 @@ HEADER = "cy_name,equipment_group,lifting_count,shifting_count"
 
 
 class ShiftingRepositoryTests(unittest.TestCase):
+    def test_excel_files_are_rejected_before_text_decoding(self):
+        for extension in (".xlsx", ".XLSX", ".xls", ".xlsm", ".xlsb"):
+            with self.subTest(extension=extension), patch.object(Path, "open") as opened:
+                with self.assertRaisesRegex(InputError, "expected a UTF-8 CSV.*Excel workbook"):
+                    CSVLoader("shifting" + extension)
+                opened.assert_not_called()
+
     def read(self, text, cy_name="CY219"):
         with patch("pathlib.Path.open", return_value=io.StringIO(text)):
             return ShiftingRepository(CSVLoader("memory.csv")).read_summaries(cy_name)
@@ -86,6 +93,7 @@ class ShiftingInputTests(unittest.TestCase):
     def setUp(self):
         self.document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
         self.document["input"]["sources"] = dict.fromkeys(DATASETS, "csv")
+        self.document["csv"].pop("shifting_summary_file", None)
 
     def settings(self, document):
         with patch("config.application.input_config._read_document", return_value=document):
