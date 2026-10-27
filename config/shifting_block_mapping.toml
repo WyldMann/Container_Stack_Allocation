@@ -5,6 +5,6 @@
 # Fill in verified assignments before enabling shifting_summary_file.
 
 [CY219]
-# "SL" = "<actual block_id>"
-# "RS MDL" = "<actual block_id>"
-# "RS TPK" = "<actual block_id>"
+# "SL" = "11"
+# "RS MDL" = "10"
+# "RS TPK" = "9"
