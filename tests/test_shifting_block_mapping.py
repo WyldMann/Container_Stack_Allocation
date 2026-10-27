@@ -62,18 +62,38 @@ class ShiftingBlockMappingTests(unittest.TestCase):
         with self.assertRaisesRegex(InputError, "unmapped shifting code.*UNKNOWN"):
             self.load()
 
-    def test_block_must_exist_in_loaded_yard(self):
+    def test_nonexistent_block_is_skipped_while_present_block_loads(self):
+        self.write_mapping('[CY219]\nSL = "99"\nRS = "10"\n')
+        self.write_csv("CY219,SL,100,10\nCY219,RS,100,20\nCY219,RS,100,20\n")
+        skipped = []
+        with self.assertWarnsRegex(UserWarning, "SL -> 99"):
+            rows = load_shifting_summary(
+                self.csv, "CY219", self.mapping, {"10", "11"}, skipped=skipped,
+            )
+        self.assertEqual([row.block_id for row in rows], ["10", "10"])
+        self.assertEqual(sum(row.shifting_count for row in rows), 40)
+        self.assertEqual([row.block_id for row in skipped], ["99"])
+        self.assertEqual(skipped[0].shifting_count, 10)
+
+    def test_all_nonexistent_blocks_produce_empty_observations(self):
         self.write_mapping('[CY219]\nSL = "99"\n')
         self.write_csv("CY219,SL,100,10\n")
-        with self.assertRaisesRegex(ConfigurationError, "absent from the yard"):
-            self.load()
+        with self.assertWarnsRegex(UserWarning, "Skipped 1"):
+            self.assertEqual(self.load(), [])
+
+    def test_unused_missing_block_mapping_does_not_block_valid_data(self):
+        self.write_mapping('[CY219]\nSL = "10"\nRS = "99"\n')
+        self.write_csv("CY219,SL,100,10\n")
+        self.assertEqual(self.load()[0].block_id, "10")
 
     def test_rejected_yard_block_is_detected_after_construction(self):
         self.write_mapping('[CY219]\nSL = "10"\n')
         self.write_csv("CY219,SL,100,10\n")
         rows = self.load()
-        with self.assertRaisesRegex(InputError, "outside the loaded yard"):
-            validate_shifting_blocks(rows, {"11"})
+        skipped = []
+        with self.assertWarnsRegex(UserWarning, "SL -> 10"):
+            self.assertEqual(validate_shifting_blocks(rows, {"11"}, skipped=skipped), [])
+        self.assertEqual(skipped, rows)
 
     def test_invalid_or_missing_mapping_is_actionable(self):
         for text in (

@@ -95,8 +95,10 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
         heuristic_settings=settings.heuristic,
     )
 
+    skipped_observations = []
     observations = load_shifting_summary(
         shifting_path, cy_name, shifting_mapping_path, yard.blocks_by_id,
+        skipped=skipped_observations,
     )
     by_block = defaultdict(list)
     for row in observations:
@@ -140,6 +142,8 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
         "shifting_block_mapping_source": str(shifting_mapping_path),
         **shifting_metrics(observations),
         "shifting_observations": [asdict(row) for row in observations],
+        "skipped_shifting_data_points": len(skipped_observations),
+        "skipped_shifting_observations": [asdict(row) for row in skipped_observations],
     }
 
 
@@ -164,6 +168,7 @@ def main():
           else report["shifting_count"])
     print("Known shifting count:", report["known_shifting_count"])
     print("Missing shifting counts:", report["missing_shifting_counts"])
+    print("Skipped shifting observations:", report["skipped_shifting_data_points"])
     print("Yard has bad data:", report["has_bad_data"])
     print("Recorded to:", output)
 

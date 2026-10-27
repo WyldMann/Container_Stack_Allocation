@@ -76,11 +76,15 @@ def load_yard_inputs(settings):
         inputs = _read_datasets(make_loader, profiles)
         shifting_file = settings.get("shifting_summary_file")
         if shifting_file is not None:
+            skipped = []
             inputs["shifting_summary"] = load_shifting_summary(
                 shifting_file, settings["cy_name"],
                 settings["shifting_block_mapping_file"],
                 {row["block_id"] for row in inputs["yard_blocks"]},
+                skipped=skipped,
             )
+            if skipped:
+                inputs["skipped_shifting_summary"] = skipped
         return inputs
 
     if "sql" not in sources.values():

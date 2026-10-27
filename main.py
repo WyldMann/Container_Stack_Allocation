@@ -30,7 +30,14 @@ yard = Yard(
     feasibility_settings=settings.feasibility,
     heuristic_settings=settings.heuristic,
 )
-validate_shifting_blocks(shifting_summary, yard.blocks_by_id)
+skipped_shifting_summary = inputs.get("skipped_shifting_summary", [])
+shifting_summary = validate_shifting_blocks(
+    shifting_summary, yard.blocks_by_id, skipped=skipped_shifting_summary,
+)
+if "shifting_summary" in inputs:
+    inputs["shifting_summary"] = shifting_summary
+if skipped_shifting_summary:
+    inputs["skipped_shifting_summary"] = skipped_shifting_summary
 yard_presenter = YardPresenter()
 yard_presenter.outYard(yard)
 

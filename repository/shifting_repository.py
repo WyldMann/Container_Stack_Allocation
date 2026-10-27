@@ -1,8 +1,8 @@
 """Optional shifting summaries for analysis, scoped to one configured CY."""
 
 from dataclasses import dataclass, replace
+import warnings
 
-from config import ConfigurationError
 from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
 
 from .csvloader import CSVLoader
@@ -98,19 +98,27 @@ class ShiftingRepository(Repository):
         return result
 
 
-def validate_shifting_blocks(observations, block_ids):
-    unknown = {row.block_id for row in observations} - set(block_ids)
-    if unknown:
-        raise InputError(f"Shifting observations reference blocks outside the loaded yard: {unknown}.")
-
-
-def load_shifting_summary(file_path, cy_name, mapping_path, block_ids):
-    mapping = load_shifting_block_mapping(mapping_path, cy_name)
-    unknown = set(mapping.values()) - set(block_ids)
-    if unknown:
-        raise ConfigurationError(
-            f"{mapping_path}: mapped block IDs are absent from the yard: {sorted(unknown)}."
+def validate_shifting_blocks(observations, block_ids, *, skipped=None):
+    """Keep observations for present blocks and report excluded assignments."""
+    block_ids = set(block_ids)
+    accepted = []
+    rejected = []
+    for row in observations:
+        (accepted if row.block_id in block_ids else rejected).append(row)
+    if rejected:
+        if skipped is not None:
+            skipped.extend(rejected)
+        assignments = sorted({f"{row.shifting_code} -> {row.block_id}" for row in rejected})
+        warnings.warn(
+            f"Skipped {len(rejected)} shifting observations for blocks absent "
+            f"from the loaded yard: {', '.join(assignments)}.",
+            UserWarning, stacklevel=2,
         )
+    return accepted
+
+
+def load_shifting_summary(file_path, cy_name, mapping_path, block_ids, *, skipped=None):
+    mapping = load_shifting_block_mapping(mapping_path, cy_name)
     observations = ShiftingRepository(CSVLoader(file_path)).read_summaries(cy_name)
     result = []
     for row in observations:
@@ -120,4 +128,4 @@ def load_shifting_summary(file_path, cy_name, mapping_path, block_ids):
                 f"{file_path}: unmapped shifting code {row.shifting_code!r} for {cy_name!r}."
             )
         result.append(replace(row, block_id=mapping[key]))
-    return result
+    return validate_shifting_blocks(result, block_ids, skipped=skipped)

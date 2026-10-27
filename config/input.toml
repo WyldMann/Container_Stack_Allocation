@@ -19,6 +19,7 @@ mapping_file = "csv_mapping.toml"
 # Required headers: cy_name,shifting_code,lifting_count,shifting_count
 # Legacy equipment_group header is also accepted instead of shifting_code.
 # These codes identify initial block assignments, not individual equipment.
+# Observations mapped to absent blocks are skipped and reported.
 # Optional metadata: report_month,week_number. All detail periods are loaded.
 # A week_number of TOTAL is excluded. Repeated observations are retained.
 # Counts must be non-negative integers or both blank for missing data.

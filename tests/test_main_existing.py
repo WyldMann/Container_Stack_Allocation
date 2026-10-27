@@ -112,14 +112,31 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertEqual(report["parameter_compliance"], 0.25)
         self.assertTrue(report["has_bad_data"])
 
-    def test_empty_yard_rejects_mapped_blocks(self):
+    def test_empty_yard_records_skipped_observations_and_no_compliance(self):
         yard = SimpleNamespace(
             containers={}, blocks_by_id={},
             bad_data=SimpleNamespace(anyBadData=lambda: False),
         )
-        with patch.object(main_existing, "Yard", return_value=yard):
-            with self.assertRaisesRegex(ConfigurationError, "absent from the yard"):
-                main_existing.build_report(self.input_path)
+        with patch.object(main_existing, "Yard", return_value=yard), self.assertWarns(UserWarning):
+            report = main_existing.build_report(self.input_path)
+        self.assertEqual(report["loaded_containers"], 0)
+        self.assertIsNone(report["parameter_compliance"])
+        self.assertIsNone(report["shifting_count"])
+        self.assertEqual(report["shifting_data_points"], 0)
+        self.assertEqual(report["skipped_shifting_data_points"], 2)
+
+    def test_absent_block_counts_are_excluded_from_yard_and_block_totals(self):
+        self.mapping_path.write_text('[CY219]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
+        self.write_shifting("CY219,SL,100,10,,\nCY219,RS,100,30,,\n")
+        with self.assertWarnsRegex(UserWarning, "RS -> 99"):
+            report = main_existing.build_report(self.input_path)
+        self.assertEqual(report["shifting_count"], 10)
+        self.assertEqual(report["shifting_data_points"], 1)
+        self.assertEqual(report["skipped_shifting_data_points"], 1)
+        self.assertEqual(report["skipped_shifting_observations"][0]["shifting_count"], 30)
+        self.assertEqual(
+            next(b for b in report["blocks"] if b["block_id"] == "10")["shifting_count"], 10,
+        )
 
     def test_shifting_counts_are_joined_to_blocks(self):
         self.write_shifting(
