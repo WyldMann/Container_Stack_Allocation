@@ -15,6 +15,7 @@ class SQLLoader:
                  source="PostgreSQL query"):
         self.connection = connection
         self.query = query
+        #print(query)
         self.parameters = parameters
         self.source = source
 

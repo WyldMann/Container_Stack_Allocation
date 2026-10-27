@@ -8,7 +8,7 @@ yard_blocks = "sql"
 yard_planning = "sql"
 removed_slots = "sql"
 parameters = "sql"
-existing_containers = "csv"
+existing_containers = "sql"
 inbound_containers = "csv"
 master_equipment = "csv"
 equipment_history = "csv"
@@ -23,7 +23,7 @@ mapping_file = "csv_mapping.toml"
 # Optional metadata: report_month,week_number. All detail periods are loaded.
 # A week_number of TOTAL is excluded. Repeated observations are retained.
 # Counts must be non-negative integers or both blank for missing data.
-# shifting_summary_file = "../data_CY219/shifting_summary.csv"
+shifting_summary_file = "../data_CY219/Shifting_Report_Summary_2026-10_Weekly_20261026020923.xlsx"
 shifting_block_mapping_file = "shifting_block_mapping.toml"
 
 [csv.files]
