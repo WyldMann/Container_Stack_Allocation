@@ -82,6 +82,7 @@ def load_yard_inputs(settings):
                 settings["shifting_block_mapping_file"],
                 {row["block_id"] for row in inputs["yard_blocks"]},
                 skipped=skipped,
+                period_settings=settings.get("shifting_period"),
             )
             if skipped:
                 inputs["skipped_shifting_summary"] = skipped

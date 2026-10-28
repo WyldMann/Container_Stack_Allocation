@@ -2,6 +2,12 @@
 [input]
 cy_name = "CY219"
 
+[shifting_period]
+# Explicit alignment supplied by the user; Unix seconds, no timezone conversion.
+# Applies to one report-year cycle. Update when week numbers reset for a new year.
+benchmark_week = 40
+benchmark_period_start = 1857916800
+
 [input.sources]
 # Each dataset independently selects "csv" or "sql".
 yard_blocks = "sql"
@@ -20,7 +26,9 @@ mapping_file = "csv_mapping.toml"
 # Legacy equipment_group header is also accepted instead of shifting_code.
 # These codes identify initial block assignments, not individual equipment.
 # Observations mapped to absent blocks are skipped and reported.
-# Optional metadata: report_month,week_number. All detail periods are loaded.
+# All detail periods are loaded; weekly recording requires week_number (1-53).
+# The recorder selects the latest week before validating operation counts.
+# report_month identifies the report year and prevents mixing year cycles.
 # A week_number of TOTAL is excluded. Repeated observations are retained.
 # Counts must be non-negative integers or both blank for missing data.
 shifting_summary_file = "../data_CY219/Shifting_Report_Summary_2026-10_Weekly_20261026020923.csv"

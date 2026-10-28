@@ -2,6 +2,7 @@
 
 from contextlib import redirect_stdout
 import io
+import csv
 import json
 from pathlib import Path
 import tempfile
@@ -41,15 +42,21 @@ class ExistingYardMainTests(unittest.TestCase):
         ) + "\n"
         self.input_path.write_text(template, encoding="utf-8")
         self.write_shifting(
-            "CY219,SL,100,10,2025-01,1\n"
+            "CY219,SL,100,10,2026-10,40\n"
             "CY219,SL,100,10,2026-10,40\n"
             "CY218,SL,999,99,,\n"
         )
 
     def write_shifting(self, rows):
+        data = list(csv.reader(io.StringIO(rows)))
+        for row in data:
+            row[4] = row[4] or "2026-10"
+            row[5] = row[5] or "40"
+        buffer = io.StringIO(newline="")
+        csv.writer(buffer).writerows(data)
         self.shifting_path.write_text(
             "cy_name,equipment_group,lifting_count,shifting_count,"
-            "report_month,week_number\n" + rows,
+            "report_month,week_number\n" + buffer.getvalue(),
             encoding="utf-8",
         )
 
@@ -77,7 +84,7 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertTrue(0 <= report["parameter_compliance"] <= 1)
         self.assertEqual(report["shifting_count"], 20)
         self.assertEqual(report["shifting_data_points"], 2)
-        self.assertEqual(report["shifting_observations"][0]["report_month"], "2025-01")
+        self.assertEqual(report["shifting_observations"][0]["report_month"], "2026-10")
 
     def test_available_shifts_are_summed_and_missing_observations_counted(self):
         self.write_shifting("CY219,SL,100,10,,\nCY219,SL,,,,\n")
@@ -85,6 +92,90 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertEqual(report["shifting_count"], 10)
         self.assertEqual(report["missing_shifting_observations"], 1)
         self.assertNotIn("known_shifting_count", report)
+
+    def test_latest_week_uses_aggregate_operations_and_unix_recording_time(self):
+        self.write_shifting(
+            "CY219,SL,9000,9000,2026-10,43\n"
+            "CY219,SL,100,100,2026-10,44\n"
+            "CY219,RS,900,0,2026-10,44\n"
+        )
+        with patch.object(main_existing, "time", return_value=1234567890.7):
+            report = main_existing.build_report(self.input_path)
+        self.assertEqual(report["recorded_at"], 1234567890)
+        self.assertNotIn("recorded_at_utc", report)
+        self.assertEqual(report["latest_week"], 44)
+        self.assertEqual(report["period_start"], 1860336000)
+        self.assertEqual(report["period_end"], 1860940800)
+        self.assertEqual(report["lifting_count"], 1000)
+        self.assertEqual(report["shifting_count"], 100)
+        self.assertEqual(report["total_operations"], 1100)
+        self.assertAlmostEqual(report["shifting_percentage"], 100 * 100 / 1100)
+        self.assertEqual(report["shifting_data_points"], 2)
+        self.assertEqual(report["loaded_shifting_data_points"], 2)
+        self.assertEqual(len(report["shifting_observations"]), 2)
+        self.assertEqual(report["parameter_compliance_basis"], "current_yard_snapshot")
+        blocks = {block["block_id"]: block for block in report["blocks"]}
+        self.assertEqual(blocks["10"]["shifting_percentage"], 50)
+        self.assertEqual(blocks["11"]["shifting_percentage"], 0)
+
+    def test_missing_historical_counts_do_not_block_latest_week(self):
+        self.write_shifting(
+            "CY219,SL,100,,2026-10,43\n"
+            "CY219,RS,,,2026-10,43\n"
+            "CY219,UNKNOWN,bad,count,2026-10,42\n"
+            "CY219,SL,200,20,2026-10,44\n"
+            "CY219,RS,100,10,2026-10,44\n"
+        )
+        report = main_existing.build_report(self.input_path)
+        self.assertEqual(report["latest_week"], 44)
+        self.assertEqual(report["lifting_count"], 300)
+        self.assertEqual(report["shifting_count"], 30)
+        self.assertAlmostEqual(report["shifting_percentage"], 100 * 30 / 330)
+        self.assertEqual(report["missing_lifting_observations"], 0)
+        self.assertEqual(report["missing_shifting_observations"], 0)
+        self.assertEqual(len(report["shifting_observations"]), 2)
+
+    def test_latest_week_with_absent_blocks_does_not_fall_back_to_older_week(self):
+        self.mapping_path.write_text('[CY219]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
+        self.write_shifting(
+            "CY219,SL,200,20,2026-10,43\nCY219,RS,100,10,2026-10,44\n"
+        )
+        with self.assertWarnsRegex(UserWarning, "RS -> 99"):
+            report = main_existing.build_report(self.input_path)
+        self.assertIsNone(report["shifting_count"])
+        self.assertIsNone(report["shifting_percentage"])
+        self.assertEqual(report["shifting_observations"], [])
+        self.assertEqual(report["skipped_shifting_data_points"], 1)
+
+    def test_incomplete_latest_week_keeps_counts_and_no_percentage(self):
+        self.write_shifting(
+            "CY219,SL,1000,500,2026-10,43\n"
+            "CY219,SL,50,10,2026-10,44\n"
+            "CY219,RS,,,2026-10,44\n"
+        )
+        report = main_existing.build_report(self.input_path)
+        self.assertEqual(report["latest_week"], 44)
+        self.assertEqual(report["lifting_count"], 50)
+        self.assertEqual(report["shifting_count"], 10)
+        self.assertIsNone(report["shifting_percentage"])
+        self.assertEqual(report["missing_lifting_observations"], 1)
+        self.assertEqual(report["missing_shifting_observations"], 1)
+
+    def test_zero_total_operations_has_no_percentage(self):
+        self.write_shifting("CY219,SL,0,0,2026-10,44\n")
+        report = main_existing.build_report(self.input_path)
+        self.assertEqual(report["total_operations"], 0)
+        self.assertIsNone(report["shifting_percentage"])
+
+    def test_older_block_data_is_not_joined_to_latest_week(self):
+        self.write_shifting(
+            "CY219,SL,50,10,2026-10,44\nCY219,RS,100,30,2026-10,43\n"
+        )
+        report = main_existing.build_report(self.input_path)
+        block = next(b for b in report["blocks"] if b["block_id"] == "11")
+        self.assertIsNone(block["lifting_count"])
+        self.assertIsNone(block["shifting_count"])
+        self.assertIsNone(block["shifting_percentage"])
 
     def test_all_missing_observations_do_not_become_zero(self):
         self.write_shifting("CY219,SL,,,,\n")
@@ -96,6 +187,7 @@ class ExistingYardMainTests(unittest.TestCase):
         self.write_shifting("CY219,SL,100,0,,\n")
         report = main_existing.build_report(self.input_path)
         self.assertEqual(report["shifting_count"], 0)
+        self.assertEqual(report["shifting_percentage"], 0)
         self.assertEqual(report["missing_shifting_observations"], 0)
 
     def test_compliance_is_container_weighted(self):
@@ -135,6 +227,9 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertIsNone(report["parameter_compliance"])
         self.assertIsNone(report["shifting_count"])
         self.assertEqual(report["shifting_data_points"], 0)
+        self.assertIsNone(report["period_start"])
+        self.assertIsNone(report["lifting_count"])
+        self.assertIsNone(report["shifting_percentage"])
         self.assertEqual(report["skipped_shifting_data_points"], 2)
 
     def test_absent_block_counts_are_excluded_from_yard_and_block_totals(self):
@@ -195,6 +290,8 @@ class ExistingYardMainTests(unittest.TestCase):
         records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(records, [report, report])
         self.assertIn("Shifting count: 10", captured.getvalue())
+        self.assertIn("Lifting count: 100", captured.getvalue())
+        self.assertIn("Shifting percentage: N/A", captured.getvalue())
         self.assertIn("Missing shifting observations: 1", captured.getvalue())
         self.assertNotIn("Known shifting count:", captured.getvalue())
 

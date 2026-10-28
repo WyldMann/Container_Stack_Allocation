@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from .config_loader import ConfigurationError, _read_document, _read_section
+from .shifting_period import parse_shifting_period
 from ..csv_import.mapping_settings import SCHEMAS
 
 
@@ -31,7 +32,7 @@ def _dataset_names(definitions, name, required=DATASETS):
 def load_input_config(path: str | Path) -> dict:
     config_path = Path(path).resolve()
     document = _read_document(config_path)
-    unknown = set(document) - {"input", "csv", "sql", "output"}
+    unknown = set(document) - {"input", "csv", "sql", "output", "shifting_period"}
     if unknown:
         raise ConfigurationError(f"Unknown input configuration sections: {sorted(unknown)}")
     section = _read_section(document, "input", {"sources", "cy_name"})
@@ -60,6 +61,9 @@ def load_input_config(path: str | Path) -> dict:
     }
 
     settings["cy_name"] = cy_name
+    period_settings = parse_shifting_period(document)
+    if period_settings is not None:
+        settings["shifting_period"] = period_settings
     csv = _read_section(document, "csv", {
         "files", "mapping_file", "shifting_summary_file", "shifting_block_mapping_file",
     })

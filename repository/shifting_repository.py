@@ -1,6 +1,7 @@
 """Optional shifting summaries for analysis, scoped to one configured CY."""
 
 from dataclasses import dataclass, replace
+import re
 import warnings
 
 from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
@@ -19,12 +20,20 @@ class ShiftingSummary:
     report_month: str | None = None
     week_number: str | None = None
     block_id: str | None = None
+    period_start: int | None = None
+    period_end: int | None = None
 
     @property
     def shifting_ratio(self) -> float | None:
-        if self.lifting_count in (None, 0) or self.shifting_count is None:
+        if self.lifting_count is None or self.shifting_count is None:
             return None
-        return self.shifting_count / self.lifting_count
+        total = self.lifting_count + self.shifting_count
+        return self.shifting_count / total if total else None
+
+    @property
+    def shifting_percentage(self) -> float | None:
+        ratio = self.shifting_ratio
+        return ratio * 100 if ratio is not None else None
 
 
 class ShiftingRepository(Repository):
@@ -60,19 +69,31 @@ class ShiftingRepository(Repository):
             raise InputError(f"{location}: {field} cannot be negative.")
         return number
 
-    def read_summaries(self, cy_name: str) -> list[ShiftingSummary]:
+    def read_summaries(self, cy_name: str, *, latest_only=False) -> list[ShiftingSummary]:
         cy_name = cy_name.strip()
         if not cy_name:
             raise InputError("A non-empty cy_name is required.")
 
-        result = []
+        rows = []
         for location, row in self._iter_rows():
             if row["cy_name"].strip().casefold() != cy_name.casefold():
                 continue
             row = {key.strip().casefold(): value for key, value in row.items()}
             if row.get("week_number", "").strip().upper() == "TOTAL":
                 continue
+            rows.append((location, row))
 
+        if not rows:
+            raise InputError(f"{self.loader.source}: no records for CY {cy_name!r}.")
+
+        if latest_only:
+            validate_report_years(row.get("report_month", "") for _, row in rows)
+            weeks = [report_week(row.get("week_number"), location) for location, row in rows]
+            latest_week = max(weeks)
+            rows = [row for row, week in zip(rows, weeks) if week == latest_week]
+
+        result = []
+        for location, row in rows:
             shifting_code = row["shifting_code"].strip()
             if not shifting_code:
                 raise InputError(f"{location}: shifting_code is required.")
@@ -93,8 +114,6 @@ class ShiftingRepository(Repository):
                 week_number=row.get("week_number", "").strip() or None,
             ))
 
-        if not result:
-            raise InputError(f"{self.loader.source}: no records for CY {cy_name!r}.")
         return result
 
 
@@ -117,9 +136,44 @@ def validate_shifting_blocks(observations, block_ids, *, skipped=None):
     return accepted
 
 
-def load_shifting_summary(file_path, cy_name, mapping_path, block_ids, *, skipped=None):
+def validate_report_years(report_months):
+    years = {
+        match.group(1)
+        for month in report_months
+        if (match := re.fullmatch(r"(\d{4})-(?:0[1-9]|1[0-2])", month or ""))
+    }
+    if len(years) > 1:
+        raise InputError("A shifting-week benchmark applies to one report year; split multi-year data.")
+
+
+def report_week(value, source):
+    try:
+        week = int(value or "")
+    except ValueError as error:
+        raise InputError(f"{source}: week_number is required for weekly recording.") from error
+    if not 1 <= week <= 53:
+        raise InputError(f"{source}: week_number must be 1 through 53.")
+    return week
+
+
+def assign_shifting_periods(observations, period_settings):
+    validate_report_years(row.report_month for row in observations)
+    result = []
+    for row in observations:
+        week = report_week(row.week_number, row.shifting_code)
+        start, end = period_settings.boundaries(week)
+        result.append(replace(row, period_start=start, period_end=end))
+    return result
+
+
+def load_shifting_summary(
+    file_path, cy_name, mapping_path, block_ids, *, skipped=None, period_settings=None,
+    latest_only=False,
+):
     mapping = load_shifting_block_mapping(mapping_path, cy_name)
-    observations = ShiftingRepository(CSVLoader(file_path)).read_summaries(cy_name)
+    observations = ShiftingRepository(CSVLoader(file_path)).read_summaries(
+        cy_name, latest_only=latest_only,
+    )
     result = []
     for row in observations:
         key = row.shifting_code.casefold()
@@ -128,4 +182,5 @@ def load_shifting_summary(file_path, cy_name, mapping_path, block_ids, *, skippe
                 f"{file_path}: unmapped shifting code {row.shifting_code!r} for {cy_name!r}."
             )
         result.append(replace(row, block_id=mapping[key]))
-    return validate_shifting_blocks(result, block_ids, skipped=skipped)
+    result = validate_shifting_blocks(result, block_ids, skipped=skipped)
+    return assign_shifting_periods(result, period_settings) if period_settings is not None else result

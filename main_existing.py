@@ -1,16 +1,17 @@
-"""Record existing-yard compliance and all shifting observations for one CY."""
+"""Record existing-yard compliance and latest-week operations for one CY."""
 
 from collections import Counter, defaultdict
 from dataclasses import asdict
-from datetime import datetime, timezone
 import json
 from pathlib import Path
 import tomllib
+from time import time
 
 from config import (
     ConfigurationError, DEFAULT_CONFIG_FILE, DEFAULT_INPUT_CONFIG_FILE,
     load_config, load_csv_mapping,
 )
+from config.application.shifting_period import parse_shifting_period
 from entities import Yard
 from repository import (
     CSVLoader, Repository, ContainerRepository, RemovedSlotsRepository,
@@ -20,13 +21,22 @@ from repository.shifting_repository import load_shifting_summary
 
 
 def shifting_metrics(observations):
-    """Sum available counts and report how many observations lack a count."""
+    """Sum available operations; percentages require complete nonzero totals."""
     known = [row.shifting_count for row in observations if row.shifting_count is not None]
+    lifting = [row.lifting_count for row in observations if row.lifting_count is not None]
     missing = len(observations) - len(known)
+    missing_lifting = len(observations) - len(lifting)
+    total = sum(known) + sum(lifting) if known and lifting else None
     return {
         "shifting_data_points": len(observations),
+        "lifting_count": sum(lifting) if lifting else None,
         "shifting_count": sum(known) if known else None,
+        "total_operations": total,
+        "shifting_percentage": (
+            100 * sum(known) / total if total and not missing and not missing_lifting else None
+        ),
         "missing_shifting_observations": missing,
+        "missing_lifting_observations": missing_lifting,
     }
 
 
@@ -34,6 +44,7 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
     input_path = Path(input_path).resolve()
     with input_path.open("rb") as file:
         document = tomllib.load(file)
+    period_settings = parse_shifting_period(document, required=True)
 
     def required_text(value, label):
         if not isinstance(value, str) or not value.strip():
@@ -99,9 +110,14 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
     observations = load_shifting_summary(
         shifting_path, cy_name, shifting_mapping_path, yard.blocks_by_id,
         skipped=skipped_observations,
+        period_settings=period_settings,
+        latest_only=True,
     )
+    latest_start = max((row.period_start for row in observations), default=None)
+    latest_observations = [row for row in observations if row.period_start == latest_start]
+    latest = latest_observations[0] if latest_observations else None
     by_block = defaultdict(list)
-    for row in observations:
+    for row in latest_observations:
         by_block[row.block_id].append(row)
 
     # The accepted-container registry counts each 40-foot container once.
@@ -128,7 +144,12 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
             container_count += count
 
     return {
-        "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+        "recorded_at": int(time()),
+        "period_start": latest_start,
+        "period_end": latest.period_end if latest else None,
+        "latest_week": int(latest.week_number) if latest else None,
+        "report_month": latest.report_month if latest else None,
+        "parameter_compliance_basis": "current_yard_snapshot",
         "cy_name": cy_name,
         "existing_input_rows": len(inputs["existing_containers"]),
         "loaded_containers": len(yard.containers),
@@ -140,8 +161,12 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
         "blocks": blocks,
         "shifting_source": str(shifting_path),
         "shifting_block_mapping_source": str(shifting_mapping_path),
-        **shifting_metrics(observations),
-        "shifting_observations": [asdict(row) for row in observations],
+        **shifting_metrics(latest_observations),
+        "loaded_shifting_data_points": len(observations),
+        "shifting_observations": [
+            {**asdict(row), "shifting_percentage": row.shifting_percentage}
+            for row in observations
+        ],
         "skipped_shifting_data_points": len(skipped_observations),
         "skipped_shifting_observations": [asdict(row) for row in skipped_observations],
     }
@@ -163,10 +188,18 @@ def main():
     print("Loaded existing containers:", report["loaded_containers"])
     print("Parameter compliance:",
           "N/A" if compliance is None else f"{compliance:.2%}")
+    print("Time of recording (Unix):", report["recorded_at"])
+    print("Latest operations week:", report["latest_week"])
+    print("Operations period start (Unix):", report["period_start"])
+    print("Operations period end (Unix):", report["period_end"])
+    print("Lifting count:", "N/A" if report["lifting_count"] is None else report["lifting_count"])
     print("Shifting count:",
           "N/A" if report["shifting_count"] is None
           else report["shifting_count"])
+    percentage = report["shifting_percentage"]
+    print("Shifting percentage:", "N/A" if percentage is None else f"{percentage:.2f}%")
     print("Missing shifting observations:", report["missing_shifting_observations"])
+    print("Missing lifting observations:", report["missing_lifting_observations"])
     print("Skipped shifting observations:", report["skipped_shifting_data_points"])
     print("Yard has bad data:", report["has_bad_data"])
     print("Recorded to:", output)

@@ -38,7 +38,8 @@ class ShiftingRepositoryTests(unittest.TestCase):
         self.assertEqual(rows[0], rows[1])
         self.assertEqual(rows[0].cy_name, "CY219")
         self.assertEqual(rows[0].shifting_code, "SL")
-        self.assertEqual(rows[0].shifting_ratio, 0.1)
+        self.assertAlmostEqual(rows[0].shifting_ratio, 10 / 110)
+        self.assertAlmostEqual(rows[0].shifting_percentage, 100 * 10 / 110)
         self.assertIsNone(rows[0].report_month)
         self.assertIsNone(rows[0].week_number)
 
@@ -94,6 +95,7 @@ class ShiftingInputTests(unittest.TestCase):
         self.document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
         self.document["input"]["sources"] = dict.fromkeys(DATASETS, "csv")
         self.document["csv"].pop("shifting_summary_file", None)
+        self.document.pop("shifting_period", None)
 
     def settings(self, document):
         with patch("config.application.input_config._read_document", return_value=document):
