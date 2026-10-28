@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, replace
 import re
-import warnings
 
 from config import ConfigurationError
 from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
@@ -73,20 +72,28 @@ class ShiftingRepository(Repository):
             raise InputError(f"{location}: {field} cannot be negative.")
         return number
 
-    def read_summaries(self, cy_name: str, *, latest_only=False, today=None, required_codes=None) -> list[ShiftingSummary]:
+    def read_summaries(self, cy_name: str, *, latest_only=False, today=None, required_codes=None,
+                       omitted_codes=()) -> list[ShiftingSummary]:
         if not cy_name.strip():
             raise InputError("A non-empty cy_name is required.")
 
         rows = []
+        omitted_codes = {code.strip().casefold() for code in omitted_codes}
+        omitted = False
         for location, row in self._iter_rows():
             if row["cy_name"].upper() != cy_name.upper():
                 continue
             row = {key.strip().casefold(): value for key, value in row.items()}
+            if row["shifting_code"].strip().casefold() in omitted_codes:
+                omitted = True
+                continue
             if any(row.get(field, "").strip().upper() == "TOTAL" for field in ("week_number", "report_date")):
                 continue
             rows.append((location, row))
 
         if not rows:
+            if omitted:
+                return []
             raise InputError(f"{self.loader.source}: no records for CY {cy_name!r}.")
 
         daily = "report_date" in rows[0][1]
@@ -167,23 +174,10 @@ class ShiftingRepository(Repository):
         )
 
 
-def validate_shifting_blocks(observations, block_ids, *, skipped=None):
-    """Keep observations for present blocks and report excluded assignments."""
+def validate_shifting_blocks(observations, block_ids):
+    """Silently omit observations for blocks absent from the loaded yard."""
     block_ids = set(block_ids)
-    accepted = []
-    rejected = []
-    for row in observations:
-        (accepted if row.block_id in block_ids else rejected).append(row)
-    if rejected:
-        if skipped is not None:
-            skipped.extend(rejected)
-        assignments = sorted({f"{row.shifting_code} -> {row.block_id}" for row in rejected})
-        warnings.warn(
-            f"Skipped {len(rejected)} shifting observations for blocks absent "
-            f"from the loaded yard: {', '.join(assignments)}.",
-            UserWarning, stacklevel=2,
-        )
-    return accepted
+    return [row for row in observations if row.block_id in block_ids]
 
 
 def validate_report_years(report_months):
@@ -217,7 +211,7 @@ def assign_shifting_periods(observations, period_settings):
 
 
 def load_shifting_summary(
-    file_path, cy_name, mapping_path, block_ids, *, skipped=None, period_settings=None,
+    file_path, cy_name, mapping_path, block_ids, *, period_settings=None,
     latest_only=False,
     workbook_path=None, workbook_sheet="Per Alat Weekly",
     today=None,
@@ -229,7 +223,10 @@ def load_shifting_summary(
     observations = ShiftingRepository(CSVLoader(file_path)).read_summaries(
         cy_name, latest_only=latest_only, today=today,
         required_codes={code for code, block in mapping.items() if block in block_ids},
+        omitted_codes={code for code, block in mapping.items() if block not in block_ids},
     )
+    if not observations:
+        return []
     result = []
     for row in observations:
         key = row.shifting_code.casefold()
@@ -238,7 +235,7 @@ def load_shifting_summary(
                 f"{file_path}: unmapped shifting code {row.shifting_code!r} for {cy_name!r}."
             )
         result.append(replace(row, block_id=mapping[key]))
-    result = validate_shifting_blocks(result, block_ids, skipped=skipped)
+    result = validate_shifting_blocks(result, block_ids)
     if any(row.report_date is not None for row in observations):
         return result
     if latest_only and period_settings is None:

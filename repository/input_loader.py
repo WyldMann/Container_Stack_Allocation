@@ -114,18 +114,14 @@ def load_yard_inputs(settings, *, include_shifting=True):
             _scope_to_yard_blocks(inputs)
         shifting_file = settings.get("shifting_summary_file")
         if include_shifting and shifting_file is not None:
-            skipped = []
             inputs["shifting_summary"] = load_shifting_summary(
                 shifting_file, directory.cy_name(),
                 settings["shifting_block_mapping_file"],
                 {row["block_id"] for row in inputs["yard_blocks"]},
-                skipped=skipped,
                 period_settings=settings.get("shifting_period"),
                 workbook_path=settings.get("shifting_workbook_file"),
                 workbook_sheet=settings.get("shifting_workbook_sheet", "Per Alat Weekly"),
             )
-            if skipped:
-                inputs["skipped_shifting_summary"] = skipped
         return inputs
 
     if "sql" not in sources.values():

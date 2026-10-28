@@ -9,15 +9,15 @@ from config import (
 
 from repository import load_yard_inputs
 from repository.branch_repository import BranchDirectory
-from repository.shifting_repository import validate_shifting_blocks
+from repository.shifting_repository import load_shifting_summary
 from entities import Yard, Container
 from entities.bad_yard_data import PlacementRejected
 from presenter import YardPresenter, BadDataPresenter
 
 settings = load_config(DEFAULT_CONFIG_FILE)
 input_settings = load_input_config(DEFAULT_INPUT_CONFIG_FILE)
-inputs = load_yard_inputs(input_settings)
-shifting_summary = inputs.get("shifting_summary", [])
+inputs = load_yard_inputs(input_settings, include_shifting=False)
+shifting_summary = []
 inbound_container_records = inputs["inbound_containers"]
 
 yard = Yard(
@@ -31,14 +31,16 @@ yard = Yard(
     feasibility_settings=settings.feasibility,
     heuristic_settings=settings.heuristic,
 )
-skipped_shifting_summary = inputs.get("skipped_shifting_summary", [])
-shifting_summary = validate_shifting_blocks(
-    shifting_summary, yard.blocks_by_id, skipped=skipped_shifting_summary,
-)
-if "shifting_summary" in inputs:
+if input_settings.get("shifting_summary_file") is not None:
+    shifting_summary = load_shifting_summary(
+        input_settings["shifting_summary_file"],
+        BranchDirectory(inputs["terminal_branches"]).cy_name(),
+        input_settings["shifting_block_mapping_file"], yard.blocks_by_id,
+        period_settings=input_settings.get("shifting_period"),
+        workbook_path=input_settings.get("shifting_workbook_file"),
+        workbook_sheet=input_settings.get("shifting_workbook_sheet", "Per Alat Weekly"),
+    )
     inputs["shifting_summary"] = shifting_summary
-if skipped_shifting_summary:
-    inputs["skipped_shifting_summary"] = skipped_shifting_summary
 yard_presenter = YardPresenter()
 yard_presenter.outYard(yard)
 

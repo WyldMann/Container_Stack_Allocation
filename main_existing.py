@@ -72,11 +72,9 @@ def _build_report_and_yard(input_path):
         heuristic_settings=settings.heuristic,
     )
 
-    skipped_observations = []
     recorded_at = int(time())
     observations = load_shifting_summary(
         shifting_path, cy_name, shifting_mapping_path, yard.blocks_by_id,
-        skipped=skipped_observations,
         period_settings=period_settings,
         latest_only=True,
         workbook_path=workbook_path,
@@ -145,8 +143,6 @@ def _build_report_and_yard(input_path):
             {**asdict(row), "shifting_percentage": row.shifting_percentage}
             for row in observations
         ],
-        "skipped_shifting_data_points": len(skipped_observations),
-        "skipped_shifting_observations": [asdict(row) for row in skipped_observations],
     }
     return report, yard
 
@@ -188,7 +184,6 @@ def main():
     print("Shifting percentage:", "N/A" if percentage is None else f"{percentage:.2f}%")
     print("Missing shifting observations:", report["missing_shifting_observations"])
     print("Missing lifting observations:", report["missing_lifting_observations"])
-    print("Skipped shifting observations:", report["skipped_shifting_data_points"])
     print("Yard has bad data:", report["has_bad_data"])
     print("Recorded to:", output)
     print()

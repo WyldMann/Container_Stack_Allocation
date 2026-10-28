@@ -171,7 +171,7 @@ class ShiftingInputTests(unittest.TestCase):
         self.assertEqual(inputs["shifting_summary"][0].lifting_count, 100)
         self.assertEqual(inputs["shifting_summary"][0].block_id, "10")
 
-    def test_missing_block_observations_are_reported_by_shared_loader(self):
+    def test_missing_block_observations_are_omitted_by_shared_loader(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "shifting.csv"
             mapping = Path(directory) / "mapping.toml"
@@ -181,12 +181,10 @@ class ShiftingInputTests(unittest.TestCase):
             mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
             self.document["csv"]["shifting_summary_file"] = path.as_posix()
             self.document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()
-            with self.assertWarnsRegex(UserWarning, "RS -> 99"):
-                inputs = load_yard_inputs(self.settings(self.document))
+            inputs = load_yard_inputs(self.settings(self.document))
         self.assertEqual(len(inputs["shifting_summary"]), 1)
         self.assertEqual(inputs["shifting_summary"][0].shifting_count, 10)
-        self.assertEqual(len(inputs["skipped_shifting_summary"]), 1)
-        self.assertEqual(inputs["skipped_shifting_summary"][0].block_id, "99")
+        self.assertNotIn("skipped_shifting_summary", inputs)
 
 
 if __name__ == "__main__":

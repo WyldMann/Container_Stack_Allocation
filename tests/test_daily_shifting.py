@@ -4,9 +4,11 @@ from contextlib import redirect_stdout
 import csv
 from datetime import date, datetime, timezone
 import io
+import json
 from pathlib import Path
 import tempfile
 import unittest
+import warnings
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile
@@ -89,14 +91,25 @@ class DailyShiftingTests(unittest.TestCase):
                 self.assertEqual(sum(row.lifting_count for row in rows), 50)
 
     def test_missing_counts_for_absent_block_do_not_prevent_selection(self):
-        skipped = []
-        with self.assertWarnsRegex(UserWarning, "ABSENT -> 9"):
-            rows = self.load(
-                f"{CY},SL,200,20,2026-10-27\n{CY},RS,100,10,2026-10-27\n"
-                f"{CY},ABSENT,10,,2026-10-27\n", skipped=skipped,
-            )
+        rows = self.load(
+            f"{CY},SL,200,20,2026-10-27\n{CY},RS,100,10,2026-10-27\n"
+            f"{CY},ABSENT,10,,2026-10-27\n",
+        )
         self.assertEqual(len(rows), 2)
-        self.assertEqual(len(skipped), 1)
+
+    def test_absent_block_dates_duplicates_and_invalid_counts_have_no_effect(self):
+        included = f"{CY},SL,200,20,2026-10-27\n{CY},RS,100,10,2026-10-27\n"
+        expected = self.load(included)
+        with warnings.catch_warnings(record=True) as messages:
+            rows = self.load(included +
+                f"{CY},ABSENT,bad,-1,invalid-date\n"
+                f"{CY},ABSENT,,,2026-10-27\n"
+                f"{CY},ABSENT,100,10,2026-10-27\n")
+        self.assertEqual(rows, expected)
+        self.assertEqual(messages, [])
+
+    def test_all_absent_blocks_return_no_observations_without_date_validation(self):
+        self.assertEqual(self.load(f"{CY},ABSENT,bad,,invalid-date\n"), [])
 
     def test_zero_counts_are_complete_and_no_complete_day_is_an_error(self):
         rows = self.load(f"{CY},SL,0,0,2026-10-27\n{CY},RS,0,0,2026-10-27\n")
@@ -187,6 +200,28 @@ class DailyMainTests(unittest.TestCase):
         with patch("repository.shifting_repository.today_wib", return_value=TODAY):
             inputs = load_yard_inputs(settings)
         self.assertEqual({row.report_date for row in inputs["shifting_summary"]}, {"2026-10-27"})
+
+    def test_absent_block_observations_never_change_or_appear_in_recorded_report(self):
+        with patch.object(main_existing, "time", return_value=NOW):
+            expected = main_existing.build_report(self.path)
+        with self.fixture.mapping_path.open("a", encoding="utf-8") as stream:
+            stream.write('ABSENT = "9"\n')
+        with self.fixture.shifting_path.open("a", encoding="utf-8") as stream:
+            stream.write(f"{CY},ABSENT,bad,,invalid-date\n{CY},ABSENT,,,2026-10-27\n")
+        with patch.object(main_existing, "time", return_value=NOW), warnings.catch_warnings(record=True) as messages:
+            report, yard = main_existing._build_report_and_yard(self.path)
+        self.assertEqual(report, expected)
+        self.assertEqual(messages, [])
+        captured = io.StringIO()
+        with patch.object(main_existing, "_build_report_and_yard", return_value=(report, yard)), patch.object(
+            main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+        ), patch.object(main_existing, "YardPresenter"), redirect_stdout(captured):
+            main_existing.main()
+        recorded = (self.fixture.root / "output" / "existing_yard_metrics.jsonl").read_text(encoding="utf-8")
+        self.assertEqual(json.loads(recorded), expected)
+        self.assertNotIn("ABSENT", recorded)
+        self.assertNotIn("skipped_shifting", recorded)
+        self.assertNotIn("Skipped shifting", captured.getvalue())
 
     def test_main_prints_daily_period_records_and_yard(self):
         with patch.object(main_existing, "time", return_value=NOW):

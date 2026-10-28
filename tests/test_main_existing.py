@@ -273,17 +273,16 @@ benchmark_period_start = 1857916800
         self.assertEqual(report["missing_shifting_observations"], 0)
         self.assertEqual(len(report["shifting_observations"]), 2)
 
-    def test_latest_week_with_absent_blocks_does_not_fall_back_to_older_week(self):
+    def test_absent_blocks_cannot_select_a_newer_week(self):
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
         self.write_shifting(
             "CY 219 (Lini 2),SL,200,20,2026-10,43\nCY 219 (Lini 2),RS,100,10,2026-10,44\n"
         )
-        with self.assertWarnsRegex(UserWarning, "RS -> 99"):
-            report = main_existing.build_report(self.input_path)
-        self.assertIsNone(report["shifting_count"])
-        self.assertIsNone(report["shifting_percentage"])
-        self.assertEqual(report["shifting_observations"], [])
-        self.assertEqual(report["skipped_shifting_data_points"], 1)
+        report = main_existing.build_report(self.input_path)
+        self.assertEqual(report["latest_week"], 43)
+        self.assertEqual(report["shifting_count"], 20)
+        self.assertAlmostEqual(report["shifting_percentage"], 100 * 20 / 220)
+        self.assertNotIn("skipped_shifting_data_points", report)
 
     def test_incomplete_latest_week_keeps_counts_and_no_percentage(self):
         self.write_shifting(
@@ -354,12 +353,12 @@ benchmark_period_start = 1857916800
         self.assertEqual(report["parameter_compliance"], 0.25)
         self.assertTrue(report["has_bad_data"])
 
-    def test_empty_yard_records_skipped_observations_and_no_compliance(self):
+    def test_empty_yard_omits_all_observations_and_has_no_compliance(self):
         yard = SimpleNamespace(
             containers={}, blocks_by_id={},
             bad_data=SimpleNamespace(anyBadData=lambda: False),
         )
-        with patch.object(main_existing, "Yard", return_value=yard), self.assertWarns(UserWarning):
+        with patch.object(main_existing, "Yard", return_value=yard):
             report = main_existing.build_report(self.input_path)
         self.assertEqual(report["loaded_containers"], 0)
         self.assertIsNone(report["parameter_compliance"])
@@ -368,17 +367,16 @@ benchmark_period_start = 1857916800
         self.assertIsNone(report["period_start"])
         self.assertIsNone(report["lifting_count"])
         self.assertIsNone(report["shifting_percentage"])
-        self.assertEqual(report["skipped_shifting_data_points"], 2)
+        self.assertNotIn("skipped_shifting_data_points", report)
 
     def test_absent_block_counts_are_excluded_from_yard_and_block_totals(self):
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
         self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,100,30,,\n")
-        with self.assertWarnsRegex(UserWarning, "RS -> 99"):
-            report = main_existing.build_report(self.input_path)
+        report = main_existing.build_report(self.input_path)
         self.assertEqual(report["shifting_count"], 10)
         self.assertEqual(report["shifting_data_points"], 1)
-        self.assertEqual(report["skipped_shifting_data_points"], 1)
-        self.assertEqual(report["skipped_shifting_observations"][0]["shifting_count"], 30)
+        self.assertNotIn("skipped_shifting_data_points", report)
+        self.assertNotIn("skipped_shifting_observations", report)
         self.assertEqual(
             next(b for b in report["blocks"] if b["block_id"] == "10")["shifting_count"], 10,
         )
@@ -435,6 +433,7 @@ benchmark_period_start = 1857916800
         self.assertIn("Shifting percentage: N/A", captured.getvalue())
         self.assertIn("Missing shifting observations: 1", captured.getvalue())
         self.assertNotIn("Known shifting count:", captured.getvalue())
+        self.assertNotIn("Skipped shifting observations:", captured.getvalue())
 
 
 if __name__ == "__main__":
