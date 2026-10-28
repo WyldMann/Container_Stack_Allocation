@@ -79,12 +79,24 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertEqual(report["shifting_data_points"], 2)
         self.assertEqual(report["shifting_observations"][0]["report_month"], "2025-01")
 
-    def test_missing_shifts_are_not_reported_as_a_complete_total(self):
+    def test_available_shifts_are_summed_and_missing_observations_counted(self):
         self.write_shifting("CY219,SL,100,10,,\nCY219,SL,,,,\n")
         report = main_existing.build_report(self.input_path)
+        self.assertEqual(report["shifting_count"], 10)
+        self.assertEqual(report["missing_shifting_observations"], 1)
+        self.assertNotIn("known_shifting_count", report)
+
+    def test_all_missing_observations_do_not_become_zero(self):
+        self.write_shifting("CY219,SL,,,,\n")
+        report = main_existing.build_report(self.input_path)
         self.assertIsNone(report["shifting_count"])
-        self.assertEqual(report["known_shifting_count"], 10)
-        self.assertEqual(report["missing_shifting_counts"], 1)
+        self.assertEqual(report["missing_shifting_observations"], 1)
+
+    def test_explicit_zero_remains_zero(self):
+        self.write_shifting("CY219,SL,100,0,,\n")
+        report = main_existing.build_report(self.input_path)
+        self.assertEqual(report["shifting_count"], 0)
+        self.assertEqual(report["missing_shifting_observations"], 0)
 
     def test_compliance_is_container_weighted(self):
         first = Mock()
@@ -157,7 +169,8 @@ class ExistingYardMainTests(unittest.TestCase):
         block = next(block for block in report["blocks"] if block["block_id"] == "11")
         self.assertEqual(block["shifting_data_points"], 0)
         self.assertIsNone(block["shifting_count"])
-        self.assertIsNone(block["known_shifting_count"])
+        self.assertEqual(block["missing_shifting_observations"], 0)
+        self.assertNotIn("known_shifting_count", block)
 
     def test_shifting_path_is_required(self):
         text = self.input_path.read_text(encoding="utf-8")
@@ -169,16 +182,21 @@ class ExistingYardMainTests(unittest.TestCase):
             main_existing.build_report(self.input_path)
 
     def test_main_appends_one_json_record_per_run(self):
+        self.write_shifting("CY219,SL,100,10,,\nCY219,SL,,,,\n")
         report = main_existing.build_report(self.input_path)
+        captured = io.StringIO()
         with patch.object(main_existing, "build_report", return_value=report), patch.object(
             main_existing, "DEFAULT_INPUT_CONFIG_FILE",
             self.root / "config" / "input.toml",
-        ), redirect_stdout(io.StringIO()):
+        ), redirect_stdout(captured):
             main_existing.main()
             main_existing.main()
         output = self.root / "output" / "existing_yard_metrics.jsonl"
         records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(records, [report, report])
+        self.assertIn("Shifting count: 10", captured.getvalue())
+        self.assertIn("Missing shifting observations: 1", captured.getvalue())
+        self.assertNotIn("Known shifting count:", captured.getvalue())
 
 
 if __name__ == "__main__":

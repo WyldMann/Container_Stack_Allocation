@@ -20,13 +20,13 @@ from repository.shifting_repository import load_shifting_summary
 
 
 def shifting_metrics(observations):
+    """Sum available counts and report how many observations lack a count."""
     known = [row.shifting_count for row in observations if row.shifting_count is not None]
     missing = len(observations) - len(known)
     return {
         "shifting_data_points": len(observations),
-        "shifting_count": sum(known) if observations and not missing else None,
-        "known_shifting_count": sum(known) if observations else None,
-        "missing_shifting_counts": missing,
+        "shifting_count": sum(known) if known else None,
+        "missing_shifting_observations": missing,
     }
 
 
@@ -164,10 +164,9 @@ def main():
     print("Parameter compliance:",
           "N/A" if compliance is None else f"{compliance:.2%}")
     print("Shifting count:",
-          "N/A (incomplete)" if report["shifting_count"] is None
+          "N/A" if report["shifting_count"] is None
           else report["shifting_count"])
-    print("Known shifting count:", report["known_shifting_count"])
-    print("Missing shifting counts:", report["missing_shifting_counts"])
+    print("Missing shifting observations:", report["missing_shifting_observations"])
     print("Skipped shifting observations:", report["skipped_shifting_data_points"])
     print("Yard has bad data:", report["has_bad_data"])
     print("Recorded to:", output)
