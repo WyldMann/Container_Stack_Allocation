@@ -13,6 +13,7 @@ from config import (
 )
 from config.application.shifting_period import parse_shifting_period
 from entities import Yard
+from presenter import YardPresenter
 from repository import (
     CSVLoader, Repository, ContainerRepository, RemovedSlotsRepository,
     YardPlanningRepository, EquipmentMoveRepository,
@@ -40,7 +41,7 @@ def shifting_metrics(observations):
     }
 
 
-def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
+def _build_report_and_yard(input_path):
     input_path = Path(input_path).resolve()
     with input_path.open("rb") as file:
         document = tomllib.load(file)
@@ -152,7 +153,7 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
             weighted_compliance += compliance * count
             container_count += count
 
-    return {
+    report = {
         "recorded_at": int(time()),
         "period_start": latest_start,
         "period_end": latest.period_end if latest else None,
@@ -180,10 +181,16 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
         "skipped_shifting_data_points": len(skipped_observations),
         "skipped_shifting_observations": [asdict(row) for row in skipped_observations],
     }
+    return report, yard
+
+
+def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
+    report, _ = _build_report_and_yard(input_path)
+    return report
 
 
 def main():
-    report = build_report()
+    report, yard = _build_report_and_yard(DEFAULT_INPUT_CONFIG_FILE)
     output = (
         DEFAULT_INPUT_CONFIG_FILE.parent.parent
         / "output" / "existing_yard_metrics.jsonl"
@@ -213,6 +220,8 @@ def main():
     print("Skipped shifting observations:", report["skipped_shifting_data_points"])
     print("Yard has bad data:", report["has_bad_data"])
     print("Recorded to:", output)
+    print()
+    YardPresenter().outYard(yard)
 
 
 if __name__ == "__main__":

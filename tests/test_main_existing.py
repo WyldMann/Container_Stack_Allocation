@@ -281,7 +281,9 @@ class ExistingYardMainTests(unittest.TestCase):
         self.write_shifting("CY219,SL,100,10,,\nCY219,SL,,,,\n")
         report = main_existing.build_report(self.input_path)
         captured = io.StringIO()
-        with patch.object(main_existing, "build_report", return_value=report), patch.object(
+        with patch.object(
+            main_existing, "_build_report_and_yard", return_value=(report, Mock()),
+        ), patch.object(main_existing, "YardPresenter"), patch.object(
             main_existing, "DEFAULT_INPUT_CONFIG_FILE",
             self.root / "config" / "input.toml",
         ), redirect_stdout(captured):
