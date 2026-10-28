@@ -71,7 +71,7 @@ and_score = "AND_SCORE"
 
 [sql.existing_containers]
 relation = "TRM_TRS_TARGET_CONTAINER"
-# schema = "operations"
+schema = "TERMINAL_APP"
 # filters = { BRANCH = "CY219" }
 
 [sql.existing_containers.columns]
