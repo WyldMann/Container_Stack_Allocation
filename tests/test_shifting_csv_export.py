@@ -162,6 +162,7 @@ class WorkbookSharedInputTests(unittest.TestCase):
                 shifting_summary_file=output.as_posix(),
                 shifting_workbook_file=workbook.as_posix(),
                 shifting_block_mapping_file=mapping.as_posix(),
+                shifting_workbook_sheet="Per Alat Weekly",
             )
             settings = self.settings(self.document)
             first = load_yard_inputs(settings)["shifting_summary"]
@@ -176,7 +177,7 @@ class WorkbookSharedInputTests(unittest.TestCase):
             self.settings(self.document)
         self.document["csv"]["shifting_summary_file"] = "../reports/output.csv"
         settings = self.settings(self.document)
-        self.assertEqual(settings["shifting_workbook_sheet"], "Per Alat Weekly")
+        self.assertEqual(settings["shifting_workbook_sheet"], "Per Alat Daily")
         self.assertEqual(settings["shifting_workbook_file"].name, "source.xlsx")
         for invalid in ("", 123):
             self.document["csv"]["shifting_workbook_file"] = invalid

@@ -31,6 +31,13 @@ class ExistingYardMainTests(unittest.TestCase):
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "11"\n', encoding="utf-8")
         project = DEFAULT_INPUT_CONFIG_FILE.parent.parent
         template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
+        # Legacy weekly fixtures supply their own benchmark; production uses daily dates.
+        template = template.replace('[input.sources]', '''[shifting_period]
+benchmark_week = 40
+benchmark_period_start = 1857916800
+
+[input.sources]''').replace('shifting_workbook_sheet = "Per Alat Daily"',
+                           'shifting_workbook_sheet = "Per Alat Weekly"')
         template = template.replace(
             "../data_CY219/", (project / "data_CY219").as_posix() + "/"
         ).replace(

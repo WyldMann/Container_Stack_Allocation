@@ -12,12 +12,6 @@
 terminal_id = 1
 branch_id = 2
 
-[shifting_period]
-# Explicit alignment supplied by the user; Unix seconds, no timezone conversion.
-# Applies to one report-year cycle. Update when week numbers reset for a new year.
-benchmark_week = 40
-benchmark_period_start = 1857916800
-
 [input.sources]
 terminal_branches = "sql"
 # Each dataset independently selects "csv" or "sql".
@@ -37,15 +31,14 @@ mapping_file = "csv_mapping.toml"
 # Legacy equipment_group header is also accepted instead of shifting_code.
 # These codes identify initial block assignments, not individual equipment.
 # Observations mapped to absent blocks are skipped and reported.
-# All detail periods are loaded; weekly recording requires week_number (1-53).
-# The recorder selects the latest week before validating operation counts.
-# report_month identifies the report year and prevents mixing year cycles.
-# A week_number of TOTAL is excluded. Repeated observations are retained.
-# Counts must be non-negative integers or both blank for missing data.
-shifting_summary_file = "../data_CY219/Shifting_Report_Summary_2026-10_Weekly_20261026020923.csv"
+# Daily dates are converted to Unix seconds at 00:00 WIB (UTC+7); no benchmark.
+# Select the latest date before today with both counts for every required loaded-block code.
+# Incomplete recent dates fall back to the preceding complete date. Blank is not zero.
+# The flat daily CSV contains report_date, period_start, and period_end (exclusive).
+shifting_summary_file = "../data_CY219/Shifting_Report_Summary_2026-10_Daily_20261028050957.csv"
 # When configured, regenerate the CSV from this workbook on every data load.
-shifting_workbook_file = "../data_CY219/Shifting_Report_Summary_2026-10_Weekly_20261026020923.xlsx"
-shifting_workbook_sheet = "Per Alat Weekly"
+shifting_workbook_file = "../data_CY219/Shifting_Report_Summary_2026-10_Daily_20261028050957.xlsx"
+shifting_workbook_sheet = "Per Alat Daily"
 shifting_block_mapping_file = "shifting_block_mapping.toml"
 
 [csv.files]

@@ -1,4 +1,4 @@
-"""Refresh the flat shifting CSV from the supplied weekly XLSX report template."""
+"""Refresh flat daily or legacy weekly shifting CSVs from an XLSX report."""
 
 import csv
 from datetime import date, datetime
@@ -12,11 +12,14 @@ import xml.etree.ElementTree as ET
 from zipfile import BadZipFile, ZipFile
 
 from .loader import InputError
+from .shifting_dates import daily_boundaries, report_date
 
 
 _NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 _HEADERS = ("cy_name", "shifting_code", "lifting_count", "shifting_count",
             "report_month", "week_number")
+_DAILY_HEADERS = ("cy_name", "shifting_code", "lifting_count", "shifting_count",
+                  "report_date", "period_start", "period_end")
 
 
 def _column(reference):
@@ -95,6 +98,9 @@ def _read_report(workbook_path, sheet_name):
                 )
 
         month = _report_month(cells.get("E3"))
+        daily = cells.get("E5", "").strip().casefold() == "daily" or "daily" in sheet_name.casefold()
+        properties = workbook.find("m:workbookPr", _NS)
+        date1904 = properties is not None and properties.get("date1904") in ("1", "true")
         cy_columns = {}
         for merged in root.findall("m:mergeCells/m:mergeCell", _NS):
             start, end = merged.get("ref").split(":")
@@ -135,19 +141,24 @@ def _read_report(workbook_path, sheet_name):
             label = cells.get(f"A{number}", "").strip()
             if not label or label.upper() == "TOTAL":
                 continue
-            match = re.fullmatch(r"(?:WEEK\s*)?(\d+)", label, re.IGNORECASE)
-            if match is None or not 1 <= int(match.group(1)) <= 53:
-                raise InputError(f"Invalid weekly period label {label!r} in A{number}.")
+            if daily:
+                day = report_date(label, month=month, excel=True, date1904=date1904)
+                period = (day.isoformat(), *daily_boundaries(day))
+            else:
+                match = re.fullmatch(r"(?:WEEK\s*)?(\d+)", label, re.IGNORECASE)
+                if match is None or not 1 <= int(match.group(1)) <= 53:
+                    raise InputError(f"Invalid weekly period label {label!r} in A{number}.")
+                period = (month, int(match.group(1)))
             values = {_column(cell.get("r")): cells.get(cell.get("r"))
                       for cell in row.findall("m:c", _NS)}
             for column, cy, code in sorted(groups):
                 output.append((
                     cy, code, _count_text(values.get(column)),
-                    _count_text(values.get(column + 1)), month, int(match.group(1)),
+                    _count_text(values.get(column + 1)), *period,
                 ))
         if not output:
-            raise InputError("The shifting worksheet has no weekly detail rows.")
-        return output
+            raise InputError("The shifting worksheet has no detail rows.")
+        return (_DAILY_HEADERS if daily else _HEADERS), output
 
 
 def refresh_shifting_csv(workbook_path, csv_path, sheet_name="Per Alat Weekly"):
@@ -157,7 +168,7 @@ def refresh_shifting_csv(workbook_path, csv_path, sheet_name="Per Alat Weekly"):
         raise InputError("The generated shifting CSV must have a separate .csv output path.")
     temporary = None
     try:
-        rows = _read_report(workbook_path, sheet_name)
+        headers, rows = _read_report(workbook_path, sheet_name)
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             mode="w", encoding="utf-8-sig", newline="", delete=False,
@@ -165,7 +176,7 @@ def refresh_shifting_csv(workbook_path, csv_path, sheet_name="Per Alat Weekly"):
         ) as stream:
             temporary = Path(stream.name)
             writer = csv.writer(stream)
-            writer.writerow(_HEADERS)
+            writer.writerow(headers)
             writer.writerows(rows)
         os.replace(temporary, csv_path)
     except InputError:

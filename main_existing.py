@@ -1,7 +1,8 @@
-"""Record existing-yard compliance and latest-week operations for one CY."""
+"""Record existing-yard compliance and the latest complete daily operations."""
 
 from collections import Counter, defaultdict
 from dataclasses import asdict
+from datetime import datetime
 import json
 from time import time
 
@@ -14,6 +15,7 @@ from presenter import YardPresenter
 from repository import load_yard_inputs
 from repository.branch_repository import BranchDirectory
 from repository.shifting_repository import load_shifting_summary
+from repository.shifting_dates import WIB
 
 
 EXISTING_YARD_DATASETS = (
@@ -45,10 +47,8 @@ def shifting_metrics(observations):
 def _build_report_and_yard(input_path):
     input_settings = load_input_config(input_path, datasets=EXISTING_YARD_DATASETS)
     period_settings = input_settings.get("shifting_period")
-    if period_settings is None:
-        raise ConfigurationError("Configure [shifting_period] before recording weekly metrics.")
     if "shifting_summary_file" not in input_settings:
-        raise ConfigurationError("csv.shifting_summary_file is required for weekly recording.")
+        raise ConfigurationError("csv.shifting_summary_file is required for operations recording.")
     shifting_path = input_settings["shifting_summary_file"]
     shifting_mapping_path = input_settings["shifting_block_mapping_file"]
     workbook_path = input_settings.get("shifting_workbook_file")
@@ -73,6 +73,7 @@ def _build_report_and_yard(input_path):
     )
 
     skipped_observations = []
+    recorded_at = int(time())
     observations = load_shifting_summary(
         shifting_path, cy_name, shifting_mapping_path, yard.blocks_by_id,
         skipped=skipped_observations,
@@ -80,6 +81,7 @@ def _build_report_and_yard(input_path):
         latest_only=True,
         workbook_path=workbook_path,
         workbook_sheet=workbook_sheet,
+        today=datetime.fromtimestamp(recorded_at, WIB).date(),
     )
     latest_start = max((row.period_start for row in observations), default=None)
     latest_observations = [row for row in observations if row.period_start == latest_start]
@@ -112,10 +114,14 @@ def _build_report_and_yard(input_path):
             container_count += count
 
     report = {
-        "recorded_at": int(time()),
+        "recorded_at": recorded_at,
         "period_start": latest_start,
         "period_end": latest.period_end if latest else None,
-        "latest_week": int(latest.week_number) if latest else None,
+        **({"latest_date": latest.report_date, "period_granularity": "daily"}
+           if latest and latest.report_date else {
+               "latest_week": int(latest.week_number) if latest else None,
+               "period_granularity": "weekly",
+           }),
         "report_month": latest.report_month if latest else None,
         "parameter_compliance_basis": "current_yard_snapshot",
         "cy_name": cy_name,
@@ -168,7 +174,10 @@ def main():
     print("Parameter compliance:",
           "N/A" if compliance is None else f"{compliance:.2%}")
     print("Time of recording (Unix):", report["recorded_at"])
-    print("Latest operations week:", report["latest_week"])
+    if report["period_granularity"] == "daily":
+        print("Latest complete operations date (WIB):", report["latest_date"])
+    else:
+        print("Latest operations week:", report["latest_week"])
     print("Operations period start (Unix):", report["period_start"])
     print("Operations period end (Unix):", report["period_end"])
     print("Lifting count:", "N/A" if report["lifting_count"] is None else report["lifting_count"])
