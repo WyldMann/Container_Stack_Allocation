@@ -35,19 +35,17 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
     datasets = tuple(datasets)
     if not datasets or set(datasets) - set(DATASETS):
         raise ConfigurationError("Select at least one known input dataset.")
+    datasets = tuple(dict.fromkeys(("terminal_branches", *datasets)))
     config_path = Path(path).resolve()
     document = _read_document(config_path)
     unknown = set(document) - {"input", "csv", "sql", "output", "shifting_period"}
     if unknown:
         raise ConfigurationError(f"Unknown input configuration sections: {sorted(unknown)}")
-    section = _read_section(document, "input", {"sources", "cy_name", "filters"})
+    section = _read_section(document, "input", {"sources", "filters"})
     filters = active_filters(_read_section(section, "filters", FILTER_NAMES), "input.filters")
     for name, value in filters.items():
         if type(value) not in (str, int):
             raise ConfigurationError(f"input.filters.{name} must be a string or integer.")
-    cy_name = section.get("cy_name")
-    if cy_name is not None:
-        cy_name = _string(cy_name, "input.cy_name").strip()
     sources = section.get("sources")
     _dataset_names(sources, "input.sources", required=datasets)
     sources = {name: source for name, source in sources.items() if name in datasets}
@@ -71,7 +69,6 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
                                "output.containers_file"),
     }
 
-    settings["cy_name"] = cy_name
     period_settings = parse_shifting_period(document)
     if period_settings is not None:
         settings["shifting_period"] = period_settings
@@ -89,10 +86,6 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
             csv.get("shifting_workbook_sheet", "Per Alat Weekly"), "csv.shifting_workbook_sheet"
         ).strip()
     if shifting_file is not None:
-        if cy_name is None:
-            raise ConfigurationError(
-                "input.cy_name is required when csv.shifting_summary_file is set."
-            )
         settings["shifting_summary_file"] = resolve(
             shifting_file, "csv.shifting_summary_file"
         )
@@ -163,7 +156,7 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
             continue
         label = f"sql.{name}"
         if not isinstance(definition, dict) or set(definition) - {
-            "schema", "relation", "filters", "filter_columns", "order_by", "columns",
+            "schema", "relation", "filters", "filter_columns", "order_by", "columns", "branch_kind",
         }:
             raise ConfigurationError(f"Invalid {label} settings.")
         filters = active_filters(definition.get("filters", {}), f"{label}.filters")

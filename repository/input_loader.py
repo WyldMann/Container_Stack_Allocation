@@ -7,6 +7,7 @@ from config.application.input_filters import active_filters, mapped_filters
 from config.csv_import.mapping_loader import load_mapping
 
 from .csvloader import CSVLoader
+from .branch_repository import BranchDirectory, BranchRepository
 from .sqlloader import SQLLoader
 from .shifting_repository import load_shifting_summary
 from .repository import (
@@ -17,6 +18,7 @@ from .repository import (
 
 def _read_datasets(make_loader, profiles, *, datasets=None):
     readers = {
+        "terminal_branches": (BranchRepository, "read_records"),
         "yard_blocks": (Repository, "read_records"),
         "yard_planning": (YardPlanningRepository, "read_grouped"),
         "removed_slots": (RemovedSlotsRepository, "read_tuples"),
@@ -40,23 +42,25 @@ def _read_datasets(make_loader, profiles, *, datasets=None):
     }
 
 
-def _sql_loader(connection, name, definition):
+def _sql_loader(connection, name, definition, *, branch_column=None, branch_codes=()):
     from psycopg import sql
 
     query = sql.SQL("SELECT * FROM {}").format(
         sql.Identifier(definition["schema"], definition["relation"])
     )
     filters = active_filters(definition["filters"])
-    if filters:
-        query += sql.SQL(" WHERE ") + sql.SQL(" AND ").join(
-            sql.SQL("{} = %s").format(sql.Identifier(column))
-            for column in filters
-        )
+    clauses = [sql.SQL("{} = %s").format(sql.Identifier(column)) for column in filters]
+    parameters = list(filters.values())
+    if branch_column is not None:
+        clauses.append(sql.SQL("{} = ANY(%s)").format(sql.Identifier(branch_column)))
+        parameters.append(list(branch_codes))
+    if clauses:
+        query += sql.SQL(" WHERE ") + sql.SQL(" AND ").join(clauses)
     if definition["order_by"]:
         query += sql.SQL(" ORDER BY ") + sql.SQL(", ").join(
             sql.Identifier(column) for column in definition["order_by"]
         )
-    return SQLLoader(connection, query, parameters=tuple(filters.values()), source=name)
+    return SQLLoader(connection, query, parameters=tuple(parameters), source=name)
 
 
 def load_yard_inputs(settings, *, include_shifting=True):
@@ -75,21 +79,40 @@ def load_yard_inputs(settings, *, include_shifting=True):
         profiles[name] = profiles_by_source[source][name]
 
     def read_inputs(connection=None):
-        def make_loader(name):
-            if sources[name] == "csv":
-                return CSVLoader(settings["csv_files"][name], filters=mapped_filters(
-                    settings.get("filters", {}), profiles[name].filter_columns,
-                ))
-            return _sql_loader(connection, name, settings["sql_datasets"][name])
+        directory = None
 
-        inputs = _read_datasets(make_loader, profiles, datasets=sources)
+        def make_loader(name):
+            branch_column = None
+            if (directory is not None and settings.get("filters")
+                    and name == "existing_containers" and profiles[name].branch_kind == "code"):
+                branch_column = profiles[name].columns.get("branch_id", "branch_id")
+            if sources[name] == "csv":
+                return CSVLoader(
+                    settings["csv_files"][name],
+                    filters=mapped_filters(settings.get("filters", {}), profiles[name].filter_columns),
+                    branch_codes=tuple(directory.by_code) if branch_column else None,
+                    branch_column=branch_column,
+                )
+            return _sql_loader(
+                connection, name, settings["sql_datasets"][name], branch_column=branch_column,
+                branch_codes=tuple(directory.by_code) if branch_column else (),
+            )
+
+        reference = _read_datasets(make_loader, profiles, datasets=("terminal_branches",))
+        directory = BranchDirectory(reference["terminal_branches"])
+        inputs = reference | _read_datasets(
+            make_loader, profiles, datasets=tuple(name for name in sources if name != "terminal_branches"),
+        )
+        for name in ("existing_containers", "inbound_containers"):
+            if name in inputs and profiles[name].branch_kind == "code":
+                inputs[name] = directory.normalize_containers(inputs[name], scoped=bool(settings.get("filters")))
         if settings.get("filters"):
             _scope_to_yard_blocks(inputs)
         shifting_file = settings.get("shifting_summary_file")
         if include_shifting and shifting_file is not None:
             skipped = []
             inputs["shifting_summary"] = load_shifting_summary(
-                shifting_file, settings["cy_name"],
+                shifting_file, directory.cy_name(),
                 settings["shifting_block_mapping_file"],
                 {row["block_id"] for row in inputs["yard_blocks"]},
                 skipped=skipped,

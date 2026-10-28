@@ -15,6 +15,9 @@ from filewriter import ContainerFileWriter
 import main_existing
 from repository import CSVLoader, InputError, load_yard_inputs
 from repository.input_loader import _sql_loader
+from repository.branch_repository import BranchDirectory
+from config import DEFAULT_CONFIG_FILE, load_config
+from entities import Yard
 from tests import test_main_existing as main_tests
 
 
@@ -41,7 +44,7 @@ class InputFilterTests(unittest.TestCase):
             return load_input_config(self.path, datasets=main_existing.EXISTING_YARD_DATASETS)
 
     def test_each_filter_is_independently_optional(self):
-        self.fixture.set_source("existing_containers", "sql")
+        self.fixture.set_source("terminal_branches", "sql")
         names = ("terminal_id", "branch_id")
         columns = ("TERMINAL_ID", "BRANCH_ID")
         values = (1, 2)
@@ -53,7 +56,7 @@ class InputFilterTests(unittest.TestCase):
                     for name, value, on in zip(names, values, enabled)
                 ))
                 settings = self.settings()
-                self.assertEqual(settings["sql_datasets"]["existing_containers"]["filters"], {
+                self.assertEqual(settings["sql_datasets"]["terminal_branches"]["filters"], {
                     column: value for column, value, on in zip(columns, values, enabled) if on
                 })
 
@@ -65,21 +68,32 @@ class InputFilterTests(unittest.TestCase):
         self.assertEqual(settings["sql_datasets"]["existing_containers"]["filters"], {})
 
     @unittest.skipUnless(importlib.util.find_spec("psycopg"), "Query composition requires Psycopg")
-    def test_sql_query_applies_terminal_and_branch_id(self):
+    def test_sql_query_applies_resolved_branch_codes(self):
         self.fixture.set_source("existing_containers", "sql")
         self.set_filters('terminal_id = 1\nbranch_id = 2')
         settings = self.settings()
         definition = settings["sql_datasets"]["existing_containers"]
-        loader = _sql_loader(None, "existing_containers", definition)
+        loader = _sql_loader(None, "existing_containers", definition,
+                             branch_column="BRANCH", branch_codes=("JKT74",))
         self.assertEqual(loader.query.as_string(),
             'SELECT * FROM "TERMINAL_APP"."TRM_TRS_TARGET_CONTAINER" '
-            'WHERE "TERMINAL_ID" = %s AND "BRANCH_ID" = %s')
-        self.assertEqual(loader.parameters, (1, 2))
+            'WHERE "BRANCH" = ANY(%s)')
+        self.assertEqual(loader.parameters, (["JKT74"],))
         self.set_filters('terminal_id = ""\nbranch_id = ""')
         definition = self.settings()["sql_datasets"]["existing_containers"]
         loader = _sql_loader(None, "existing_containers", definition)
         self.assertNotIn("WHERE", loader.query.as_string())
         self.assertEqual(loader.parameters, ())
+
+    @unittest.skipUnless(importlib.util.find_spec("psycopg"), "Query composition requires Psycopg")
+    def test_sql_branch_reference_uses_both_id_filters(self):
+        self.fixture.set_source("terminal_branches", "sql")
+        definition = self.settings()["sql_datasets"]["terminal_branches"]
+        loader = _sql_loader(None, "terminal_branches", definition)
+        self.assertEqual(loader.query.as_string(),
+            'SELECT * FROM "TERMINAL_APP"."TRM_MST_TERMINAL_BRANCH" '
+            'WHERE "TERMINAL_ID" = %s AND "BRANCH_ID" = %s')
+        self.assertEqual(loader.parameters, (1, 2))
 
     def test_zero_and_false_are_active_and_invalid_filter_types_fail(self):
         self.assertEqual(active_filters({"ZERO": 0, "FALSE": False, "EMPTY": " ", "NONE": None}),
@@ -112,28 +126,34 @@ class InputFilterTests(unittest.TestCase):
         files = document["csv"]["files"]
         data = {}
         headers = {}
-        for name in ("yard_blocks", "existing_containers", "yard_planning", "parameters", "removed_slots", "equipment_history"):
+        for name in ("terminal_branches", "yard_blocks", "existing_containers", "yard_planning", "parameters", "removed_slots", "equipment_history"):
             with Path(files[name]).open(encoding="utf-8-sig", newline="") as stream:
                 reader = csv.DictReader(stream)
                 data[name] = list(reader)
                 headers[name] = reader.fieldnames
 
+        data["terminal_branches"] += [
+            {"BRANCH_ID": "3", "TERMINAL_ID": "1", "BRANCH_CODE": "JKT75", "BRANCH_NAME": "CY 220"},
+            {"BRANCH_ID": "4", "TERMINAL_ID": "2", "BRANCH_CODE": "JKT76", "BRANCH_NAME": "CY 221"},
+        ]
         data["yard_blocks"] += [
             data["yard_blocks"][0] | {"BLOCK_ID": "12", "TERMINAL_ID": "1", "BRANCH_ID": "3"},
-            data["yard_blocks"][0] | {"BLOCK_ID": "13", "TERMINAL_ID": "2", "BRANCH_ID": "2", "BLOCK_CODE": "D"},
+            data["yard_blocks"][0] | {"BLOCK_ID": "13", "TERMINAL_ID": "2", "BRANCH_ID": "4", "BLOCK_CODE": "D"},
         ]
         data["existing_containers"] += [
-            data["existing_containers"][0] | {"CONTNO": "OTHER_BRANCH", "BRANCH": "3", "BLOK": "B"},
-            data["existing_containers"][0] | {"CONTNO": "OTHER_TERMINAL", "BRANCH": "2", "BLOK": "D"},
+            data["existing_containers"][0] | {"CONTNO": "OTHER_BRANCH", "BRANCH": "JKT75", "BLOK": "2B"},
+            data["existing_containers"][0] | {"CONTNO": "OTHER_TERMINAL", "BRANCH": "JKT76", "BLOK": "D"},
         ]
         data["yard_planning"] += [
             data["yard_planning"][0] | {"BLOCK_ID": "12", "TERMINAL_ID": "1", "BRANCH_ID": "3"},
-            data["yard_planning"][0] | {"BLOCK_ID": "13", "TERMINAL_ID": "2", "BRANCH_ID": "2"},
+            data["yard_planning"][0] | {"BLOCK_ID": "13", "TERMINAL_ID": "2", "BRANCH_ID": "4"},
         ]
         data["removed_slots"] += [{"BLOCK_ID": "12", "ROW_NO": "11", "SLOT_NO": "11"}]
+        for row in data["equipment_history"]:
+            row["BLOK"] = "2" + row["BLOK"]
         data["equipment_history"] += [
-            data["equipment_history"][0] | {"ALAT": "OTHER_BRANCH_EQUIPMENT", "BRANCH": "3", "BLOK": "B"},
-            data["equipment_history"][0] | {"ALAT": "OTHER_TERMINAL_EQUIPMENT", "BRANCH": "2", "BLOK": "D"},
+            data["equipment_history"][0] | {"ALAT": "OTHER_BRANCH_EQUIPMENT", "BRANCH": "3", "BLOK": "2B"},
+            data["equipment_history"][0] | {"ALAT": "OTHER_TERMINAL_EQUIPMENT", "BRANCH": "4", "BLOK": "D"},
         ]
         for name, rows in data.items():
             destination = self.root / (name + ".csv")
@@ -153,12 +173,20 @@ class InputFilterTests(unittest.TestCase):
         for filters, expected_blocks, expected_count in cases:
             with self.subTest(filters=filters):
                 self.set_filters(filters)
-                # Operations codes may refer to blocks intentionally excluded by this test's scope.
-                with patch("repository.shifting_repository.warnings.warn"):
-                    report, yard = main_existing._build_report_and_yard(self.path)
-                self.assertEqual(set(yard.blocks_by_id), expected_blocks)
-                self.assertEqual(report["loaded_containers"], expected_count)
                 inputs = load_yard_inputs(self.settings(), include_shifting=False)
+                settings = load_config(DEFAULT_CONFIG_FILE)
+                yard = Yard(
+                    yard_blocks_input=inputs["yard_blocks"],
+                    removed_slots_input=inputs["removed_slots"],
+                    parameters_input=inputs["parameters"],
+                    yard_planning_input=inputs["yard_planning"],
+                    containers_input=inputs["existing_containers"],
+                    equipment_input=inputs["master_equipment"],
+                    equipment_locations_input=inputs["equipment_history"],
+                    feasibility_settings=settings.feasibility, heuristic_settings=settings.heuristic,
+                )
+                self.assertEqual(set(yard.blocks_by_id), expected_blocks)
+                self.assertEqual(len(yard.containers), expected_count)
                 selected_coordinates = {(block.getBranch(), block.getCode()) for block in yard.blocks_by_id.values()}
                 self.assertTrue(all(location[:2] in selected_coordinates for location in inputs["equipment_history"].values()))
                 if expected_blocks == {"12"}:
@@ -166,9 +194,12 @@ class InputFilterTests(unittest.TestCase):
                 elif expected_blocks == {"13"}:
                     self.assertEqual(set(inputs["equipment_history"]), {"OTHER_TERMINAL_EQUIPMENT"})
                 output = self.root / "result.csv"
-                ContainerFileWriter(output).writeCSV(yard)
+                ContainerFileWriter(output, branch_codes=BranchDirectory(inputs["terminal_branches"]).codes_by_id).writeCSV(yard)
                 with output.open(encoding="utf-8", newline="") as stream:
                     exported = list(csv.DictReader(stream))
+                self.assertEqual({row["BRANCH"] for row in exported},
+                                 {BranchDirectory(inputs["terminal_branches"]).codes_by_id[b.getBranch()]
+                                  for b in yard.blocks_by_id.values()})
                 self.assertEqual(len(exported), expected_count)
                 self.assertEqual({row["CONTNO"] for row in exported}, set(yard.containers))
 

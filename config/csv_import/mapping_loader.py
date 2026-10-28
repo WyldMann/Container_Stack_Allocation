@@ -34,7 +34,7 @@ def load_mapping(
     if not isinstance(definitions, dict) or not definitions:
         raise ConfigurationError(f"'{source}' must contain at least one profile.")
 
-    allowed = {"columns", "filter_columns"}
+    allowed = {"columns", "filter_columns", "branch_kind"}
     if source == "sql":
         allowed |= {"schema", "relation", "filters", "order_by"}
 
@@ -73,8 +73,16 @@ def load_mapping(
                 )
             sources[normalized] = field
 
+        branch_kind = definition.get("branch_kind", "id")
+        if branch_kind not in ("id", "code"):
+            raise ConfigurationError(f"{source}.{name}.branch_kind must be 'id' or 'code'.")
+        if branch_kind == "code" and name not in {"existing_containers", "inbound_containers"}:
+            raise ConfigurationError(f"{source}.{name}: branch codes are supported for containers only.")
+        if branch_kind == "code" and definition.get("filter_columns"):
+            raise ConfigurationError(f"{source}.{name}: branch codes are scoped through terminal_branches.")
         profiles[name] = CSVMappingProfile(
             name=name,
+            branch_kind=branch_kind,
             schema=schema,
             columns=MappingProxyType(dict(columns)),
             filter_columns=MappingProxyType(read_filter_columns(

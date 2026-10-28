@@ -13,8 +13,9 @@ class ContainerFileWriter:
         "VESSEL_OPERATOR", "VESSEL", "VOYAGE", "WEIGHT", "MOVE_TIME",
     )
 
-    def __init__(self, file_path: str | Path):
+    def __init__(self, file_path: str | Path, *, branch_codes=None):
         self.file_path = Path(file_path)
+        self.branch_codes = branch_codes
 
     @staticmethod
     def _sortKey(record: dict[str, str | int | float]):
@@ -54,7 +55,7 @@ class ContainerFileWriter:
 
             rows.append({
                 "CONTNO": container.getId(),
-                "BRANCH": branch_id,
+                "BRANCH": self.branch_codes[branch_id] if self.branch_codes is not None else branch_id,
                 "BLOK": block_code,
                 "BLOK_ID": block_id,
                 "SLOT": slot_no,

@@ -27,13 +27,11 @@ class SQLMappingLoaderTests(unittest.TestCase):
         for name, sql_profile in sql_profiles.items():
             columns = dict(sql_profile.columns)
             if name == "existing_containers":
-                self.assertEqual(columns["branch_id"], "BRANCH_ID")
-                columns["branch_id"] = "BRANCH"
+                self.assertEqual(columns["branch_id"], "BRANCH")
             self.assertEqual(columns, dict(csv_profiles[name].columns))
-        self.assertEqual(dict(sql_profiles["existing_containers"].filter_columns), {
-            "terminal_id": "TERMINAL_ID", "branch_id": "BRANCH_ID",
-        })
-        self.assertEqual(dict(csv_profiles["existing_containers"].filter_columns), {"branch_id": "BRANCH"})
+        self.assertEqual(dict(sql_profiles["existing_containers"].filter_columns), {})
+        self.assertEqual(sql_profiles["existing_containers"].branch_kind, "code")
+        self.assertEqual(dict(csv_profiles["existing_containers"].filter_columns), {})
         self.assertEqual(csv_profiles["equipment_history"].columns["branch_id"], "BRANCH")
         with self.assertRaises(TypeError):
             sql_profiles["removed_slots"].columns["block_id"] = "Changed"

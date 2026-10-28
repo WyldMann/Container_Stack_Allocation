@@ -23,10 +23,13 @@ class InputConfigTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name).resolve() / "input.toml"
         self.template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
+        for name in DATASETS:
+            self.template = self.template.replace(f'{name} = "sql"', f'{name} = "csv"')
         self.mapping_path = self.path.with_name("sql_mapping.toml")
         self.mapping_template = DEFAULT_INPUT_CONFIG_FILE.with_name(
             "sql_mapping.toml"
         ).read_text(encoding="utf-8")
+        self.mapping_template = self.mapping_template.replace('schema = "TERMINAL_APP"\n', "")
         self.mapping_path.write_text(self.mapping_template, encoding="utf-8")
         self.sql_environment = {
             "YARD_DB_HOST": "db.example.test",
@@ -169,7 +172,7 @@ order_by = ["CONTNO"]''')
                                      filters={"BRANCH": "CY219"}, order_by=["CONTNO"]))
         self.assertEqual(settings["connection"]["host"], "db.example.test")
         self.assertNotIn("password", settings["connection"])
-        self.assertEqual(settings["sql_datasets"]["yard_blocks"]["schema"], "public")
+        self.assertEqual(settings["sql_datasets"]["yard_blocks"]["schema"], "TERMINAL_APP")
 
     def test_invalid_sql_configuration_is_rejected(self):
         sql = self.sql_text()
@@ -241,7 +244,13 @@ order_by = ["CONTNO"]''')
 
 class ConfiguredInputLoadingTests(unittest.TestCase):
     def setUp(self):
-        self.csv_settings = load_input_config(DEFAULT_INPUT_CONFIG_FILE)
+        document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
+        document["input"]["sources"] = dict.fromkeys(DATASETS, "csv")
+        document["input"]["filters"] = {}
+        document["csv"].pop("shifting_summary_file", None)
+        document["csv"].pop("shifting_workbook_file", None)
+        with patch("config.application.input_config._read_document", return_value=document):
+            self.csv_settings = load_input_config(DEFAULT_INPUT_CONFIG_FILE)
         # Supply the driver boundary without installing or contacting PostgreSQL.
         self.driver = ModuleType("psycopg")
         self.driver.connect = MagicMock()
@@ -303,7 +312,7 @@ class ConfiguredInputLoadingTests(unittest.TestCase):
         contexts = [self.prepare_cursor(name) for name in DATASETS]
         # DATASETS follows schema definitions; use acquisition order explicitly.
         by_name = dict(zip(DATASETS, contexts))
-        order = ("yard_blocks", "yard_planning", "removed_slots", "parameters",
+        order = ("terminal_branches", "yard_blocks", "yard_planning", "removed_slots", "parameters",
                  "existing_containers", "inbound_containers", "master_equipment", "equipment_history")
         self.connection.cursor.side_effect = [by_name[name] for name in order]
         expected = load_yard_inputs(self.csv_settings)
@@ -390,7 +399,7 @@ class ConfiguredInputLoadingTests(unittest.TestCase):
         expected = load_yard_inputs(self.csv_settings)
         contexts = {name: self.prepare_cursor(name) for name in DATASETS}
         contexts["yard_blocks"].__enter__.return_value.description[0].name = "DB_BLOCK_ID"
-        order = ("yard_blocks", "yard_planning", "removed_slots", "parameters",
+        order = ("terminal_branches", "yard_blocks", "yard_planning", "removed_slots", "parameters",
                  "existing_containers", "inbound_containers", "master_equipment", "equipment_history")
         self.connection.cursor.side_effect = [contexts[name] for name in order]
         mapping = self.settings["mapping_files"]["sql"].read_text(encoding="utf-8").replace(
@@ -411,8 +420,11 @@ class ConfiguredInputLoadingTests(unittest.TestCase):
 
     def test_snapshot_can_be_disabled_and_password_can_use_driver_defaults(self):
         self.settings.update(consistent_snapshot=False, password_env=None)
-        with patch("repository.input_loader._read_datasets", return_value={"loaded": True}):
-            self.assertEqual(load_yard_inputs(self.settings), {"loaded": True})
+        reference = [{"branch_id": "2", "terminal_id": "1", "branch_code": "JKT74", "branch_name": "CY 219"}]
+        with patch("repository.input_loader._read_datasets", side_effect=[
+            {"terminal_branches": reference}, {"loaded": True},
+        ]):
+            self.assertEqual(load_yard_inputs(self.settings), {"terminal_branches": reference, "loaded": True})
         self.assertEqual(self.connection.isolation_level, "committed")
         self.driver.connect.assert_called_once_with(**self.settings["connection"])
 

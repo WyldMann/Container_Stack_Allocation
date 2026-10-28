@@ -108,11 +108,10 @@ class ShiftingInputTests(unittest.TestCase):
         self.assertNotIn("shifting_summary_file", settings)
         self.assertEqual(set(load_yard_inputs(settings)), set(DATASETS))
 
-    def test_report_path_is_relative_to_configuration_and_cy_trimmed(self):
-        self.document["input"]["cy_name"] = " CY219 "
+    def test_report_path_is_relative_and_cy_is_resolved_at_load(self):
         self.document["csv"]["shifting_summary_file"] = "../reports/shifting.csv"
         settings = self.settings(self.document)
-        self.assertEqual(settings["cy_name"], "CY219")
+        self.assertNotIn("cy_name", settings)
         self.assertEqual(
             settings["shifting_block_mapping_file"],
             DEFAULT_INPUT_CONFIG_FILE.with_name("shifting_block_mapping.toml"),
@@ -122,17 +121,15 @@ class ShiftingInputTests(unittest.TestCase):
             (DEFAULT_INPUT_CONFIG_FILE.parent / "../reports/shifting.csv").resolve(),
         )
 
-    def test_report_requires_valid_cy_and_path(self):
-        for cy, path in ((None, "shifting.csv"), (" ", "shifting.csv"),
-                         (123, "shifting.csv"), ("CY219", ""), ("CY219", 123)):
-            document = copy.deepcopy(self.document)
-            if cy is None:
-                document["input"].pop("cy_name", None)
-            else:
-                document["input"]["cy_name"] = cy
-            document["csv"]["shifting_summary_file"] = path
-            with self.subTest(cy=cy, path=path), self.assertRaises(ConfigurationError):
-                self.settings(document)
+    def test_report_requires_valid_path_and_rejects_obsolete_cy_setting(self):
+        for value in ("", 123):
+            self.document["csv"]["shifting_summary_file"] = value
+            with self.assertRaises(ConfigurationError):
+                self.settings(self.document)
+        self.document["csv"]["shifting_summary_file"] = "shifting.csv"
+        self.document["input"]["cy_name"] = "CY219"
+        with self.assertRaises(ConfigurationError):
+            self.settings(self.document)
 
     def test_mapping_path_is_configurable_and_validated(self):
         self.document["csv"]["shifting_summary_file"] = "shifting.csv"

@@ -18,6 +18,7 @@ class CSVMappingProfile:
     schema: CSVSchema
     columns: Mapping[str, str]
     filter_columns: Mapping[str, str] = field(default_factory=dict)
+    branch_kind: str = "id"
 
 
 CONTAINER_SCHEMA = CSVSchema(
@@ -32,6 +33,9 @@ CONTAINER_SCHEMA = CSVSchema(
 )
 
 SCHEMAS = {
+    "terminal_branches": CSVSchema(required=(
+        "branch_id", "terminal_id", "branch_code", "branch_name",
+    )),
     "yard_blocks": CSVSchema(required=tuple(
         "block_id branch_id block_code row_count slot_count "
         "max_tier pos_x pos_y".split()

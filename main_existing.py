@@ -12,11 +12,12 @@ from config import (
 from entities import Yard
 from presenter import YardPresenter
 from repository import load_yard_inputs
+from repository.branch_repository import BranchDirectory
 from repository.shifting_repository import load_shifting_summary
 
 
 EXISTING_YARD_DATASETS = (
-    "yard_blocks", "removed_slots", "parameters", "yard_planning",
+    "terminal_branches", "yard_blocks", "removed_slots", "parameters", "yard_planning",
     "existing_containers", "master_equipment", "equipment_history",
 )
 
@@ -48,7 +49,6 @@ def _build_report_and_yard(input_path):
         raise ConfigurationError("Configure [shifting_period] before recording weekly metrics.")
     if "shifting_summary_file" not in input_settings:
         raise ConfigurationError("csv.shifting_summary_file is required for weekly recording.")
-    cy_name = input_settings["cy_name"]
     shifting_path = input_settings["shifting_summary_file"]
     shifting_mapping_path = input_settings["shifting_block_mapping_file"]
     workbook_path = input_settings.get("shifting_workbook_file")
@@ -56,6 +56,8 @@ def _build_report_and_yard(input_path):
 
     # Honor each selected source without loading inbound or historical operations.
     inputs = load_yard_inputs(input_settings, include_shifting=False)
+    branches = BranchDirectory(inputs["terminal_branches"])
+    cy_name = branches.cy_name()
 
     settings = load_config(DEFAULT_CONFIG_FILE)
     yard = Yard(
@@ -117,6 +119,7 @@ def _build_report_and_yard(input_path):
         "report_month": latest.report_month if latest else None,
         "parameter_compliance_basis": "current_yard_snapshot",
         "cy_name": cy_name,
+        "branch": dict(branches.records[0]),
         "input_sources": dict(input_settings["sources"]),
         "input_filters": dict(input_settings.get("filters", {})),
         "existing_input_rows": len(inputs["existing_containers"]),

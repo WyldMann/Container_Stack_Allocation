@@ -8,6 +8,7 @@ from config import (
 )
 
 from repository import load_yard_inputs
+from repository.branch_repository import BranchDirectory
 from repository.shifting_repository import validate_shifting_blocks
 from entities import Yard, Container
 from entities.bad_yard_data import PlacementRejected
@@ -67,7 +68,8 @@ for x in inbound_container_records:
 BadDataPresenter().printInbound(yard.bad_data)
 
 container_writer = ContainerFileWriter(
-    input_settings["output_file"]
+    input_settings["output_file"],
+    branch_codes=BranchDirectory(inputs["terminal_branches"]).codes_by_id
 )
 yard_presenter.outParameterCompliance(yard)
 container_writer.writeCSV(yard)

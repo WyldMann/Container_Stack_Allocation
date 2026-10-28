@@ -1,12 +1,14 @@
 # Relative paths are resolved from this file's directory.
 [input]
-cy_name = "CY219"
+# CY name and container branch codes are resolved through terminal_branches.
 
 [input.filters]
 # All non-empty filters are combined with AND. Blank or commented values disable them.
 # Insert cy terminal and branch id here
 # SQL applies them in WHERE; CSV yard inputs and container output use the same scope.
 # Column names are configured per dataset in sql_mapping.toml / csv_mapping.toml.
+# terminal_branches resolves these IDs to BRANCH_CODE and BRANCH_NAME.
+# Shifting reports require the selected reference to contain exactly one branch.
 terminal_id = 1
 branch_id = 2
 
@@ -17,6 +19,7 @@ benchmark_week = 40
 benchmark_period_start = 1857916800
 
 [input.sources]
+terminal_branches = "sql"
 # Each dataset independently selects "csv" or "sql".
 yard_blocks = "sql"
 yard_planning = "sql"
@@ -46,6 +49,7 @@ shifting_workbook_sheet = "Per Alat Weekly"
 shifting_block_mapping_file = "shifting_block_mapping.toml"
 
 [csv.files]
+terminal_branches = "../data_CY219/_TRM_MST_TERMINAL_BRANCH.csv"
 yard_blocks = "../data_CY219/_TRM_MST_YARD_BLOCK__202610141439.csv"
 yard_planning = "../data_CY219/_TRM_TRS_YARD_PLANNING_ITEM__202610141445.csv"
 removed_slots = "../data_CY219/removed_slots.csv"

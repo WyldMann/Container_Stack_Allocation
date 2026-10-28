@@ -4,8 +4,18 @@
 # Required and optional fields are determined by the reader's schema,
 # not by whether a field appears in this mapping.
 # filter_columns maps shared input.toml filters to columns present in each export.
+# branch_kind = "code" resolves a container BRANCH through terminal_branches.
 # Container/slot/equipment files without scope IDs inherit the selected yard blocks.
-# BRANCH in container and equipment exports represents the same branch_id as BRANCH_ID.
+# Container BRANCH contains BRANCH_CODE; equipment-history BRANCH contains BRANCH_ID.
+
+[csv.terminal_branches]
+filter_columns = { terminal_id = "TERMINAL_ID", branch_id = "BRANCH_ID" }
+
+[csv.terminal_branches.columns]
+branch_id = "BRANCH_ID"
+terminal_id = "TERMINAL_ID"
+branch_code = "BRANCH_CODE"
+branch_name = "BRANCH_NAME"
 
 [csv.yard_blocks.filter_columns]
 terminal_id = "TERMINAL_ID"
@@ -71,8 +81,8 @@ row_no = "ROW"
 slot_no = "SLOT"
 
 
-[csv.existing_containers.filter_columns]
-branch_id = "BRANCH"
+[csv.existing_containers]
+branch_kind = "code"
 
 [csv.existing_containers.columns]
 container_id = "CONTNO"
@@ -98,6 +108,9 @@ operation_type = "OPERATION_TYPE"
 pot = "POT"
 vessel_operator = "VESSEL_OPERATOR"
 
+
+[csv.inbound_containers]
+branch_kind = "code"
 
 [csv.inbound_containers.columns]
 container_id = "CONTNO"

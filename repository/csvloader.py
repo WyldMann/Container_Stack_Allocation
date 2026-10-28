@@ -8,8 +8,10 @@ from .loader import InputError
 
 
 class CSVLoader:
-    def __init__(self, file_path: str | Path, *, filters=None):
+    def __init__(self, file_path: str | Path, *, filters=None, branch_column=None, branch_codes=None):
         self.file_path = Path(file_path)
+        self.branch_column = branch_column
+        self.branch_codes = set(branch_codes or ())
         self.filters = active_filters({} if filters is None else filters)
         if self.file_path.suffix.casefold() in {".xlsx", ".xls", ".xlsm", ".xlsb"}:
             raise InputError(
@@ -43,6 +45,12 @@ class CSVLoader:
                     raise InputError(f"{self.source}: missing filter column {column!r}.")
                 filters[header] = value
 
+            branch_header = None
+            if self.branch_column is not None:
+                branch_header = headers.get(self.branch_column.strip().casefold())
+                if branch_header is None:
+                    raise InputError(f"{self.source}: missing branch column {self.branch_column!r}.")
+
             def iter_rows():
                 for record in reader:
                     location = f"{self.source}, line {reader.line_num}"
@@ -51,6 +59,8 @@ class CSVLoader:
                     if any(value is None for value in record.values()):
                         raise InputError(f"{location}: too few values.")
                     if any(not self._matches(record[column], value) for column, value in filters.items()):
+                        continue
+                    if branch_header and record[branch_header].strip().upper() not in self.branch_codes:
                         continue
                     yield location, record
 

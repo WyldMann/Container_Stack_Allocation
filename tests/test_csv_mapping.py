@@ -37,7 +37,7 @@ class CSVMappingLoaderTests(unittest.TestCase):
     def test_default_file_contains_all_application_profiles(self):
         profiles = load_csv_mapping(DEFAULT_CSV_MAPPING_FILE)
         self.assertEqual(set(profiles), {
-            "yard_blocks", "removed_slots", "parameters", "yard_planning",
+            "terminal_branches", "yard_blocks", "removed_slots", "parameters", "yard_planning",
             "existing_containers", "inbound_containers",
             "master_equipment", "equipment_history",
         })
@@ -85,6 +85,17 @@ class CSVMappingLoaderTests(unittest.TestCase):
     def test_missing_mapping_file_is_reported(self):
         with self.assertRaisesRegex(ConfigurationError, "Cannot load"):
             load_csv_mapping(self.path)
+
+    def test_invalid_branch_semantics_are_rejected(self):
+        for text in (
+            '[csv.existing_containers]\nbranch_kind = "unknown"\n',
+            '[csv.existing_containers]\nbranch_kind = []\n',
+            '[csv.equipment_history]\nbranch_kind = "code"\n',
+            '[csv.existing_containers]\nbranch_kind = "code"\n'
+            'filter_columns = { branch_id = "BRANCH" }\n',
+        ):
+            with self.subTest(text=text), self.assertRaises(ConfigurationError):
+                self.load_text(text)
 
     def test_entity_schemas_match_constructor_keyword_arguments(self):
         for entity, name in (
@@ -387,7 +398,13 @@ class CSVReaderMappingTests(unittest.TestCase):
         # Exercise initialization without entering the interactive placement
         # loop or writing the output CSV.
         namespace = {"__file__": str(main_path), "__name__": "__main__"}
-        exec(compile(ast.Module(body=startup, type_ignores=[]), str(main_path), "exec"), namespace)
+        from unittest.mock import patch
+        from tests.test_main_existing import ExistingYardMainTests
+        fixture = ExistingYardMainTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        with patch("config.DEFAULT_INPUT_CONFIG_FILE", fixture.input_path):
+            exec(compile(ast.Module(body=startup, type_ignores=[]), str(main_path), "exec"), namespace)
         self.assertTrue(namespace["yard"].blocks_by_id)
         self.assertTrue(namespace["yard"].containers)
 

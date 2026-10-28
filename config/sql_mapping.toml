@@ -6,6 +6,18 @@
 # Names are quoted exactly, including capitalization. Each dataset may override
 # schema and supply filters or order_by, referencing SQL source columns.
 # filter_columns maps the shared values in input.toml [input.filters] to this table.
+# branch_kind = "code" resolves a container BRANCH through terminal_branches.
+
+[sql.terminal_branches]
+schema = "TERMINAL_APP"
+relation = "TRM_MST_TERMINAL_BRANCH"
+filter_columns = { terminal_id = "TERMINAL_ID", branch_id = "BRANCH_ID" }
+
+[sql.terminal_branches.columns]
+branch_id = "BRANCH_ID"
+terminal_id = "TERMINAL_ID"
+branch_code = "BRANCH_CODE"
+branch_name = "BRANCH_NAME"
 
 [sql.yard_blocks]
 relation = "TRM_MST_YARD_BLOCK"
@@ -76,11 +88,11 @@ and_score = "AND_SCORE"
 [sql.existing_containers]
 relation = "TRM_TRS_TARGET_CONTAINER"
 schema = "TERMINAL_APP"
-filter_columns = { terminal_id = "TERMINAL_ID", branch_id = "BRANCH_ID" }
+branch_kind = "code"
 
 [sql.existing_containers.columns]
 container_id = "CONTNO"
-branch_id = "BRANCH_ID"
+branch_id = "BRANCH"
 block_code = "BLOK"
 row_no = "ROW"
 slot_no = "SLOT"
@@ -102,6 +114,7 @@ vessel_operator = "VESSEL_OPERATOR"
 
 
 [sql.inbound_containers]
+branch_kind = "code"
 relation = "inbound"
 order_by = ["MOVE_TIME", "CONTNO"]
 

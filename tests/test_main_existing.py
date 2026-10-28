@@ -85,7 +85,7 @@ class ExistingYardMainTests(unittest.TestCase):
         ), patch.dict("sys.modules", {"psycopg": None}):
             report = main_existing.build_report(self.input_path)
 
-        self.assertEqual(len(opened), 8)
+        self.assertEqual(len(opened), 9)
         self.assertGreater(report["loaded_containers"], 0)
         self.assertEqual(
             report["loaded_containers"],
@@ -130,9 +130,6 @@ class ExistingYardMainTests(unittest.TestCase):
             reader = csv.reader(stream)
             headers, record = next(reader), next(reader)
         record[headers.index("CONTNO")] = "SQL_ONLY_CONTAINER"
-        headers[headers.index("BRANCH")] = "BRANCH_ID"
-        headers.append("TERMINAL_ID")
-        record.append(1)
         cursor.description = [SimpleNamespace(name=name) for name in headers]
         cursor.__iter__.side_effect = lambda: iter([tuple(record)])
         return driver, connection, cursor
@@ -154,7 +151,7 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertEqual(set(yard.containers), {"SQL_ONLY_CONTAINER"})
         driver.connect.assert_called_once()
         driver.sql.Identifier.assert_any_call("TERMINAL_APP", "TRM_TRS_TARGET_CONTAINER")
-        self.assertEqual(cursor.execute.call_args.args[1], (1, 2))
+        self.assertEqual(cursor.execute.call_args.args[1], (["JKT74"],))
         self.assertTrue(connection.read_only)
         self.assertEqual(connection.isolation_level, "repeatable")
         connection.cursor.return_value.__exit__.assert_called_once()
