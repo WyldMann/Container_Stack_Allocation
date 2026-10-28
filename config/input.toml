@@ -32,6 +32,9 @@ mapping_file = "csv_mapping.toml"
 # A week_number of TOTAL is excluded. Repeated observations are retained.
 # Counts must be non-negative integers or both blank for missing data.
 shifting_summary_file = "../data_CY219/Shifting_Report_Summary_2026-10_Weekly_20261026020923.csv"
+# When configured, regenerate the CSV from this workbook on every data load.
+shifting_workbook_file = "../data_CY219/Shifting_Report_Summary_2026-10_Weekly_20261026020923.xlsx"
+shifting_workbook_sheet = "Per Alat Weekly"
 shifting_block_mapping_file = "shifting_block_mapping.toml"
 
 [csv.files]

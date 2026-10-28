@@ -95,6 +95,7 @@ class ShiftingInputTests(unittest.TestCase):
         self.document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
         self.document["input"]["sources"] = dict.fromkeys(DATASETS, "csv")
         self.document["csv"].pop("shifting_summary_file", None)
+        self.document["csv"].pop("shifting_workbook_file", None)
         self.document.pop("shifting_period", None)
 
     def settings(self, document):

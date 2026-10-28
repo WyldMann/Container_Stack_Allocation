@@ -83,6 +83,8 @@ def load_yard_inputs(settings):
                 {row["block_id"] for row in inputs["yard_blocks"]},
                 skipped=skipped,
                 period_settings=settings.get("shifting_period"),
+                workbook_path=settings.get("shifting_workbook_file"),
+                workbook_sheet=settings.get("shifting_workbook_sheet", "Per Alat Weekly"),
             )
             if skipped:
                 inputs["skipped_shifting_summary"] = skipped

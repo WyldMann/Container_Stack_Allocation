@@ -66,8 +66,17 @@ def load_input_config(path: str | Path) -> dict:
         settings["shifting_period"] = period_settings
     csv = _read_section(document, "csv", {
         "files", "mapping_file", "shifting_summary_file", "shifting_block_mapping_file",
+        "shifting_workbook_file", "shifting_workbook_sheet",
     })
     shifting_file = csv.get("shifting_summary_file")
+    workbook_file = csv.get("shifting_workbook_file")
+    if workbook_file is not None:
+        if shifting_file is None:
+            raise ConfigurationError("csv.shifting_workbook_file requires csv.shifting_summary_file.")
+        settings["shifting_workbook_file"] = resolve(workbook_file, "csv.shifting_workbook_file")
+        settings["shifting_workbook_sheet"] = _string(
+            csv.get("shifting_workbook_sheet", "Per Alat Weekly"), "csv.shifting_workbook_sheet"
+        ).strip()
     if shifting_file is not None:
         if cy_name is None:
             raise ConfigurationError(

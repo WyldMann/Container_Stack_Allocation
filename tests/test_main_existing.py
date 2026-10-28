@@ -39,6 +39,7 @@ class ExistingYardMainTests(unittest.TestCase):
             'shifting_summary_file = "' + self.shifting_path.as_posix() + '"'
             if line.lstrip("# ").startswith("shifting_summary_file =") else line
             for line in template.splitlines()
+            if not line.lstrip("# ").startswith("shifting_workbook_file =")
         ) + "\n"
         self.input_path.write_text(template, encoding="utf-8")
         self.write_shifting(

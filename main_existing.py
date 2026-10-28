@@ -67,6 +67,13 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
         csv_settings.get("shifting_block_mapping_file", "shifting_block_mapping.toml"),
         "csv.shifting_block_mapping_file",
     )
+    workbook_file = csv_settings.get("shifting_workbook_file")
+    workbook_path = (
+        resolve(workbook_file, "csv.shifting_workbook_file") if workbook_file is not None else None
+    )
+    workbook_sheet = required_text(
+        csv_settings.get("shifting_workbook_sheet", "Per Alat Weekly"), "csv.shifting_workbook_sheet"
+    )
     profiles = load_csv_mapping(resolve(
         csv_settings.get("mapping_file", "csv_mapping.toml"),
         "csv.mapping_file",
@@ -112,6 +119,8 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
         skipped=skipped_observations,
         period_settings=period_settings,
         latest_only=True,
+        workbook_path=workbook_path,
+        workbook_sheet=workbook_sheet,
     )
     latest_start = max((row.period_start for row in observations), default=None)
     latest_observations = [row for row in observations if row.period_start == latest_start]
@@ -160,6 +169,7 @@ def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
         ),
         "blocks": blocks,
         "shifting_source": str(shifting_path),
+        "shifting_workbook_source": str(workbook_path) if workbook_path is not None else None,
         "shifting_block_mapping_source": str(shifting_mapping_path),
         **shifting_metrics(latest_observations),
         "loaded_shifting_data_points": len(observations),

@@ -9,6 +9,7 @@ from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
 from .csvloader import CSVLoader
 from .loader import InputError
 from .repository import Repository
+from .shifting_csv_export import refresh_shifting_csv
 
 
 @dataclass(frozen=True)
@@ -169,7 +170,10 @@ def assign_shifting_periods(observations, period_settings):
 def load_shifting_summary(
     file_path, cy_name, mapping_path, block_ids, *, skipped=None, period_settings=None,
     latest_only=False,
+    workbook_path=None, workbook_sheet="Per Alat Weekly",
 ):
+    if workbook_path is not None:
+        refresh_shifting_csv(workbook_path, file_path, workbook_sheet)
     mapping = load_shifting_block_mapping(mapping_path, cy_name)
     observations = ShiftingRepository(CSVLoader(file_path)).read_summaries(
         cy_name, latest_only=latest_only,
