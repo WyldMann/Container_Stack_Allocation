@@ -13,6 +13,12 @@ from repository.shifting_repository import (
 
 
 class ShiftingBlockMappingTests(unittest.TestCase):
+    def test_full_branch_names_match_uppercase_with_whitespace_significant(self):
+        self.write_mapping('["  CY 219 (LINI 2) "]\nSL = "10"\n')
+        self.assertEqual(load_shifting_block_mapping(self.mapping, "  Cy 219 (Lini 2) "), {"sl": "10"})
+        with self.assertRaises(ConfigurationError):
+            load_shifting_block_mapping(self.mapping, "Cy 219 (Lini 2)")
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -33,7 +39,7 @@ class ShiftingBlockMappingTests(unittest.TestCase):
         return load_shifting_summary(self.csv, "CY219", self.mapping, {"10", "11"})
 
     def test_selected_cy_codes_normalized_and_many_codes_can_share_block(self):
-        self.write_mapping('[CY218]\nSL = "99"\n[" cy219 "]\n" SL " = "10"\n"RS MDL" = "10"\n')
+        self.write_mapping('[CY218]\nSL = "99"\n[CY219]\n" SL " = "10"\n"RS MDL" = "10"\n')
         self.write_csv("CY219,sl,100,10\nCY219,RS MDL,100,20\nCY219,sl,100,10\nCY218,OTHER,1,1\n")
         rows = self.load()
         self.assertEqual([row.block_id for row in rows], ["10", "10", "10"])

@@ -76,8 +76,8 @@ def load_mapping(
         branch_kind = definition.get("branch_kind", "id")
         if branch_kind not in ("id", "code"):
             raise ConfigurationError(f"{source}.{name}.branch_kind must be 'id' or 'code'.")
-        if branch_kind == "code" and name not in {"existing_containers", "inbound_containers"}:
-            raise ConfigurationError(f"{source}.{name}: branch codes are supported for containers only.")
+        if branch_kind == "code" and name not in {"existing_containers", "inbound_containers", "equipment_history"}:
+            raise ConfigurationError(f"{source}.{name}: branch codes are supported for containers and equipment history only.")
         if branch_kind == "code" and definition.get("filter_columns"):
             raise ConfigurationError(f"{source}.{name}: branch codes are scoped through terminal_branches.")
         profiles[name] = CSVMappingProfile(

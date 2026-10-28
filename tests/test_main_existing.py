@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, Mock, patch
 from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE
 from config.application.input_config import DATASETS
 from repository import CSVLoader
+from repository.csvloader import BRANCH_WHITESPACE
 import main_existing
 
 
@@ -27,7 +28,7 @@ class ExistingYardMainTests(unittest.TestCase):
         self.shifting_path = self.root / "shifting.csv"
         self.mapping_path = self.root / "shifting_block_mapping.toml"
         # Test-only assignments, not actual operational assignments.
-        self.mapping_path.write_text('[CY219]\nSL = "10"\nRS = "11"\n', encoding="utf-8")
+        self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "11"\n', encoding="utf-8")
         project = DEFAULT_INPUT_CONFIG_FILE.parent.parent
         template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
         template = template.replace(
@@ -52,8 +53,8 @@ class ExistingYardMainTests(unittest.TestCase):
         ) + "\n"
         self.input_path.write_text(template, encoding="utf-8")
         self.write_shifting(
-            "CY219,SL,100,10,2026-10,40\n"
-            "CY219,SL,100,10,2026-10,40\n"
+            "CY 219 (Lini 2),SL,100,10,2026-10,40\n"
+            "CY 219 (Lini 2),SL,100,10,2026-10,40\n"
             "CY218,SL,999,99,,\n"
         )
 
@@ -151,7 +152,7 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertEqual(set(yard.containers), {"SQL_ONLY_CONTAINER"})
         driver.connect.assert_called_once()
         driver.sql.Identifier.assert_any_call("TERMINAL_APP", "TRM_TRS_TARGET_CONTAINER")
-        self.assertEqual(cursor.execute.call_args.args[1], (["JKT74"],))
+        self.assertEqual(cursor.execute.call_args.args[1], (BRANCH_WHITESPACE, ["JKT74"]))
         self.assertTrue(connection.read_only)
         self.assertEqual(connection.isolation_level, "repeatable")
         connection.cursor.return_value.__exit__.assert_called_once()
@@ -217,7 +218,7 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertGreater(report["loaded_containers"], 0)
 
     def test_available_shifts_are_summed_and_missing_observations_counted(self):
-        self.write_shifting("CY219,SL,100,10,,\nCY219,SL,,,,\n")
+        self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),SL,,,,\n")
         report = main_existing.build_report(self.input_path)
         self.assertEqual(report["shifting_count"], 10)
         self.assertEqual(report["missing_shifting_observations"], 1)
@@ -225,9 +226,9 @@ class ExistingYardMainTests(unittest.TestCase):
 
     def test_latest_week_uses_aggregate_operations_and_unix_recording_time(self):
         self.write_shifting(
-            "CY219,SL,9000,9000,2026-10,43\n"
-            "CY219,SL,100,100,2026-10,44\n"
-            "CY219,RS,900,0,2026-10,44\n"
+            "CY 219 (Lini 2),SL,9000,9000,2026-10,43\n"
+            "CY 219 (Lini 2),SL,100,100,2026-10,44\n"
+            "CY 219 (Lini 2),RS,900,0,2026-10,44\n"
         )
         with patch.object(main_existing, "time", return_value=1234567890.7):
             report = main_existing.build_report(self.input_path)
@@ -250,11 +251,11 @@ class ExistingYardMainTests(unittest.TestCase):
 
     def test_missing_historical_counts_do_not_block_latest_week(self):
         self.write_shifting(
-            "CY219,SL,100,,2026-10,43\n"
-            "CY219,RS,,,2026-10,43\n"
-            "CY219,UNKNOWN,bad,count,2026-10,42\n"
-            "CY219,SL,200,20,2026-10,44\n"
-            "CY219,RS,100,10,2026-10,44\n"
+            "CY 219 (Lini 2),SL,100,,2026-10,43\n"
+            "CY 219 (Lini 2),RS,,,2026-10,43\n"
+            "CY 219 (Lini 2),UNKNOWN,bad,count,2026-10,42\n"
+            "CY 219 (Lini 2),SL,200,20,2026-10,44\n"
+            "CY 219 (Lini 2),RS,100,10,2026-10,44\n"
         )
         report = main_existing.build_report(self.input_path)
         self.assertEqual(report["latest_week"], 44)
@@ -266,9 +267,9 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertEqual(len(report["shifting_observations"]), 2)
 
     def test_latest_week_with_absent_blocks_does_not_fall_back_to_older_week(self):
-        self.mapping_path.write_text('[CY219]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
+        self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
         self.write_shifting(
-            "CY219,SL,200,20,2026-10,43\nCY219,RS,100,10,2026-10,44\n"
+            "CY 219 (Lini 2),SL,200,20,2026-10,43\nCY 219 (Lini 2),RS,100,10,2026-10,44\n"
         )
         with self.assertWarnsRegex(UserWarning, "RS -> 99"):
             report = main_existing.build_report(self.input_path)
@@ -279,9 +280,9 @@ class ExistingYardMainTests(unittest.TestCase):
 
     def test_incomplete_latest_week_keeps_counts_and_no_percentage(self):
         self.write_shifting(
-            "CY219,SL,1000,500,2026-10,43\n"
-            "CY219,SL,50,10,2026-10,44\n"
-            "CY219,RS,,,2026-10,44\n"
+            "CY 219 (Lini 2),SL,1000,500,2026-10,43\n"
+            "CY 219 (Lini 2),SL,50,10,2026-10,44\n"
+            "CY 219 (Lini 2),RS,,,2026-10,44\n"
         )
         report = main_existing.build_report(self.input_path)
         self.assertEqual(report["latest_week"], 44)
@@ -292,14 +293,14 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertEqual(report["missing_shifting_observations"], 1)
 
     def test_zero_total_operations_has_no_percentage(self):
-        self.write_shifting("CY219,SL,0,0,2026-10,44\n")
+        self.write_shifting("CY 219 (Lini 2),SL,0,0,2026-10,44\n")
         report = main_existing.build_report(self.input_path)
         self.assertEqual(report["total_operations"], 0)
         self.assertIsNone(report["shifting_percentage"])
 
     def test_older_block_data_is_not_joined_to_latest_week(self):
         self.write_shifting(
-            "CY219,SL,50,10,2026-10,44\nCY219,RS,100,30,2026-10,43\n"
+            "CY 219 (Lini 2),SL,50,10,2026-10,44\nCY 219 (Lini 2),RS,100,30,2026-10,43\n"
         )
         report = main_existing.build_report(self.input_path)
         block = next(b for b in report["blocks"] if b["block_id"] == "11")
@@ -308,13 +309,13 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertIsNone(block["shifting_percentage"])
 
     def test_all_missing_observations_do_not_become_zero(self):
-        self.write_shifting("CY219,SL,,,,\n")
+        self.write_shifting("CY 219 (Lini 2),SL,,,,\n")
         report = main_existing.build_report(self.input_path)
         self.assertIsNone(report["shifting_count"])
         self.assertEqual(report["missing_shifting_observations"], 1)
 
     def test_explicit_zero_remains_zero(self):
-        self.write_shifting("CY219,SL,100,0,,\n")
+        self.write_shifting("CY 219 (Lini 2),SL,100,0,,\n")
         report = main_existing.build_report(self.input_path)
         self.assertEqual(report["shifting_count"], 0)
         self.assertEqual(report["shifting_percentage"], 0)
@@ -363,8 +364,8 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertEqual(report["skipped_shifting_data_points"], 2)
 
     def test_absent_block_counts_are_excluded_from_yard_and_block_totals(self):
-        self.mapping_path.write_text('[CY219]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
-        self.write_shifting("CY219,SL,100,10,,\nCY219,RS,100,30,,\n")
+        self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
+        self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,100,30,,\n")
         with self.assertWarnsRegex(UserWarning, "RS -> 99"):
             report = main_existing.build_report(self.input_path)
         self.assertEqual(report["shifting_count"], 10)
@@ -377,7 +378,7 @@ class ExistingYardMainTests(unittest.TestCase):
 
     def test_shifting_counts_are_joined_to_blocks(self):
         self.write_shifting(
-            "CY219,SL,100,10,,\nCY219,RS,100,30,,\nCY219,SL,100,20,,\n"
+            "CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,100,30,,\nCY 219 (Lini 2),SL,100,20,,\n"
         )
         report = main_existing.build_report(self.input_path)
         blocks = {block["block_id"]: block for block in report["blocks"]}
@@ -407,7 +408,7 @@ class ExistingYardMainTests(unittest.TestCase):
             main_existing.build_report(self.input_path)
 
     def test_main_appends_one_json_record_per_run(self):
-        self.write_shifting("CY219,SL,100,10,,\nCY219,SL,,,,\n")
+        self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),SL,,,,\n")
         report = main_existing.build_report(self.input_path)
         captured = io.StringIO()
         with patch.object(

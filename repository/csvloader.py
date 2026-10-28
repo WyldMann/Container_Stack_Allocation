@@ -7,11 +7,18 @@ from config.application.input_filters import active_filters
 from .loader import InputError
 
 
+# Python str.strip() whitespace, also passed to PostgreSQL BTRIM for branch codes.
+BRANCH_WHITESPACE = "".join(chr(n) for n in (
+    *range(9, 14), *range(28, 33), 133, 160, 5760, *range(8192, 8203),
+    8232, 8233, 8239, 8287, 12288,
+))
+
+
 class CSVLoader:
     def __init__(self, file_path: str | Path, *, filters=None, branch_column=None, branch_codes=None):
         self.file_path = Path(file_path)
         self.branch_column = branch_column
-        self.branch_codes = set(branch_codes or ())
+        self.branch_codes = {code.strip().upper() for code in branch_codes or ()}
         self.filters = active_filters({} if filters is None else filters)
         if self.file_path.suffix.casefold() in {".xlsx", ".xls", ".xlsm", ".xlsb"}:
             raise InputError(

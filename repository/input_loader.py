@@ -6,7 +6,7 @@ from config import ConfigurationError
 from config.application.input_filters import active_filters, mapped_filters
 from config.csv_import.mapping_loader import load_mapping
 
-from .csvloader import CSVLoader
+from .csvloader import CSVLoader, BRANCH_WHITESPACE
 from .branch_repository import BranchDirectory, BranchRepository
 from .sqlloader import SQLLoader
 from .shifting_repository import load_shifting_summary
@@ -52,8 +52,8 @@ def _sql_loader(connection, name, definition, *, branch_column=None, branch_code
     clauses = [sql.SQL("{} = %s").format(sql.Identifier(column)) for column in filters]
     parameters = list(filters.values())
     if branch_column is not None:
-        clauses.append(sql.SQL("{} = ANY(%s)").format(sql.Identifier(branch_column)))
-        parameters.append(list(branch_codes))
+        clauses.append(sql.SQL("UPPER(BTRIM({}::text, %s)) = ANY(%s)").format(sql.Identifier(branch_column)))
+        parameters.extend((BRANCH_WHITESPACE, [code.strip().upper() for code in branch_codes]))
     if clauses:
         query += sql.SQL(" WHERE ") + sql.SQL(" AND ").join(clauses)
     if definition["order_by"]:
@@ -106,6 +106,10 @@ def load_yard_inputs(settings, *, include_shifting=True):
         for name in ("existing_containers", "inbound_containers"):
             if name in inputs and profiles[name].branch_kind == "code":
                 inputs[name] = directory.normalize_containers(inputs[name], scoped=bool(settings.get("filters")))
+        if "equipment_history" in inputs and profiles["equipment_history"].branch_kind == "code":
+            inputs["equipment_history"] = directory.normalize_equipment_locations(
+                inputs["equipment_history"], scoped=bool(settings.get("filters")),
+            )
         if settings.get("filters"):
             _scope_to_yard_blocks(inputs)
         shifting_file = settings.get("shifting_summary_file")

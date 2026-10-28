@@ -18,7 +18,7 @@ from tests import test_shifting_repository as shifting_tests
 class ShiftingPeriodTests(unittest.TestCase):
     def setUp(self):
         self.settings = ShiftingPeriodSettings(40, 1857916800)
-        self.row = ShiftingSummary("CY219", "SL", 100, 10,
+        self.row = ShiftingSummary("CY 219 (Lini 2)", "SL", 100, 10,
                                    report_month="2026-10", week_number="44", block_id="10")
 
     def test_benchmark_forward_and_backward_offsets(self):
@@ -94,9 +94,9 @@ class ShiftingPeriodInputTests(unittest.TestCase):
             mapping = Path(directory) / "mapping.toml"
             path.write_text(
                 "cy_name,shifting_code,lifting_count,shifting_count,report_month,week_number\n"
-                "CY219,SL,100,10,2026-10,44\n", encoding="utf-8",
+                "CY 219 (Lini 2),SL,100,10,2026-10,44\n", encoding="utf-8",
             )
-            mapping.write_text('[CY219]\nSL = "10"\n', encoding="utf-8")
+            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\n', encoding="utf-8")
             document["csv"]["shifting_summary_file"] = path.as_posix()
             document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()
             settings = self.settings(document)

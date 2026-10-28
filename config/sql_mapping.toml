@@ -6,7 +6,7 @@
 # Names are quoted exactly, including capitalization. Each dataset may override
 # schema and supply filters or order_by, referencing SQL source columns.
 # filter_columns maps the shared values in input.toml [input.filters] to this table.
-# branch_kind = "code" resolves a container BRANCH through terminal_branches.
+# branch_kind = "code" resolves a container or equipment BRANCH through terminal_branches.
 
 [sql.terminal_branches]
 schema = "TERMINAL_APP"
@@ -150,6 +150,7 @@ equipment_type = "EQUIPMENT_TYPE"
 
 
 [sql.equipment_history]
+branch_kind = "code"
 relation = "equipment_history"
 
 [sql.equipment_history.columns]

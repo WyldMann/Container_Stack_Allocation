@@ -18,6 +18,16 @@ HEADER = "cy_name,equipment_group,lifting_count,shifting_count"
 
 
 class ShiftingRepositoryTests(unittest.TestCase):
+    def test_full_name_matching_ignores_case_but_preserves_whitespace(self):
+        name = "  Cy 219 (Lini 2) "
+        rows = self.read(
+            HEADER + "\n  CY 219 (LINI 2) ,SL,100,10\n"
+            "CY 219 (LINI 2),SL,999,99\n", cy_name=name,
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].cy_name, name)
+        self.assertEqual(rows[0].lifting_count, 100)
+
     def test_excel_files_are_rejected_before_text_decoding(self):
         for extension in (".xlsx", ".XLSX", ".xls", ".xlsm", ".xlsb"):
             with self.subTest(extension=extension), patch.object(Path, "open") as opened:
@@ -25,18 +35,18 @@ class ShiftingRepositoryTests(unittest.TestCase):
                     CSVLoader("shifting" + extension)
                 opened.assert_not_called()
 
-    def read(self, text, cy_name="CY219"):
+    def read(self, text, cy_name="CY 219 (Lini 2)"):
         with patch("pathlib.Path.open", return_value=io.StringIO(text)):
             return ShiftingRepository(CSVLoader("memory.csv")).read_summaries(cy_name)
 
     def test_all_selected_observations_retained_without_period_columns(self):
         rows = self.read(
-            HEADER + "\nCY219,SL,100,10\nCY218,SL,999,99\n"
-            " cy219 ,SL,100,10\n"
+            HEADER + "\nCY 219 (Lini 2),SL,100,10\nCY218,SL,999,99\n"
+            "CY 219 (Lini 2),SL,100,10\n"
         )
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0], rows[1])
-        self.assertEqual(rows[0].cy_name, "CY219")
+        self.assertEqual(rows[0].cy_name, "CY 219 (Lini 2)")
         self.assertEqual(rows[0].shifting_code, "SL")
         self.assertAlmostEqual(rows[0].shifting_ratio, 10 / 110)
         self.assertAlmostEqual(rows[0].shifting_percentage, 100 * 10 / 110)
@@ -46,10 +56,10 @@ class ShiftingRepositoryTests(unittest.TestCase):
     def test_raw_period_metadata_preserved_and_totals_excluded(self):
         rows = self.read(
             HEADER + ",REPORT_MONTH,WEEK_NUMBER\n"
-            "CY219,SL,100,10,2026-01,1\n"
-            "CY219,SL,100,10,unspecified,unknown\n"
-            "CY219,SL,100,10,unspecified,unknown\n"
-            "CY219,SL,300,30,, total \n"
+            "CY 219 (Lini 2),SL,100,10,2026-01,1\n"
+            "CY 219 (Lini 2),SL,100,10,unspecified,unknown\n"
+            "CY 219 (Lini 2),SL,100,10,unspecified,unknown\n"
+            "CY 219 (Lini 2),SL,300,30,, total \n"
         )
         self.assertEqual(len(rows), 3)
         self.assertEqual(rows[0].week_number, "1")
@@ -58,7 +68,7 @@ class ShiftingRepositoryTests(unittest.TestCase):
 
     def test_missing_and_zero_counts_are_distinct(self):
         rows = self.read(
-            HEADER + "\nCY219,SL,,\nCY219,SL,0,0\nCY219,SL,10,0\n"
+            HEADER + "\nCY 219 (Lini 2),SL,,\nCY 219 (Lini 2),SL,0,0\nCY 219 (Lini 2),SL,10,0\n"
         )
         self.assertIsNone(rows[0].lifting_count)
         self.assertIsNone(rows[0].shifting_ratio)
@@ -69,7 +79,7 @@ class ShiftingRepositoryTests(unittest.TestCase):
     def test_invalid_counts_and_equipment_report_source_location(self):
         for values in ("SL,-1,0", "SL,1.5,0", "SL,10,", "SL,,1", ",10,1"):
             with self.subTest(values=values), self.assertRaisesRegex(InputError, "line 2"):
-                self.read(HEADER + "\nCY219," + values + "\n")
+                self.read(HEADER + "\nCY 219 (Lini 2)," + values + "\n")
 
     def test_missing_selected_cy_is_reported(self):
         with self.assertRaisesRegex(InputError, "no records"):
@@ -81,10 +91,10 @@ class ShiftingRepositoryTests(unittest.TestCase):
 
     def test_invalid_headers_and_row_widths_are_rejected(self):
         for text in (
-            "cy_name,equipment_group\nCY219,SL\n",
-            HEADER + ",CY_NAME\nCY219,SL,1,1,CY219\n",
-            HEADER + "\nCY219,SL,1\n",
-            HEADER + "\nCY219,SL,1,1,extra\n",
+            "cy_name,equipment_group\nCY 219 (Lini 2),SL\n",
+            HEADER + ",CY_NAME\nCY 219 (Lini 2),SL,1,1,CY 219 (Lini 2)\n",
+            HEADER + "\nCY 219 (Lini 2),SL,1\n",
+            HEADER + "\nCY 219 (Lini 2),SL,1,1,extra\n",
         ):
             with self.subTest(text=text), self.assertRaises(InputError):
                 self.read(text)
@@ -127,7 +137,7 @@ class ShiftingInputTests(unittest.TestCase):
             with self.assertRaises(ConfigurationError):
                 self.settings(self.document)
         self.document["csv"]["shifting_summary_file"] = "shifting.csv"
-        self.document["input"]["cy_name"] = "CY219"
+        self.document["input"]["cy_name"] = "CY 219 (Lini 2)"
         with self.assertRaises(ConfigurationError):
             self.settings(self.document)
 
@@ -147,11 +157,11 @@ class ShiftingInputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "shifting.csv"
             mapping = Path(directory) / "mapping.toml"
-            mapping.write_text('[CY219]\nSL = "10"\n', encoding="utf-8")
+            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\n', encoding="utf-8")
             self.document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()
             path.write_text(
-                HEADER + "\nCY219,SL,100,10\nCY218,SL,200,20\n"
-                "CY219,SL,100,10\n",
+                HEADER + "\nCY 219 (Lini 2),SL,100,10\nCY218,SL,200,20\n"
+                "CY 219 (Lini 2),SL,100,10\n",
                 encoding="utf-8-sig",
             )
             self.document["csv"]["shifting_summary_file"] = path.as_posix()
@@ -166,9 +176,9 @@ class ShiftingInputTests(unittest.TestCase):
             path = Path(directory) / "shifting.csv"
             mapping = Path(directory) / "mapping.toml"
             path.write_text(
-                HEADER + "\nCY219,SL,100,10\nCY219,RS,100,30\n", encoding="utf-8",
+                HEADER + "\nCY 219 (Lini 2),SL,100,10\nCY 219 (Lini 2),RS,100,30\n", encoding="utf-8",
             )
-            mapping.write_text('[CY219]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
+            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
             self.document["csv"]["shifting_summary_file"] = path.as_posix()
             self.document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()
             with self.assertWarnsRegex(UserWarning, "RS -> 99"):

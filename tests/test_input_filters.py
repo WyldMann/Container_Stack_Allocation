@@ -15,6 +15,7 @@ from filewriter import ContainerFileWriter
 import main_existing
 from repository import CSVLoader, InputError, load_yard_inputs
 from repository.input_loader import _sql_loader
+from repository.csvloader import BRANCH_WHITESPACE
 from repository.branch_repository import BranchDirectory
 from config import DEFAULT_CONFIG_FILE, load_config
 from entities import Yard
@@ -74,11 +75,11 @@ class InputFilterTests(unittest.TestCase):
         settings = self.settings()
         definition = settings["sql_datasets"]["existing_containers"]
         loader = _sql_loader(None, "existing_containers", definition,
-                             branch_column="BRANCH", branch_codes=("JKT74",))
+                             branch_column="BRANCH", branch_codes=("\t jkt74  ",))
         self.assertEqual(loader.query.as_string(),
             'SELECT * FROM "TERMINAL_APP"."TRM_TRS_TARGET_CONTAINER" '
-            'WHERE "BRANCH" = ANY(%s)')
-        self.assertEqual(loader.parameters, (["JKT74"],))
+            'WHERE UPPER(BTRIM("BRANCH"::text, %s)) = ANY(%s)')
+        self.assertEqual(loader.parameters, (BRANCH_WHITESPACE, ["JKT74"]))
         self.set_filters('terminal_id = ""\nbranch_id = ""')
         definition = self.settings()["sql_datasets"]["existing_containers"]
         loader = _sql_loader(None, "existing_containers", definition)
@@ -149,11 +150,9 @@ class InputFilterTests(unittest.TestCase):
             data["yard_planning"][0] | {"BLOCK_ID": "13", "TERMINAL_ID": "2", "BRANCH_ID": "4"},
         ]
         data["removed_slots"] += [{"BLOCK_ID": "12", "ROW_NO": "11", "SLOT_NO": "11"}]
-        for row in data["equipment_history"]:
-            row["BLOK"] = "2" + row["BLOK"]
         data["equipment_history"] += [
-            data["equipment_history"][0] | {"ALAT": "OTHER_BRANCH_EQUIPMENT", "BRANCH": "3", "BLOK": "2B"},
-            data["equipment_history"][0] | {"ALAT": "OTHER_TERMINAL_EQUIPMENT", "BRANCH": "4", "BLOK": "D"},
+            data["equipment_history"][0] | {"ALAT": "OTHER_BRANCH_EQUIPMENT", "BRANCH": "JKT75", "BLOK": "2B"},
+            data["equipment_history"][0] | {"ALAT": "OTHER_TERMINAL_EQUIPMENT", "BRANCH": "JKT76", "BLOK": "D"},
         ]
         for name, rows in data.items():
             destination = self.root / (name + ".csv")

@@ -18,12 +18,12 @@ import main_existing
 _NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
 
-def write_workbook(path, lifting=100, shifting=10, week=44, old_lifting=50, old_shifting=5):
+def write_workbook(path, lifting=100, shifting=10, week=44, old_lifting=50, old_shifting=5, branch_name="CY 219 (LINI 2)"):
     sheet = ET.Element("{" + _NS + "}worksheet")
     data = ET.SubElement(sheet, "{" + _NS + "}sheetData")
     values = {
         3: {"E": "Oct-26"},
-        7: {"B": "CY 219 (LINI 2)", "E": "CY 218 (LINI 2)"},
+        7: {"B": branch_name, "E": "CY 218 (LINI 2)"},
         8: {"B": "SL", "E": "RTG 03"},
         9: {"B": "LIFTING", "C": "SHIFTING", "D": "%",
             "E": "LIFTING", "F": "SHIFTING", "G": "%"},
@@ -80,10 +80,16 @@ class ShiftingCsvExportTests(unittest.TestCase):
         self.assertEqual(rows[2]["shifting_count"], "100")
         self.assertEqual(rows[2]["week_number"], "45")
         self.assertEqual(rows[2]["report_month"], "2026-10")
-        self.assertEqual(rows[2]["cy_name"], "CY219")
+        self.assertEqual(rows[2]["cy_name"], "CY 219 (LINI 2)")
         self.assertEqual(rows[2]["shifting_code"], "SL")
         self.assertTrue(all(row["week_number"] != "TOTAL" for row in rows))
         self.assertEqual(list(self.root.glob("*.tmp")), [])
+
+    def test_workbook_branch_name_keeps_case_and_whitespace(self):
+        name = "  Cy 219 (Lini 2)\t"
+        write_workbook(self.workbook, branch_name=name)
+        refresh_shifting_csv(self.workbook, self.output)
+        self.assertEqual(self.read_csv()[0]["cy_name"], name)
 
     def test_missing_historical_counts_are_preserved_for_later_week_selection(self):
         write_workbook(self.workbook, old_lifting=50, old_shifting=None)
@@ -151,7 +157,7 @@ class WorkbookSharedInputTests(unittest.TestCase):
             root = Path(directory)
             workbook, output, mapping = (root / name for name in ("report.xlsx", "report.csv", "mapping.toml"))
             write_workbook(workbook)
-            mapping.write_text('[CY219]\nSL = "10"\n', encoding="utf-8")
+            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\n', encoding="utf-8")
             self.document["csv"].update(
                 shifting_summary_file=output.as_posix(),
                 shifting_workbook_file=workbook.as_posix(),

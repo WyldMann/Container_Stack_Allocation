@@ -90,7 +90,7 @@ class CSVMappingLoaderTests(unittest.TestCase):
         for text in (
             '[csv.existing_containers]\nbranch_kind = "unknown"\n',
             '[csv.existing_containers]\nbranch_kind = []\n',
-            '[csv.equipment_history]\nbranch_kind = "code"\n',
+            '[csv.yard_blocks]\nbranch_kind = "code"\n',
             '[csv.existing_containers]\nbranch_kind = "code"\n'
             'filter_columns = { branch_id = "BRANCH" }\n',
         ):

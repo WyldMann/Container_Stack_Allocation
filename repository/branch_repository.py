@@ -1,7 +1,5 @@
 """Resolve source branch codes to the IDs used by yard coordinates."""
 
-import re
-
 from config import ConfigurationError
 from .repository import Repository
 from .loader import InputError
@@ -10,7 +8,7 @@ from .loader import InputError
 class BranchRepository(Repository):
     def read_records(self):
         # Preserve the display name; ordinary yard records normalize text to uppercase.
-        return [{key: value.strip() for key, value in row.items()}
+        return [{key: value if key == "branch_name" else value.strip() for key, value in row.items()}
                 for _, row in self._iter_rows()]
 
 
@@ -22,9 +20,9 @@ class BranchDirectory:
         self.by_code = {}
         self.by_id = {}
         for row in records:
-            if any(not value for value in row.values()):
+            if any(not value.strip() for value in row.values()):
                 raise InputError("terminal_branches: branch IDs, code and name must be non-empty.")
-            code = row["branch_code"].upper()
+            code = row["branch_code"].strip().upper()
             branch_id = row["branch_id"]
             if code in self.by_code or branch_id in self.by_id:
                 raise InputError(
@@ -42,11 +40,7 @@ class BranchDirectory:
             raise ConfigurationError(
                 "Shifting reports require exactly one branch; set terminal_id/branch_id filters."
             )
-        name = self.records[0]["branch_name"]
-        match = re.match(r"CY\s*(\d+)\b", name, re.IGNORECASE)
-        if not match:
-            raise ConfigurationError(f"Cannot derive a CY report key from BRANCH_NAME {name!r}.")
-        return "CY" + match.group(1)
+        return self.records[0]["branch_name"]
 
     def normalize_containers(self, records, *, scoped=False):
         result = []
@@ -62,4 +56,16 @@ class BranchDirectory:
                     continue
                 raise InputError(f"Container {row['container_id']}: unknown BRANCH code {code!r}.")
             result.append(row | {"branch_id": branch["branch_id"]})
+        return result
+
+    def normalize_equipment_locations(self, locations, *, scoped=False):
+        result = {}
+        for equipment, coordinates in locations.items():
+            code = coordinates[0].strip().upper()
+            branch = self.by_code.get(code)
+            if branch is None:
+                if scoped:
+                    continue
+                raise InputError(f"Equipment {equipment}: unknown BRANCH code {code!r}.")
+            result[equipment] = (branch["branch_id"], *coordinates[1:])
         return result

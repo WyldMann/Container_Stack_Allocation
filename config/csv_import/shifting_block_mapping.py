@@ -7,7 +7,7 @@ def load_shifting_block_mapping(path, cy_name):
     document = _read_document(path)
     selected = [
         value for name, value in document.items()
-        if name.strip().casefold() == cy_name.strip().casefold()
+        if name.upper() == cy_name.upper()
     ]
     if len(selected) != 1:
         raise ConfigurationError(

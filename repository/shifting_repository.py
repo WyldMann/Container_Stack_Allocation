@@ -71,13 +71,12 @@ class ShiftingRepository(Repository):
         return number
 
     def read_summaries(self, cy_name: str, *, latest_only=False) -> list[ShiftingSummary]:
-        cy_name = cy_name.strip()
-        if not cy_name:
+        if not cy_name.strip():
             raise InputError("A non-empty cy_name is required.")
 
         rows = []
         for location, row in self._iter_rows():
-            if row["cy_name"].strip().casefold() != cy_name.casefold():
+            if row["cy_name"].upper() != cy_name.upper():
                 continue
             row = {key.strip().casefold(): value for key, value in row.items()}
             if row.get("week_number", "").strip().upper() == "TOTAL":

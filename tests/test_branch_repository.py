@@ -21,7 +21,7 @@ class BranchDirectoryTests(unittest.TestCase):
         row = dict(container_id="BOX", branch_id=" jkt74 ", block_code="2C")
         self.assertEqual(directory.normalize_containers([row])[0]["branch_id"], "2")
         self.assertEqual(directory.codes_by_id, {"2": "JKT74"})
-        self.assertEqual(directory.cy_name(), "CY219")
+        self.assertEqual(directory.cy_name(), "CY 219 (Lini 2)")
         self.assertEqual(directory.records[0]["branch_name"], "CY 219 (Lini 2)")
         self.assertEqual(row["branch_id"], " jkt74 ")
 
@@ -40,10 +40,21 @@ class BranchDirectoryTests(unittest.TestCase):
         row = dict(container_id="INBOUND", branch_id="", block_code="")
         self.assertEqual(BranchDirectory([branch()]).normalize_containers([row]), [row])
 
-    def test_multiple_branches_and_non_cy_names_require_explicit_reporting_scope(self):
-        for records in ([branch(), branch("3", code="JKT75")], [branch(name="Jakarta")]):
-            with self.subTest(records=records), self.assertRaises(ConfigurationError):
-                BranchDirectory(records).cy_name()
+    def test_multiple_branches_require_explicit_reporting_scope(self):
+        with self.assertRaises(ConfigurationError):
+            BranchDirectory([branch(), branch("3", code="JKT75")]).cy_name()
+
+    def test_branch_name_is_used_verbatim_without_cy_number_requirement(self):
+        for name in ("Jakarta", "  Cy 219 (Lini 2)\t"):
+            self.assertEqual(BranchDirectory([branch(name=name)]).cy_name(), name)
+
+    def test_equipment_codes_are_trimmed_uppercased_and_resolved(self):
+        directory = BranchDirectory([branch()])
+        self.assertEqual(directory.normalize_equipment_locations({
+            "RS": ("\t jkt74 \n", "2B", 0, 0),
+        }), {"RS": ("2", "2B", 0, 0)})
+        with self.assertRaisesRegex(InputError, "Equipment RS.*unknown BRANCH"):
+            directory.normalize_equipment_locations({"RS": ("OTHER", "2B", 0, 0)})
 
 
 class BranchLoadingTests(unittest.TestCase):
@@ -55,10 +66,64 @@ class BranchLoadingTests(unittest.TestCase):
 
     def test_current_csv_fixture_derives_cy_and_loads_twenty_containers(self):
         report = main_existing.build_report(self.path)
-        self.assertEqual(report["cy_name"], "CY219")
+        self.assertEqual(report["cy_name"], "CY 219 (Lini 2)")
         self.assertEqual(report["branch"], branch())
         self.assertEqual(report["loaded_containers"], 20)
         self.assertNotIn("cy_name", load_input_config(self.path))
+
+    def test_equipment_fixture_joins_current_yard_blocks(self):
+        inputs = load_yard_inputs(load_input_config(self.path), include_shifting=False)
+        self.assertEqual(inputs["equipment_history"], {
+            "RS MDL 32": ("2", "2B", 0, 0), "SL 14": ("2", "2C", 0, 0),
+        })
+
+    def test_padded_lowercase_codes_load_for_containers_and_equipment(self):
+        settings = load_input_config(self.path)
+        for dataset in ("terminal_branches", "existing_containers", "equipment_history"):
+            original = settings["csv_files"][dataset]
+            destination = self.fixture.root / (dataset + ".csv")
+            destination.write_text(original.read_text().replace("JKT74", "\t jkt74  "))
+            settings["csv_files"][dataset] = destination
+        inputs = load_yard_inputs(settings, include_shifting=False)
+        self.assertEqual(len(inputs["existing_containers"]), 20)
+        self.assertEqual({row["branch_id"] for row in inputs["existing_containers"]}, {"2"})
+        self.assertEqual(inputs["equipment_history"]["RS MDL 32"], ("2", "2B", 0, 0))
+
+    def test_latest_equipment_location_outside_scope_does_not_restore_old_location(self):
+        settings = load_input_config(self.path)
+        destination = self.fixture.root / "moves.csv"
+        destination.write_text(
+            "ALAT,BRANCH,BLOK,SLOT,ROW,MOVE_DATE\n"
+            "RS,JKT74,2B,1,1,2026-10-01 00:00:00\n"
+            "RS,OTHER,2B,1,1,2026-10-02 00:00:00\n"
+        )
+        settings["csv_files"]["equipment_history"] = destination
+        self.assertEqual(load_yard_inputs(settings, include_shifting=False)["equipment_history"], {})
+
+    def test_branch_names_preserve_whitespace_and_case_in_both_source_readers(self):
+        from repository.branch_repository import BranchRepository
+        from repository import CSVLoader
+        from config.csv_import.mapping_loader import load_mapping
+        from contextlib import contextmanager
+
+        name = "  Cy 219 (Lini 2)\t"
+        settings = load_input_config(self.path)
+        path = self.fixture.root / "names.csv"
+        path.write_text("BRANCH_ID,TERMINAL_ID,BRANCH_CODE,BRANCH_NAME\n2,1, jkt74 ," + name + "\n")
+        profile = load_mapping(settings["mapping_files"]["csv"], source="csv")["terminal_branches"]
+        csv_rows = BranchRepository(CSVLoader(path), profile).read_records()
+
+        class QueryRows:
+            source = "SQL fixture"
+
+            @contextmanager
+            def open(self):
+                row = dict(BRANCH_ID=2, TERMINAL_ID=1, BRANCH_CODE=" jkt74 ", BRANCH_NAME=name)
+                yield tuple(row), iter([("SQL result 1", row)])
+
+        sql_rows = BranchRepository(QueryRows(), profile).read_records()
+        self.assertEqual(sql_rows, csv_rows)
+        self.assertEqual(BranchDirectory(sql_rows).cy_name(), name)
 
     def test_missing_reference_match_fails_before_reading_containers(self):
         self.path.write_text(self.path.read_text().replace("branch_id = 2", "branch_id = 999"))

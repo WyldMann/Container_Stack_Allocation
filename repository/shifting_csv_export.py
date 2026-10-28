@@ -100,10 +100,10 @@ def _read_report(workbook_path, sheet_name):
             start, end = merged.get("ref").split(":")
             if not re.fullmatch(r"[A-Z]+7", start):
                 continue
-            match = re.match(r"CY\s*(\d+)\b", cells.get(start, ""), re.IGNORECASE)
-            if match:
+            name = cells.get(start, "")
+            if name.strip():
                 for column in range(_column(start), _column(end) + 1):
-                    cy_columns[column] = "CY" + match.group(1)
+                    cy_columns[column] = name
 
         metrics = {
             _column(address): value.strip().upper()
