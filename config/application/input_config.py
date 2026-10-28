@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from .config_loader import ConfigurationError, _read_document, _read_section
+from .input_filters import FILTER_NAMES, active_filters, mapped_filters, read_filter_columns
 from .shifting_period import parse_shifting_period
 from ..csv_import.mapping_settings import SCHEMAS
 
@@ -29,18 +30,27 @@ def _dataset_names(definitions, name, required=DATASETS):
         )
 
 
-def load_input_config(path: str | Path) -> dict:
+def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
+    """Validate source settings for the datasets used by an entrypoint."""
+    datasets = tuple(datasets)
+    if not datasets or set(datasets) - set(DATASETS):
+        raise ConfigurationError("Select at least one known input dataset.")
     config_path = Path(path).resolve()
     document = _read_document(config_path)
     unknown = set(document) - {"input", "csv", "sql", "output", "shifting_period"}
     if unknown:
         raise ConfigurationError(f"Unknown input configuration sections: {sorted(unknown)}")
-    section = _read_section(document, "input", {"sources", "cy_name"})
+    section = _read_section(document, "input", {"sources", "cy_name", "filters"})
+    filters = active_filters(_read_section(section, "filters", FILTER_NAMES), "input.filters")
+    for name, value in filters.items():
+        if type(value) not in (str, int):
+            raise ConfigurationError(f"input.filters.{name} must be a string or integer.")
     cy_name = section.get("cy_name")
     if cy_name is not None:
         cy_name = _string(cy_name, "input.cy_name").strip()
     sources = section.get("sources")
-    _dataset_names(sources, "input.sources")
+    _dataset_names(sources, "input.sources", required=datasets)
+    sources = {name: source for name, source in sources.items() if name in datasets}
     for name, source in sources.items():
         if source not in ("csv", "sql"):
             raise ConfigurationError(
@@ -55,6 +65,7 @@ def load_input_config(path: str | Path) -> dict:
     output = _read_section(document, "output", {"containers_file"})
     settings = {
         "sources": dict(sources),
+        "filters": filters,
         "mapping_files": {},
         "output_file": resolve(output.get("containers_file", "../output/result.csv"),
                                "output.containers_file"),
@@ -152,16 +163,15 @@ def load_input_config(path: str | Path) -> dict:
             continue
         label = f"sql.{name}"
         if not isinstance(definition, dict) or set(definition) - {
-            "schema", "relation", "filters", "order_by", "columns",
+            "schema", "relation", "filters", "filter_columns", "order_by", "columns",
         }:
             raise ConfigurationError(f"Invalid {label} settings.")
-        filters = definition.get("filters", {})
-        if not isinstance(filters, dict):
-            raise ConfigurationError(f"{label}.filters must be a table.")
-        for column, value in filters.items():
-            _string(column, f"{label}.filters column")
-            if isinstance(value, (dict, list)):
-                raise ConfigurationError(f"{label}.filters values must be scalar values.")
+        filters = active_filters(definition.get("filters", {}), f"{label}.filters")
+        columns = read_filter_columns(definition.get("filter_columns", {}), f"{label}.filter_columns")
+        for column, value in mapped_filters(settings["filters"], columns).items():
+            if column in filters and filters[column] != value:
+                raise ConfigurationError(f"Conflicting filter values for {label}.{column}.")
+            filters[column] = value
         order = definition.get("order_by", [])
         if not isinstance(order, list):
             raise ConfigurationError(f"{label}.order_by must be a list of column names.")

@@ -4,13 +4,16 @@ from contextlib import redirect_stdout
 import io
 import csv
 import json
+import os
 from pathlib import Path
 import tempfile
-from types import SimpleNamespace
+import tomllib
+from types import ModuleType, SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE
+from config.application.input_config import DATASETS
 from repository import CSVLoader
 import main_existing
 
@@ -33,8 +36,14 @@ class ExistingYardMainTests(unittest.TestCase):
             'mapping_file = "csv_mapping.toml"',
             'mapping_file = "' +
             DEFAULT_INPUT_CONFIG_FILE.with_name("csv_mapping.toml").as_posix() + '"',
+        ).replace(
+            'mapping_file = "sql_mapping.toml"',
+            'mapping_file = "' +
+            DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml").as_posix() + '"',
         )
-        # Keep operational SQL selectors to verify this entrypoint is CSV-only.
+        # Fixtures select CSV explicitly, independently of production sources.
+        for name in DATASETS:
+            template = template.replace(f'{name} = "sql"', f'{name} = "csv"')
         template = "\n".join(
             'shifting_summary_file = "' + self.shifting_path.as_posix() + '"'
             if line.lstrip("# ").startswith("shifting_summary_file =") else line
@@ -86,6 +95,129 @@ class ExistingYardMainTests(unittest.TestCase):
         self.assertEqual(report["shifting_count"], 20)
         self.assertEqual(report["shifting_data_points"], 2)
         self.assertEqual(report["shifting_observations"][0]["report_month"], "2026-10")
+        self.assertNotIn("inbound_containers", report["input_sources"])
+        self.assertEqual(set(report["input_sources"].values()), {"csv"})
+
+    def set_source(self, name, source):
+        text = self.input_path.read_text(encoding="utf-8")
+        self.input_path.write_text(
+            text.replace(f'{name} = "csv"', f'{name} = "{source}"'), encoding="utf-8",
+        )
+
+    def sql_existing(self):
+        self.set_source("existing_containers", "sql")
+        environment = patch.dict(os.environ, {
+            "YARD_DB_HOST": "db.example.test", "YARD_DB_NAME": "yard_test",
+            "YARD_DB_USER": "test_reader", "YARD_DB_PASSWORD": "test-password",
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
+        driver = ModuleType("psycopg")
+        driver.connect = MagicMock()
+        driver.sql = MagicMock()
+        driver.sql.SQL.return_value.join.side_effect = lambda parts: tuple(parts)
+        driver.IsolationLevel = SimpleNamespace(REPEATABLE_READ="repeatable", READ_COMMITTED="committed")
+        rows = ModuleType("psycopg.rows")
+        rows.tuple_row = object()
+        modules = patch.dict("sys.modules", {"psycopg": driver, "psycopg.rows": rows})
+        modules.start()
+        self.addCleanup(modules.stop)
+        connection = driver.connect.return_value.__enter__.return_value
+        cursor = connection.cursor.return_value.__enter__.return_value
+        document = tomllib.loads(self.input_path.read_text(encoding="utf-8"))
+        source = Path(document["csv"]["files"]["existing_containers"])
+        with source.open(encoding="utf-8-sig", newline="") as stream:
+            reader = csv.reader(stream)
+            headers, record = next(reader), next(reader)
+        record[headers.index("CONTNO")] = "SQL_ONLY_CONTAINER"
+        headers[headers.index("BRANCH")] = "BRANCH_ID"
+        headers.append("TERMINAL_ID")
+        record.append(1)
+        cursor.description = [SimpleNamespace(name=name) for name in headers]
+        cursor.__iter__.side_effect = lambda: iter([tuple(record)])
+        return driver, connection, cursor
+
+    def test_sql_existing_containers_use_sql_mapping_and_ignore_csv_backup(self):
+        driver, connection, cursor = self.sql_existing()
+        text = self.input_path.read_text(encoding="utf-8")
+        # An unusable CSV backup must not affect SQL loading.
+        backup = tomllib.loads(text)["csv"]["files"]["existing_containers"]
+        self.input_path.write_text(text.replace(
+            'existing_containers = "' + backup + '"',
+            'existing_containers = "missing-backup.csv"',
+        ), encoding="utf-8")
+        with patch.object(main_existing.Yard, "assign_and_place", side_effect=AssertionError("Inbound")):
+            report, yard = main_existing._build_report_and_yard(self.input_path)
+        self.assertEqual(report["input_sources"]["existing_containers"], "sql")
+        self.assertNotIn("inbound_containers", report["input_sources"])
+        self.assertEqual(report["existing_input_rows"], 1)
+        self.assertEqual(set(yard.containers), {"SQL_ONLY_CONTAINER"})
+        driver.connect.assert_called_once()
+        driver.sql.Identifier.assert_any_call("TERMINAL_APP", "TRM_TRS_TARGET_CONTAINER")
+        self.assertEqual(cursor.execute.call_args.args[1], (1, 2))
+        self.assertTrue(connection.read_only)
+        self.assertEqual(connection.isolation_level, "repeatable")
+        connection.cursor.return_value.__exit__.assert_called_once()
+        driver.connect.return_value.__exit__.assert_called_once_with(None, None, None)
+
+    def test_sql_failures_do_not_open_existing_container_csv(self):
+        driver, _, cursor = self.sql_existing()
+        original_open = CSVLoader.open
+        opened = []
+
+        def guarded_open(loader):
+            opened.append(loader.file_path.name)
+            self.assertNotEqual(loader.file_path.name, "containers.csv")
+            self.assertNotIn("inbound", loader.file_path.name)
+            return original_open(loader)
+
+        for failure in ("connection failed", "query failed"):
+            with self.subTest(failure=failure):
+                driver.connect.side_effect = RuntimeError(failure) if failure.startswith("connection") else None
+                cursor.execute.side_effect = RuntimeError(failure)
+                with patch.object(CSVLoader, "open", guarded_open), self.assertRaisesRegex(RuntimeError, failure):
+                    main_existing.build_report(self.input_path)
+        self.assertNotIn("containers.csv", opened)
+
+    def test_empty_sql_result_stays_empty(self):
+        _, _, cursor = self.sql_existing()
+        cursor.__iter__.side_effect = lambda: iter(())
+        report = main_existing.build_report(self.input_path)
+        self.assertEqual(report["existing_input_rows"], 0)
+        self.assertEqual(report["loaded_containers"], 0)
+        self.assertIsNone(report["parameter_compliance"])
+
+    def test_sql_setup_errors_stop_loading_without_csv_fallback(self):
+        driver, _, _ = self.sql_existing()
+        for missing in ("host", "password", "driver"):
+            environment = {
+                "YARD_DB_HOST": "db.example.test", "YARD_DB_NAME": "yard_test",
+                "YARD_DB_USER": "test_reader", "YARD_DB_PASSWORD": "test-password",
+            }
+            expected = "requirements-sql.txt"
+            if missing != "driver":
+                expected = "YARD_DB_" + missing.upper()
+                environment.pop(expected)
+            with self.subTest(missing=missing), patch.dict(os.environ, environment, clear=True), patch.dict(
+                "sys.modules", {"psycopg": None if missing == "driver" else driver},
+            ), self.assertRaisesRegex(ConfigurationError, expected):
+                main_existing.build_report(self.input_path)
+            driver.connect.assert_not_called()
+
+    def test_unused_inbound_sql_source_needs_no_database_settings(self):
+        self.set_source("inbound_containers", "sql")
+        with patch.dict(os.environ, {}, clear=True), patch.dict("sys.modules", {"psycopg": None}):
+            report = main_existing.build_report(self.input_path)
+        self.assertGreater(report["loaded_containers"], 0)
+        self.assertNotIn("inbound_containers", report["input_sources"])
+
+    def test_inbound_source_and_file_can_be_omitted(self):
+        text = self.input_path.read_text(encoding="utf-8")
+        self.input_path.write_text("\n".join(
+            line for line in text.splitlines() if not line.startswith("inbound_containers =")
+        ), encoding="utf-8")
+        report = main_existing.build_report(self.input_path)
+        self.assertGreater(report["loaded_containers"], 0)
 
     def test_available_shifts_are_summed_and_missing_observations_counted(self):
         self.write_shifting("CY219,SL,100,10,,\nCY219,SL,,,,\n")
@@ -292,6 +424,7 @@ class ExistingYardMainTests(unittest.TestCase):
         output = self.root / "output" / "existing_yard_metrics.jsonl"
         records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(records, [report, report])
+        self.assertIn("Existing containers source: csv", captured.getvalue())
         self.assertIn("Shifting count: 10", captured.getvalue())
         self.assertIn("Lifting count: 100", captured.getvalue())
         self.assertIn("Shifting percentage: N/A", captured.getvalue())

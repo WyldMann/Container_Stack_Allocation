@@ -3,22 +3,22 @@
 from collections import Counter, defaultdict
 from dataclasses import asdict
 import json
-from pathlib import Path
-import tomllib
 from time import time
 
 from config import (
     ConfigurationError, DEFAULT_CONFIG_FILE, DEFAULT_INPUT_CONFIG_FILE,
-    load_config, load_csv_mapping,
+    load_config, load_input_config,
 )
-from config.application.shifting_period import parse_shifting_period
 from entities import Yard
 from presenter import YardPresenter
-from repository import (
-    CSVLoader, Repository, ContainerRepository, RemovedSlotsRepository,
-    YardPlanningRepository, EquipmentMoveRepository,
-)
+from repository import load_yard_inputs
 from repository.shifting_repository import load_shifting_summary
+
+
+EXISTING_YARD_DATASETS = (
+    "yard_blocks", "removed_slots", "parameters", "yard_planning",
+    "existing_containers", "master_equipment", "equipment_history",
+)
 
 
 def shifting_metrics(observations):
@@ -42,64 +42,20 @@ def shifting_metrics(observations):
 
 
 def _build_report_and_yard(input_path):
-    input_path = Path(input_path).resolve()
-    with input_path.open("rb") as file:
-        document = tomllib.load(file)
-    period_settings = parse_shifting_period(document, required=True)
+    input_settings = load_input_config(input_path, datasets=EXISTING_YARD_DATASETS)
+    period_settings = input_settings.get("shifting_period")
+    if period_settings is None:
+        raise ConfigurationError("Configure [shifting_period] before recording weekly metrics.")
+    if "shifting_summary_file" not in input_settings:
+        raise ConfigurationError("csv.shifting_summary_file is required for weekly recording.")
+    cy_name = input_settings["cy_name"]
+    shifting_path = input_settings["shifting_summary_file"]
+    shifting_mapping_path = input_settings["shifting_block_mapping_file"]
+    workbook_path = input_settings.get("shifting_workbook_file")
+    workbook_sheet = input_settings.get("shifting_workbook_sheet", "Per Alat Weekly")
 
-    def required_text(value, label):
-        if not isinstance(value, str) or not value.strip():
-            raise ConfigurationError(f"{label} must be a non-empty string.")
-        return value.strip()
-
-    def resolve(value, label):
-        return (input_path.parent / required_text(value, label)).resolve()
-
-    cy_name = required_text(
-        document.get("input", {}).get("cy_name"), "input.cy_name"
-    )
-    csv_settings = document.get("csv", {})
-    files = csv_settings.get("files", {})
-    shifting_path = resolve(
-        csv_settings.get("shifting_summary_file"),
-        "csv.shifting_summary_file",
-    )
-    shifting_mapping_path = resolve(
-        csv_settings.get("shifting_block_mapping_file", "shifting_block_mapping.toml"),
-        "csv.shifting_block_mapping_file",
-    )
-    workbook_file = csv_settings.get("shifting_workbook_file")
-    workbook_path = (
-        resolve(workbook_file, "csv.shifting_workbook_file") if workbook_file is not None else None
-    )
-    workbook_sheet = required_text(
-        csv_settings.get("shifting_workbook_sheet", "Per Alat Weekly"), "csv.shifting_workbook_sheet"
-    )
-    profiles = load_csv_mapping(resolve(
-        csv_settings.get("mapping_file", "csv_mapping.toml"),
-        "csv.mapping_file",
-    ))
-
-    # This entrypoint uses CSV paths directly and never opens inbound data.
-    readers = {
-        "yard_blocks": (Repository, "read_records"),
-        "removed_slots": (RemovedSlotsRepository, "read_tuples"),
-        "parameters": (Repository, "read_records"),
-        "yard_planning": (YardPlanningRepository, "read_grouped"),
-        "existing_containers": (ContainerRepository, "read_records"),
-        "master_equipment": (Repository, "read_records"),
-        "equipment_history": (EquipmentMoveRepository, "read_locations"),
-    }
-
-    inputs = {}
-    for name, (repository_type, method) in readers.items():
-        if name not in profiles:
-            raise ConfigurationError(f"Missing CSV mapping profile: {name}.")
-        reader = repository_type(
-            CSVLoader(resolve(files.get(name), f"csv.files.{name}")),
-            profiles[name],
-        )
-        inputs[name] = getattr(reader, method)()
+    # Honor each selected source without loading inbound or historical operations.
+    inputs = load_yard_inputs(input_settings, include_shifting=False)
 
     settings = load_config(DEFAULT_CONFIG_FILE)
     yard = Yard(
@@ -161,6 +117,8 @@ def _build_report_and_yard(input_path):
         "report_month": latest.report_month if latest else None,
         "parameter_compliance_basis": "current_yard_snapshot",
         "cy_name": cy_name,
+        "input_sources": dict(input_settings["sources"]),
+        "input_filters": dict(input_settings.get("filters", {})),
         "existing_input_rows": len(inputs["existing_containers"]),
         "loaded_containers": len(yard.containers),
         "has_bad_data": yard.bad_data.anyBadData(),
@@ -202,6 +160,7 @@ def main():
 
     compliance = report["parameter_compliance"]
     print("CY:", report["cy_name"])
+    print("Existing containers source:", report["input_sources"]["existing_containers"])
     print("Loaded existing containers:", report["loaded_containers"])
     print("Parameter compliance:",
           "N/A" if compliance is None else f"{compliance:.2%}")

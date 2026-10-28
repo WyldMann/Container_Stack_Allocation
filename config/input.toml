@@ -2,6 +2,14 @@
 [input]
 cy_name = "CY219"
 
+[input.filters]
+# All non-empty filters are combined with AND. Blank or commented values disable them.
+# Insert cy terminal and branch id here
+# SQL applies them in WHERE; CSV yard inputs and container output use the same scope.
+# Column names are configured per dataset in sql_mapping.toml / csv_mapping.toml.
+terminal_id = 1
+branch_id = 2
+
 [shifting_period]
 # Explicit alignment supplied by the user; Unix seconds, no timezone conversion.
 # Applies to one report-year cycle. Update when week numbers reset for a new year.

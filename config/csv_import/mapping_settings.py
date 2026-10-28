@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping
 
 
@@ -17,6 +17,7 @@ class CSVMappingProfile:
     name: str
     schema: CSVSchema
     columns: Mapping[str, str]
+    filter_columns: Mapping[str, str] = field(default_factory=dict)
 
 
 CONTAINER_SCHEMA = CSVSchema(

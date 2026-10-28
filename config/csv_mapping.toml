@@ -3,6 +3,13 @@
 #
 # Required and optional fields are determined by the reader's schema,
 # not by whether a field appears in this mapping.
+# filter_columns maps shared input.toml filters to columns present in each export.
+# Container/slot/equipment files without scope IDs inherit the selected yard blocks.
+# BRANCH in container and equipment exports represents the same branch_id as BRANCH_ID.
+
+[csv.yard_blocks.filter_columns]
+terminal_id = "TERMINAL_ID"
+branch_id = "BRANCH_ID"
 
 
 [csv.yard_blocks.columns]
@@ -21,6 +28,10 @@ block_id = "BLOCK_ID"
 row_no = "ROW_NO"
 slot_no = "SLOT_NO"
 
+
+[csv.parameters.filter_columns]
+terminal_id = "TERMINAL_ID"
+branch_id = "BRANCH_ID"
 
 [csv.parameters.columns]
 parameter_id = "PARAM_ID"
@@ -49,12 +60,19 @@ weight_range_score = "WEIGHT_RANGE_SCORE"
 and_score = "AND_SCORE"
 
 
+[csv.yard_planning.filter_columns]
+terminal_id = "TERMINAL_ID"
+branch_id = "BRANCH_ID"
+
 [csv.yard_planning.columns]
 parameter_id = "PARAM_ID"
 block_id = "BLOCK_ID"
 row_no = "ROW"
 slot_no = "SLOT"
 
+
+[csv.existing_containers.filter_columns]
+branch_id = "BRANCH"
 
 [csv.existing_containers.columns]
 container_id = "CONTNO"

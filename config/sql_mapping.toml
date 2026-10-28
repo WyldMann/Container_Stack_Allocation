@@ -5,9 +5,11 @@
 # Table/view names are inferred from the exports and must be verified.
 # Names are quoted exactly, including capitalization. Each dataset may override
 # schema and supply filters or order_by, referencing SQL source columns.
+# filter_columns maps the shared values in input.toml [input.filters] to this table.
 
 [sql.yard_blocks]
 relation = "TRM_MST_YARD_BLOCK"
+filter_columns = { terminal_id = "TERMINAL_ID", branch_id = "BRANCH_ID" }
 
 [sql.yard_blocks.columns]
 block_id = "BLOCK_ID"
@@ -22,6 +24,7 @@ pos_y = "POS_Y"
 
 [sql.yard_planning]
 relation = "TRM_TRS_YARD_PLANNING_ITEM"
+filter_columns = { terminal_id = "TERMINAL_ID", branch_id = "BRANCH_ID" }
 
 [sql.yard_planning.columns]
 parameter_id = "PARAM_ID"
@@ -41,6 +44,7 @@ slot_no = "SLOT_NO"
 
 [sql.parameters]
 relation = "TRM_MST_YARD_PARAMETER"
+filter_columns = { terminal_id = "TERMINAL_ID", branch_id = "BRANCH_ID" }
 
 [sql.parameters.columns]
 parameter_id = "PARAM_ID"
@@ -72,11 +76,11 @@ and_score = "AND_SCORE"
 [sql.existing_containers]
 relation = "TRM_TRS_TARGET_CONTAINER"
 schema = "TERMINAL_APP"
-# filters = { BRANCH = "CY219" }
+filter_columns = { terminal_id = "TERMINAL_ID", branch_id = "BRANCH_ID" }
 
 [sql.existing_containers.columns]
 container_id = "CONTNO"
-branch_id = "BRANCH"
+branch_id = "BRANCH_ID"
 block_code = "BLOK"
 row_no = "ROW"
 slot_no = "SLOT"

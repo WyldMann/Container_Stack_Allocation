@@ -19,11 +19,22 @@ class SQLMappingLoaderTests(unittest.TestCase):
         self.path.write_text(text, encoding="utf-8")
         return load_mapping(self.path, source="sql")
 
-    def test_default_sql_columns_match_csv(self):
+    def test_source_columns_and_scope_mappings_match_their_exports(self):
         sql_profiles = load_mapping(
             DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml"), source="sql"
         )
-        self.assertEqual(sql_profiles, load_csv_mapping(DEFAULT_CSV_MAPPING_FILE))
+        csv_profiles = load_csv_mapping(DEFAULT_CSV_MAPPING_FILE)
+        for name, sql_profile in sql_profiles.items():
+            columns = dict(sql_profile.columns)
+            if name == "existing_containers":
+                self.assertEqual(columns["branch_id"], "BRANCH_ID")
+                columns["branch_id"] = "BRANCH"
+            self.assertEqual(columns, dict(csv_profiles[name].columns))
+        self.assertEqual(dict(sql_profiles["existing_containers"].filter_columns), {
+            "terminal_id": "TERMINAL_ID", "branch_id": "BRANCH_ID",
+        })
+        self.assertEqual(dict(csv_profiles["existing_containers"].filter_columns), {"branch_id": "BRANCH"})
+        self.assertEqual(csv_profiles["equipment_history"].columns["branch_id"], "BRANCH")
         with self.assertRaises(TypeError):
             sql_profiles["removed_slots"].columns["block_id"] = "Changed"
 

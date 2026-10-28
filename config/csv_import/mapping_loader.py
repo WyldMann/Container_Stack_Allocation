@@ -3,6 +3,7 @@ from types import MappingProxyType
 import tomllib
 
 from ..application import ConfigurationError
+from ..application.input_filters import read_filter_columns
 from .mapping_settings import CSVMappingProfile, SCHEMAS
 
 
@@ -33,7 +34,7 @@ def load_mapping(
     if not isinstance(definitions, dict) or not definitions:
         raise ConfigurationError(f"'{source}' must contain at least one profile.")
 
-    allowed = {"columns"}
+    allowed = {"columns", "filter_columns"}
     if source == "sql":
         allowed |= {"schema", "relation", "filters", "order_by"}
 
@@ -76,6 +77,9 @@ def load_mapping(
             name=name,
             schema=schema,
             columns=MappingProxyType(dict(columns)),
+            filter_columns=MappingProxyType(read_filter_columns(
+                definition.get("filter_columns", {}), f"{source}.{name}.filter_columns",
+            )),
         )
 
     return profiles
