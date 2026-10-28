@@ -224,16 +224,43 @@ class DailyMainTests(unittest.TestCase):
         self.assertNotIn("Skipped shifting", captured.getvalue())
 
     def test_main_prints_daily_period_records_and_yard(self):
-        with patch.object(main_existing, "time", return_value=NOW):
-            report, yard = main_existing._build_report_and_yard(self.path)
-        output = io.StringIO()
-        with patch.object(main_existing, "_build_report_and_yard", return_value=(report, yard)), patch.object(
-            main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
-        ), patch.object(main_existing, "YardPresenter") as presenter, redirect_stdout(output):
-            main_existing.main()
-        self.assertIn("Latest complete operations date (WIB): 2026-10-27", output.getvalue())
-        self.assertNotIn("operations week", output.getvalue())
-        presenter.return_value.outYard.assert_called_once_with(yard)
+        for omit_all in (False, True):
+            with self.subTest(omit_all=omit_all):
+                if omit_all:
+                    self.fixture.mapping_path.write_text('["' + CY + '"]\nSL = "99"\nRS = "99"\n', encoding="utf-8")
+                with patch.object(main_existing, "time", return_value=NOW):
+                    report, yard = main_existing._build_report_and_yard(self.path)
+                self.assertEqual(report["period_granularity"], "daily")
+                self.assertNotIn("latest_week", report)
+                output = io.StringIO()
+                with patch.object(main_existing, "_build_report_and_yard", return_value=(report, yard)), patch.object(
+                    main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+                ), patch.object(main_existing.YardPresenter, "outYard") as out_yard, redirect_stdout(output):
+                    main_existing.main()
+                self.assertIn("Latest complete operations date (WIB): " + ("N/A" if omit_all else "2026-10-27"), output.getvalue())
+                self.assertNotIn("operations week", output.getvalue())
+                self.assertNotIn("Skipped shifting", output.getvalue())
+                self.assertNotIn(": None", output.getvalue())
+                lines = output.getvalue().splitlines()
+                index = lines.index("JSONL metrics row:")
+                displayed = dict(zip(lines[index + 1].split(), lines[index + 2].split(), strict=True))
+                for field, value in displayed.items():
+                    self.assertEqual(value, "null" if report[field] is None else str(report[field]))
+                self.assertIn("Included JSONL shifting_observations:", output.getvalue())
+                if omit_all:
+                    self.assertEqual(displayed["period_start"], "null")
+                    self.assertEqual(displayed["period_end"], "null")
+                    self.assertIn("No operations observations.", output.getvalue())
+                    self.assertEqual(report["shifting_data_points"], 0)
+                else:
+                    observation_index = lines.index("Included JSONL shifting_observations:")
+                    self.assertEqual(lines[observation_index + 1].split(),
+                                     ["report_date", "shifting_code", "block_id", "lifting_count", "shifting_count"])
+                    for line, row in zip(lines[observation_index + 2:observation_index + 4], report["shifting_observations"], strict=True):
+                        self.assertEqual(line.split(), [str(row[field]) for field in (
+                            "report_date", "shifting_code", "block_id", "lifting_count", "shifting_count",
+                        )])
+                out_yard.assert_called_once_with(yard)
 
 
 if __name__ == "__main__":

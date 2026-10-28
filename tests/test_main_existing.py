@@ -418,7 +418,7 @@ benchmark_period_start = 1857916800
         captured = io.StringIO()
         with patch.object(
             main_existing, "_build_report_and_yard", return_value=(report, Mock()),
-        ), patch.object(main_existing, "YardPresenter"), patch.object(
+        ), patch.object(main_existing.YardPresenter, "outYard"), patch.object(
             main_existing, "DEFAULT_INPUT_CONFIG_FILE",
             self.root / "config" / "input.toml",
         ), redirect_stdout(captured):
@@ -428,9 +428,14 @@ benchmark_period_start = 1857916800
         records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(records, [report, report])
         self.assertIn("Existing containers source: csv", captured.getvalue())
-        self.assertIn("Shifting count: 10", captured.getvalue())
-        self.assertIn("Lifting count: 100", captured.getvalue())
-        self.assertIn("Shifting percentage: N/A", captured.getvalue())
+        lines = captured.getvalue().splitlines()
+        index = lines.index("JSONL metrics row:")
+        displayed = dict(zip(lines[index + 1].split(), lines[index + 2].split(), strict=True))
+        for field, value in displayed.items():
+            self.assertEqual(value, "null" if records[0][field] is None else str(records[0][field]))
+        self.assertEqual(displayed["shifting_count"], "10")
+        self.assertEqual(displayed["lifting_count"], "100")
+        self.assertEqual(displayed["shifting_percentage"], "null")
         self.assertIn("Missing shifting observations: 1", captured.getvalue())
         self.assertNotIn("Known shifting count:", captured.getvalue())
         self.assertNotIn("Skipped shifting observations:", captured.getvalue())

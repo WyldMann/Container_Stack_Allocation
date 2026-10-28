@@ -84,6 +84,9 @@ def _build_report_and_yard(input_path):
     latest_start = max((row.period_start for row in observations), default=None)
     latest_observations = [row for row in observations if row.period_start == latest_start]
     latest = latest_observations[0] if latest_observations else None
+    daily = bool(latest and latest.report_date)
+    if latest is None:
+        daily = "daily" in workbook_sheet.casefold() or period_settings is None
     by_block = defaultdict(list)
     for row in latest_observations:
         by_block[row.block_id].append(row)
@@ -115,8 +118,8 @@ def _build_report_and_yard(input_path):
         "recorded_at": recorded_at,
         "period_start": latest_start,
         "period_end": latest.period_end if latest else None,
-        **({"latest_date": latest.report_date, "period_granularity": "daily"}
-           if latest and latest.report_date else {
+        **({"latest_date": latest.report_date if latest else None, "period_granularity": "daily"}
+           if daily else {
                "latest_week": int(latest.week_number) if latest else None,
                "period_granularity": "weekly",
            }),
@@ -163,31 +166,11 @@ def main():
     with output.open("a", encoding="utf-8") as file:
         file.write(line + "\n")
 
-    compliance = report["parameter_compliance"]
-    print("CY:", report["cy_name"])
-    print("Existing containers source:", report["input_sources"]["existing_containers"])
-    print("Loaded existing containers:", report["loaded_containers"])
-    print("Parameter compliance:",
-          "N/A" if compliance is None else f"{compliance:.2%}")
-    print("Time of recording (Unix):", report["recorded_at"])
-    if report["period_granularity"] == "daily":
-        print("Latest complete operations date (WIB):", report["latest_date"])
-    else:
-        print("Latest operations week:", report["latest_week"])
-    print("Operations period start (Unix):", report["period_start"])
-    print("Operations period end (Unix):", report["period_end"])
-    print("Lifting count:", "N/A" if report["lifting_count"] is None else report["lifting_count"])
-    print("Shifting count:",
-          "N/A" if report["shifting_count"] is None
-          else report["shifting_count"])
-    percentage = report["shifting_percentage"]
-    print("Shifting percentage:", "N/A" if percentage is None else f"{percentage:.2f}%")
-    print("Missing shifting observations:", report["missing_shifting_observations"])
-    print("Missing lifting observations:", report["missing_lifting_observations"])
-    print("Yard has bad data:", report["has_bad_data"])
+    presenter = YardPresenter()
+    presenter.outRecordedMetrics(report)
     print("Recorded to:", output)
     print()
-    YardPresenter().outYard(yard)
+    presenter.outYard(yard)
 
 
 if __name__ == "__main__":

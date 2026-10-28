@@ -42,6 +42,44 @@ class Presenter:
 class YardPresenter(Presenter):
 
     # ----- composites -----
+    def outRecordedMetrics(self, report: dict) -> None:
+        """Display the saved JSONL fields and included source rows without recalculating."""
+        def table(rows, fields):
+            values = [
+                {field: "null" if row.get(field) is None else str(row[field]) for field in fields}
+                for row in rows
+            ]
+            self.out(pd.DataFrame(values, columns=fields).to_string(index=False))
+
+        self.out("CY:", report["cy_name"])
+        self.out("Existing containers source:", report["input_sources"]["existing_containers"])
+        self.out("Loaded existing containers:", report["loaded_containers"])
+        daily = report["period_granularity"] == "daily"
+        if daily:
+            self.out("Latest complete operations date (WIB):",
+                     "N/A" if report["latest_date"] is None else report["latest_date"])
+        else:
+            self.out("Latest operations week:", "N/A" if report["latest_week"] is None else report["latest_week"])
+
+        self.out("JSONL metrics row:")
+        table([report], (
+            "recorded_at", "period_start", "period_end", "lifting_count", "shifting_count",
+            "total_operations", "shifting_percentage", "parameter_compliance",
+        ))
+        self.out("Timestamps are Unix seconds; period_end is exclusive.")
+        self.out("shifting_percentage uses 0-100; parameter_compliance uses 0-1; null means unavailable.")
+        self.out("Parameter compliance basis:", report["parameter_compliance_basis"])
+        self.out("Included JSONL shifting_observations:")
+        observations = report["shifting_observations"]
+        if observations:
+            period_fields = ("report_date",) if daily else ("report_month", "week_number")
+            table(observations, (*period_fields, "shifting_code", "block_id", "lifting_count", "shifting_count"))
+        else:
+            self.out("No operations observations.")
+        self.out("Missing shifting observations:", report["missing_shifting_observations"])
+        self.out("Missing lifting observations:", report["missing_lifting_observations"])
+        self.out("Yard has bad data:", report["has_bad_data"])
+
     def outBlock(self, block: Block) -> None:
         self.out("ID:", block.getId(),
                  " Branch/Code:", block.getBranch() + "/" + block.getCode())
