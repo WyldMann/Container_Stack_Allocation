@@ -24,6 +24,29 @@ inbound_containers = "csv"
 master_equipment = "csv"
 equipment_history = "csv"
 
+# Planned operations source; requires SQL shifting support before enabling.
+# Add this entry to [input.sources] when that support is available.
+# shifting_summary = "sql"
+
+# Planned shared settings for CSV and SQL operations. The current loader still
+# uses csv.shifting_block_mapping_file below; move it here when supported.
+# [shifting]
+# block_mapping_file = "shifting_block_mapping.toml"
+# period_granularity = "daily"
+# timezone = "Asia/Jakarta"
+#
+# [shifting.activities]
+# lifting = [
+#     "Lift On Loading",
+#     "Lift On Relokasi",
+#     "Lift Off Receiving",
+#     "Lift Off Discharge",
+# ]
+# shifting = [
+#     "Shifting Delivery",
+#     "Shifting Muat",
+# ]
+
 [csv]
 mapping_file = "csv_mapping.toml"
 # Optional flat CSV for analysis; uncomment after supplying the file.
