@@ -40,6 +40,9 @@ def load_mapping(
 
     profiles = {}
     for name, definition in definitions.items():
+        if source == "sql" and name == "shifting_summary":
+            # Aggregate queries have a dedicated mapping, validated by input_config.
+            continue
         if name not in SCHEMAS:
             raise ConfigurationError(f"Unknown {label} profile: {name!r}.")
         if not isinstance(definition, dict) or set(definition) - allowed:

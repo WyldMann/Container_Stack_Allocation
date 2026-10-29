@@ -23,7 +23,7 @@ class InputConfigTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name).resolve() / "input.toml"
         self.template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
-        for name in DATASETS:
+        for name in (*DATASETS, "shifting_summary"):
             self.template = self.template.replace(f'{name} = "sql"', f'{name} = "csv"')
         self.mapping_path = self.path.with_name("sql_mapping.toml")
         self.mapping_template = DEFAULT_INPUT_CONFIG_FILE.with_name(

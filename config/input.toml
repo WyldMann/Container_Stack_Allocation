@@ -23,29 +23,27 @@ existing_containers = "sql"
 inbound_containers = "csv"
 master_equipment = "csv"
 equipment_history = "csv"
+shifting_summary = "sql"
 
-# Planned operations source; requires SQL shifting support before enabling.
-# Add this entry to [input.sources] when that support is available.
-# shifting_summary = "sql"
+# SQL uses a rolling window ending at recording time: daily = last 24 hours,
+# weekly = last 7 days. Source activity date text is interpreted as WIB.
+# This does not infer ingestion completeness or automatically select older periods.
+[shifting]
+block_mapping_file = "shifting_block_mapping.toml"
+period_granularity = "daily"
+timezone = "Asia/Jakarta"
 
-# Planned shared settings for CSV and SQL operations. The current loader still
-# uses csv.shifting_block_mapping_file below; move it here when supported.
-# [shifting]
-# block_mapping_file = "shifting_block_mapping.toml"
-# period_granularity = "daily"
-# timezone = "Asia/Jakarta"
-#
-# [shifting.activities]
-# lifting = [
-#     "Lift On Loading",
-#     "Lift On Relokasi",
-#     "Lift Off Receiving",
-#     "Lift Off Discharge",
-# ]
-# shifting = [
-#     "Shifting Delivery",
-#     "Shifting Muat",
-# ]
+[shifting.activities]
+lifting = [
+    "Lift On Loading",
+    "Lift On Relokasi",
+    "Lift Off Receiving",
+    "Lift Off Discharge",
+]
+shifting = [
+    "Shifting Delivery",
+    "Shifting Muat",
+]
 
 [csv]
 mapping_file = "csv_mapping.toml"
@@ -62,7 +60,6 @@ shifting_summary_file = "../data_CY219/Shifting_Report_Summary_2026-10_Daily_202
 # When configured, regenerate the CSV from this workbook on every data load.
 shifting_workbook_file = "../data_CY219/Shifting_Report_Summary_2026-10_Daily_20261028050957.xlsx"
 shifting_workbook_sheet = "Per Alat Daily"
-shifting_block_mapping_file = "shifting_block_mapping.toml"
 
 [csv.files]
 terminal_branches = "../data_CY219/_TRM_MST_TERMINAL_BRANCH.csv"

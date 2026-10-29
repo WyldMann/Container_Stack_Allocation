@@ -161,27 +161,27 @@ row_no = "ROW"
 slot_no = "SLOT"
 move_time = "MOVE_DATE"
 
-# Planned SQL operations mapping; requires SQL shifting support before enabling.
+# SQL operations mapping, counted separately for lifting and shifting per ALAT.
 # Verify the reporting relation names exactly, including TLB and MAPPIN.
 # Reuse the existing SQL connection when REPORT is in the same database.
 # Resolve KODE_CABANG from the selected terminal_branches.BRANCH_CODE.
 # Filter ALAT to equipment codes mapped to accepted yard blocks, and return
 # separate lifting and shifting counts per equipment code for the chosen period.
-# Interpret source date text as WIB using the planned shifting.timezone setting.
-#
-# [sql.shifting_summary]
-# schema = "REPORT"
-# detail_relation = "TBL_INSP_MAPPING_MSA_RECEIVINGDELIVERY_DTL"
-# header_relation = "TLB_INSP_MAPPIN_MSA_RECEIVINGDELIVERY_HDR"
-# datetime_format = "DD-MM-YYYY HH24:MI"
-#
-# [sql.shifting_summary.detail_columns]
-# operation_id = "DTL_ID"
-# document_id = "DOC_ID"
-# activity = "ACTIVITY"
-# activity_time = "ACTIVITY_DATE_TIME"
-#
-# [sql.shifting_summary.header_columns]
-# document_id = "DOC_ID"
-# branch_code = "KODE_CABANG"
-# equipment_code = "ALAT"
+# Interpret source date text as WIB using shifting.timezone.
+
+[sql.shifting_summary]
+schema = "REPORT"
+detail_relation = "TBL_INSP_MAPPING_MSA_RECEIVINGDELIVERY_DTL"
+header_relation = "TBL_INSP_MAPPING_MSA_RECEIVINGDELIVERY_HDR"
+datetime_format = "DD-MM-YYYY HH24:MI"
+
+[sql.shifting_summary.detail_columns]
+operation_id = "DTL_ID"
+document_id = "DOC_ID"
+activity = "ACTIVITY"
+activity_time = "ACTIVITY_DATE_TIME"
+
+[sql.shifting_summary.header_columns]
+document_id = "DOC_ID"
+branch_code = "KODE_CABANG"
+equipment_code = "ALAT"

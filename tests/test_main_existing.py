@@ -50,7 +50,7 @@ benchmark_period_start = 1857916800
             DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml").as_posix() + '"',
         )
         # Fixtures select CSV explicitly, independently of production sources.
-        for name in DATASETS:
+        for name in (*DATASETS, "shifting_summary"):
             template = template.replace(f'{name} = "sql"', f'{name} = "csv"')
         template = "\n".join(
             'shifting_summary_file = "' + self.shifting_path.as_posix() + '"'

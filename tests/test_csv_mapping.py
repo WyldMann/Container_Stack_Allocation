@@ -387,9 +387,10 @@ class CSVReaderMappingTests(unittest.TestCase):
         startup = []
         for statement in tree.body:
             startup.append(statement)
-            if isinstance(statement, ast.Assign) and any(
-                isinstance(target, ast.Name) and target.id == "yard"
-                for target in statement.targets
+            if any(
+                isinstance(node, ast.Assign) and any(
+                    isinstance(target, ast.Name) and target.id == "yard" for target in node.targets
+                ) for node in ast.walk(statement)
             ):
                 break
         else:

@@ -6,6 +6,7 @@ from pathlib import Path
 from .config_loader import ConfigurationError, _read_document, _read_section
 from .input_filters import FILTER_NAMES, active_filters, mapped_filters, read_filter_columns
 from .shifting_period import parse_shifting_period
+from .shifting_input import shifting_settings, sql_shifting_settings
 from ..csv_import.mapping_settings import SCHEMAS
 
 
@@ -18,11 +19,11 @@ def _string(value, name):
     return value
 
 
-def _dataset_names(definitions, name, required=DATASETS):
+def _dataset_names(definitions, name, required=DATASETS, *, optional=()):
     if not isinstance(definitions, dict):
         raise ConfigurationError(f"{name} must be a table.")
     missing = set(required) - set(definitions)
-    unknown = set(definitions) - set(DATASETS)
+    unknown = set(definitions) - set(DATASETS) - set(optional)
     if missing or unknown:
         raise ConfigurationError(
             f"Invalid {name}: missing datasets {sorted(missing)}; "
@@ -38,7 +39,7 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
     datasets = tuple(dict.fromkeys(("terminal_branches", *datasets)))
     config_path = Path(path).resolve()
     document = _read_document(config_path)
-    unknown = set(document) - {"input", "csv", "sql", "output", "shifting_period"}
+    unknown = set(document) - {"input", "csv", "sql", "output", "shifting_period", "shifting"}
     if unknown:
         raise ConfigurationError(f"Unknown input configuration sections: {sorted(unknown)}")
     section = _read_section(document, "input", {"sources", "filters"})
@@ -47,7 +48,11 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
         if type(value) not in (str, int):
             raise ConfigurationError(f"input.filters.{name} must be a string or integer.")
     sources = section.get("sources")
-    _dataset_names(sources, "input.sources", required=datasets)
+    _dataset_names(sources, "input.sources", required=datasets, optional=("shifting_summary",))
+    shifting_source = sources.get("shifting_summary", "csv")
+    if shifting_source not in ("csv", "sql"):
+        raise ConfigurationError("input.sources.shifting_summary must be 'csv' or 'sql'.")
+    shifting, activities = shifting_settings(document, sql_required=shifting_source == "sql")
     sources = {name: source for name, source in sources.items() if name in datasets}
     for name, source in sources.items():
         if source not in ("csv", "sql"):
@@ -63,13 +68,16 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
     output = _read_section(document, "output", {"containers_file"})
     settings = {
         "sources": dict(sources),
+        "shifting_source": shifting_source,
+        "shifting_granularity": shifting.get("period_granularity", "daily"),
+        "shifting_activities": activities,
         "filters": filters,
         "mapping_files": {},
         "output_file": resolve(output.get("containers_file", "../output/result.csv"),
                                "output.containers_file"),
     }
 
-    period_settings = parse_shifting_period(document)
+    period_settings = parse_shifting_period(document) if shifting_source == "csv" else None
     if period_settings is not None:
         settings["shifting_period"] = period_settings
     csv = _read_section(document, "csv", {
@@ -78,21 +86,21 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
     })
     shifting_file = csv.get("shifting_summary_file")
     workbook_file = csv.get("shifting_workbook_file")
-    if workbook_file is not None:
+    if shifting_source == "csv" and workbook_file is not None:
         if shifting_file is None:
             raise ConfigurationError("csv.shifting_workbook_file requires csv.shifting_summary_file.")
         settings["shifting_workbook_file"] = resolve(workbook_file, "csv.shifting_workbook_file")
         settings["shifting_workbook_sheet"] = _string(
             csv.get("shifting_workbook_sheet", "Per Alat Weekly"), "csv.shifting_workbook_sheet"
         ).strip()
-    if shifting_file is not None:
+    if shifting_source == "csv" and shifting_file is not None:
         settings["shifting_summary_file"] = resolve(
             shifting_file, "csv.shifting_summary_file"
         )
-        settings["shifting_block_mapping_file"] = resolve(
-            csv.get("shifting_block_mapping_file", "shifting_block_mapping.toml"),
-            "csv.shifting_block_mapping_file",
-        )
+    mapping_file = shifting.get("block_mapping_file", "shifting_block_mapping.toml")
+    if shifting_source == "csv":
+        mapping_file = csv.get("shifting_block_mapping_file", mapping_file)
+    settings["shifting_block_mapping_file"] = resolve(mapping_file, "shifting.block_mapping_file")
 
     # Require locations only for datasets using the corresponding source.
     if csv_names:
@@ -107,7 +115,7 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
             if name in csv_names
         }
 
-    if not sql_names:
+    if not sql_names and shifting_source != "sql":
         return settings
 
     sql = _read_section(document, "sql", {
@@ -148,8 +156,10 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
         raise ConfigurationError(
             "Only the 'sql' section is allowed in SQL mappings."
         )
-    datasets = _read_section(mapping_document, "sql", set(DATASETS))
-    _dataset_names(datasets, "sql", required=sql_names)
+    datasets = _read_section(mapping_document, "sql", set(DATASETS) | {"shifting_summary"})
+    _dataset_names(datasets, "sql", required=sql_names, optional=("shifting_summary",))
+    if shifting_source == "sql":
+        settings["sql_shifting"] = sql_shifting_settings(datasets.get("shifting_summary"))
     validated = {}
     for name, definition in datasets.items():
         if name not in sql_names:

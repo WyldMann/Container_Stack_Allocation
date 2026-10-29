@@ -1,7 +1,5 @@
 """Load all configured datasets before interactive yard processing begins."""
 
-import os
-
 from config import ConfigurationError
 from config.application.input_filters import active_filters, mapped_filters
 from config.csv_import.mapping_loader import load_mapping
@@ -9,7 +7,8 @@ from config.csv_import.mapping_loader import load_mapping
 from .csvloader import CSVLoader, BRANCH_WHITESPACE
 from .branch_repository import BranchDirectory, BranchRepository
 from .sqlloader import SQLLoader
-from .shifting_repository import load_shifting_summary
+from .operations_input import load_operations
+from .sql_connection import input_connection
 from .repository import (
     Repository, ContainerRepository, RemovedSlotsRepository,
     YardPlanningRepository, EquipmentMoveRepository,
@@ -63,7 +62,7 @@ def _sql_loader(connection, name, definition, *, branch_column=None, branch_code
     return SQLLoader(connection, query, parameters=tuple(parameters), source=name)
 
 
-def load_yard_inputs(settings, *, include_shifting=True):
+def load_yard_inputs(settings, *, include_shifting=True, connection=None):
     """Load selected sources; SQL errors propagate without a CSV fallback."""
     sources = settings["sources"]
     profiles_by_source = {
@@ -112,44 +111,19 @@ def load_yard_inputs(settings, *, include_shifting=True):
             )
         if settings.get("filters"):
             _scope_to_yard_blocks(inputs)
-        shifting_file = settings.get("shifting_summary_file")
-        if include_shifting and shifting_file is not None:
-            inputs["shifting_summary"] = load_shifting_summary(
-                shifting_file, directory.cy_name(),
-                settings["shifting_block_mapping_file"],
+        if include_shifting and (settings.get("shifting_source") == "sql"
+                                 or settings.get("shifting_summary_file") is not None):
+            inputs["shifting_summary"] = load_operations(
+                settings, directory,
                 {row["block_id"] for row in inputs["yard_blocks"]},
-                period_settings=settings.get("shifting_period"),
-                workbook_path=settings.get("shifting_workbook_file"),
-                workbook_sheet=settings.get("shifting_workbook_sheet", "Per Alat Weekly"),
+                connection=connection,
             )
         return inputs
 
-    if "sql" not in sources.values():
-        return read_inputs()
-
-    try:
-        import psycopg
-    except ImportError as error:
-        raise ConfigurationError(
-            "SQL input requires Psycopg 3. Install requirements-sql.txt."
-        ) from error
-
-    connection_options = dict(settings["connection"])
-    password_env = settings["password_env"]
-    if password_env:
-        password = os.environ.get(password_env)
-        if password is None:
-            raise ConfigurationError(f"SQL password environment variable {password_env!r} is not set.")
-        connection_options["password"] = password
-
-    with psycopg.connect(**connection_options) as connection:
-        connection.read_only = True
-        connection.isolation_level = (
-            psycopg.IsolationLevel.REPEATABLE_READ
-            if settings["consistent_snapshot"]
-            else psycopg.IsolationLevel.READ_COMMITTED
-        )
+    if connection is not None:
         return read_inputs(connection)
+    with input_connection(settings, include_shifting=include_shifting) as opened:
+        return read_inputs(opened)
 
 
 def _scope_to_yard_blocks(inputs):

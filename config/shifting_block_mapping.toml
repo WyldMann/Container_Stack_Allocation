@@ -1,5 +1,5 @@
 # Map equipment codes to assigned block_id strings for the selected CY.
-# CSV labels these codes shifting_code; the planned SQL source uses header ALAT.
+# CSV labels these codes shifting_code; the SQL source uses header ALAT.
 # Reuse these assignments for both lifting and shifting operations.
 # Omit codes assigned to absent yard blocks before querying or calculating SQL counts.
 # Multiple codes may map to one block. Each code must identify exactly one block.

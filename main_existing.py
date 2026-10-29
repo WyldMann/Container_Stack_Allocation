@@ -1,4 +1,4 @@
-"""Record existing-yard compliance and the latest complete daily operations."""
+"""Record existing-yard compliance and operations from the selected source."""
 
 from collections import Counter, defaultdict
 from dataclasses import asdict
@@ -14,7 +14,9 @@ from entities import Yard
 from presenter import YardPresenter
 from repository import load_yard_inputs
 from repository.branch_repository import BranchDirectory
-from repository.shifting_repository import load_shifting_summary
+from repository.operations_input import load_operations
+from repository.sql_connection import input_connection
+from repository.sql_shifting_repository import sql_period_boundaries
 from repository.shifting_dates import WIB
 
 
@@ -46,16 +48,22 @@ def shifting_metrics(observations):
 
 def _build_report_and_yard(input_path):
     input_settings = load_input_config(input_path, datasets=EXISTING_YARD_DATASETS)
+    with input_connection(input_settings) as connection:
+        inputs = load_yard_inputs(input_settings, include_shifting=False, connection=connection)
+        return _build_loaded_report(input_settings, inputs, connection)
+
+
+def _build_loaded_report(input_settings, inputs, connection):
     period_settings = input_settings.get("shifting_period")
-    if "shifting_summary_file" not in input_settings:
+    operations_source = input_settings.get("shifting_source", "csv")
+    sql_operations = operations_source == "sql"
+    if not sql_operations and "shifting_summary_file" not in input_settings:
         raise ConfigurationError("csv.shifting_summary_file is required for operations recording.")
-    shifting_path = input_settings["shifting_summary_file"]
+    shifting_path = input_settings.get("shifting_summary_file")
     shifting_mapping_path = input_settings["shifting_block_mapping_file"]
     workbook_path = input_settings.get("shifting_workbook_file")
     workbook_sheet = input_settings.get("shifting_workbook_sheet", "Per Alat Weekly")
 
-    # Honor each selected source without loading inbound or historical operations.
-    inputs = load_yard_inputs(input_settings, include_shifting=False)
     branches = BranchDirectory(inputs["terminal_branches"])
     cy_name = branches.cy_name()
 
@@ -73,20 +81,31 @@ def _build_report_and_yard(input_path):
     )
 
     recorded_at = int(time())
-    observations = load_shifting_summary(
-        shifting_path, cy_name, shifting_mapping_path, yard.blocks_by_id,
-        period_settings=period_settings,
-        latest_only=True,
-        workbook_path=workbook_path,
-        workbook_sheet=workbook_sheet,
+    observations = load_operations(
+        input_settings, branches, yard.blocks_by_id,
+        connection=connection, latest_only=True,
         today=datetime.fromtimestamp(recorded_at, WIB).date(),
+        recorded_at=recorded_at,
     )
     latest_start = max((row.period_start for row in observations), default=None)
     latest_observations = [row for row in observations if row.period_start == latest_start]
     latest = latest_observations[0] if latest_observations else None
-    daily = bool(latest and latest.report_date)
-    if latest is None:
-        daily = "daily" in workbook_sheet.casefold() or period_settings is None
+    if sql_operations:
+        granularity = input_settings.get("shifting_granularity", "daily")
+        period_start, period_end = sql_period_boundaries(granularity, recorded_at)
+        period_metadata = {"period_granularity": granularity}
+    else:
+        daily = bool(latest and latest.report_date)
+        if latest is None:
+            daily = "daily" in workbook_sheet.casefold() or period_settings is None
+        period_start = latest_start
+        period_end = latest.period_end if latest else None
+        period_metadata = (
+            {"latest_date": latest.report_date if latest else None, "period_granularity": "daily"}
+            if daily else {
+                "latest_week": int(latest.week_number) if latest else None, "period_granularity": "weekly",
+            }
+        )
     by_block = defaultdict(list)
     for row in latest_observations:
         by_block[row.block_id].append(row)
@@ -116,18 +135,14 @@ def _build_report_and_yard(input_path):
 
     report = {
         "recorded_at": recorded_at,
-        "period_start": latest_start,
-        "period_end": latest.period_end if latest else None,
-        **({"latest_date": latest.report_date if latest else None, "period_granularity": "daily"}
-           if daily else {
-               "latest_week": int(latest.week_number) if latest else None,
-               "period_granularity": "weekly",
-           }),
+        "period_start": period_start,
+        "period_end": period_end,
+        **period_metadata,
         "report_month": latest.report_month if latest else None,
         "parameter_compliance_basis": "current_yard_snapshot",
         "cy_name": cy_name,
         "branch": dict(branches.records[0]),
-        "input_sources": dict(input_settings["sources"]),
+        "input_sources": {**input_settings["sources"], "shifting_summary": operations_source},
         "input_filters": dict(input_settings.get("filters", {})),
         "existing_input_rows": len(inputs["existing_containers"]),
         "loaded_containers": len(yard.containers),
@@ -137,9 +152,18 @@ def _build_report_and_yard(input_path):
             if container_count else None
         ),
         "blocks": blocks,
-        "shifting_source": str(shifting_path),
+        "shifting_source": (
+            input_settings["sql_shifting"]["schema"] + "." + input_settings["sql_shifting"]["detail_relation"]
+            if sql_operations else str(shifting_path)
+        ),
         "shifting_workbook_source": str(workbook_path) if workbook_path is not None else None,
         "shifting_block_mapping_source": str(shifting_mapping_path),
+        **({
+            "shifting_sql_mapping": input_settings["sql_shifting"],
+            "shifting_activities": {kind: list(values) for kind, values in input_settings["shifting_activities"].items()},
+            "operations_period_basis": "rolling_window",
+            "operations_completeness": "unverified",
+        } if sql_operations else {}),
         **shifting_metrics(latest_observations),
         "loaded_shifting_data_points": len(observations),
         "shifting_observations": [

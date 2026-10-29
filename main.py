@@ -9,38 +9,37 @@ from config import (
 
 from repository import load_yard_inputs
 from repository.branch_repository import BranchDirectory
-from repository.shifting_repository import load_shifting_summary
+from repository.operations_input import load_operations
+from repository.sql_connection import input_connection
 from entities import Yard, Container
 from entities.bad_yard_data import PlacementRejected
 from presenter import YardPresenter, BadDataPresenter
 
 settings = load_config(DEFAULT_CONFIG_FILE)
 input_settings = load_input_config(DEFAULT_INPUT_CONFIG_FILE)
-inputs = load_yard_inputs(input_settings, include_shifting=False)
-shifting_summary = []
-inbound_container_records = inputs["inbound_containers"]
+with input_connection(input_settings) as connection:
+    inputs = load_yard_inputs(input_settings, include_shifting=False, connection=connection)
+    shifting_summary = []
+    inbound_container_records = inputs["inbound_containers"]
 
-yard = Yard(
-    yard_blocks_input=inputs["yard_blocks"],
-    removed_slots_input=inputs["removed_slots"],
-    parameters_input=inputs["parameters"],
-    yard_planning_input=inputs["yard_planning"],
-    containers_input=inputs["existing_containers"],
-    equipment_input=inputs["master_equipment"],
-    equipment_locations_input=inputs["equipment_history"],
-    feasibility_settings=settings.feasibility,
-    heuristic_settings=settings.heuristic,
-)
-if input_settings.get("shifting_summary_file") is not None:
-    shifting_summary = load_shifting_summary(
-        input_settings["shifting_summary_file"],
-        BranchDirectory(inputs["terminal_branches"]).cy_name(),
-        input_settings["shifting_block_mapping_file"], yard.blocks_by_id,
-        period_settings=input_settings.get("shifting_period"),
-        workbook_path=input_settings.get("shifting_workbook_file"),
-        workbook_sheet=input_settings.get("shifting_workbook_sheet", "Per Alat Weekly"),
+    yard = Yard(
+        yard_blocks_input=inputs["yard_blocks"],
+        removed_slots_input=inputs["removed_slots"],
+        parameters_input=inputs["parameters"],
+        yard_planning_input=inputs["yard_planning"],
+        containers_input=inputs["existing_containers"],
+        equipment_input=inputs["master_equipment"],
+        equipment_locations_input=inputs["equipment_history"],
+        feasibility_settings=settings.feasibility,
+        heuristic_settings=settings.heuristic,
     )
-    inputs["shifting_summary"] = shifting_summary
+    if (input_settings.get("shifting_source") == "sql"
+            or input_settings.get("shifting_summary_file") is not None):
+        shifting_summary = load_operations(
+            input_settings, BranchDirectory(inputs["terminal_branches"]), yard.blocks_by_id,
+            connection=connection,
+        )
+        inputs["shifting_summary"] = shifting_summary
 yard_presenter = YardPresenter()
 yard_presenter.outYard(yard)
 
