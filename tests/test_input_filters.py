@@ -6,8 +6,9 @@ import itertools
 import os
 from pathlib import Path
 import tomllib
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from config import ConfigurationError, load_input_config
 from config.application.input_filters import active_filters, read_filter_columns
@@ -75,7 +76,7 @@ class InputFilterTests(unittest.TestCase):
         settings = self.settings()
         definition = settings["sql_datasets"]["existing_containers"]
         loader = _sql_loader(None, "existing_containers", definition,
-                             branch_column="BRANCH", branch_codes=("\t jkt74  ",))
+                             membership_filters=(("BRANCH", ("\t jkt74  ",), "branch_code"),))
         self.assertEqual(loader.query.as_string(),
             'SELECT * FROM "TERMINAL_APP"."TRM_TRS_TARGET_CONTAINER" '
             'WHERE UPPER(BTRIM("BRANCH"::text, %s)) = ANY(%s)')
@@ -85,6 +86,112 @@ class InputFilterTests(unittest.TestCase):
         loader = _sql_loader(None, "existing_containers", definition)
         self.assertNotIn("WHERE", loader.query.as_string())
         self.assertEqual(loader.parameters, ())
+
+    @unittest.skipUnless(importlib.util.find_spec("psycopg"), "Query composition requires Psycopg")
+    def test_sql_membership_combines_normalizations_with_filters_and_order(self):
+        payload = "00ab' OR true --"
+        definition = dict(schema="yard", relation="slots", filters={"ACTIVE": True},
+                          order_by=["ROW_NO"])
+        loader = _sql_loader(None, "removed_slots", definition, membership_filters=(
+            ("BRANCH", ("\t jkt74 ",), "branch_code"),
+            ('DB"BLOCK', ("0010", "000", "", payload), "id"),
+        ))
+        self.assertEqual(loader.query.as_string(),
+            'SELECT * FROM "yard"."slots" WHERE "ACTIVE" = %s '
+            'AND UPPER(BTRIM("BRANCH"::text, %s)) = ANY(%s) '
+            'AND UPPER(REGEXP_REPLACE(COALESCE("DB""BLOCK"::text, \'\'), '
+            "'^0+(?!$)', '')) = ANY(%s) ORDER BY \"ROW_NO\"")
+        self.assertEqual(loader.parameters, (
+            True, BRANCH_WHITESPACE, ["JKT74"], ["10", "0", "", "AB' OR TRUE --"],
+        ))
+        self.assertNotIn(payload, loader.query.as_string())
+
+    @unittest.skipUnless(importlib.util.find_spec("psycopg"), "Query composition requires Psycopg")
+    def test_sql_removed_slots_scope_uses_csv_or_sql_yard_blocks(self):
+        yard_path = self.settings()["csv_files"]["yard_blocks"]
+        with yard_path.open(encoding="utf-8-sig", newline="") as stream:
+            reader = csv.reader(stream)
+            yard_headers = next(reader)
+            yard_rows = [tuple(row) for row in reader if row]
+        self.fixture.set_source("yard_blocks", "sql")
+        self.fixture.set_source("removed_slots", "sql")
+        cases = (
+            ('terminal_id = 1\nbranch_id = 2', False, ["10", "11"]),
+            ('terminal_id = 1\nbranch_id = ""', False, ["10", "11"]),
+            ('terminal_id = ""\nbranch_id = 2', False, ["10", "11"]),
+            ('terminal_id = 1\nbranch_id = 2', True, []),
+            ('# terminal_id = 1\n# branch_id = 2', False, None),
+        )
+        for source, (filters, empty, selected) in itertools.product(("csv", "sql"), cases):
+            with self.subTest(source=source, filters=filters, empty=empty):
+                self.set_filters(filters)
+                settings = self.settings()
+                settings["sources"]["yard_blocks"] = source
+                block_path = self.root / "blocks.csv"
+                with block_path.open("w", encoding="utf-8", newline="") as stream:
+                    writer = csv.writer(stream)
+                    writer.writerow(yard_headers)
+                    writer.writerows([] if empty else yard_rows)
+                settings["csv_files"]["yard_blocks"] = block_path
+                # Use a distinct SQL column to exercise the selected source's mapping.
+                mapping_path = self.root / "sql_mapping.toml"
+                mapping_path.write_text(
+                    settings["mapping_files"]["sql"].read_text(encoding="utf-8").replace(
+                        '[sql.removed_slots.columns]\nblock_id = "BLOCK_ID"',
+                        '[sql.removed_slots.columns]\nblock_id = "DB_BLOCK"',
+                    ), encoding="utf-8",
+                )
+                settings["mapping_files"]["sql"] = mapping_path
+                connection = MagicMock()
+                contexts = []
+                if source == "sql":
+                    context = MagicMock()
+                    cursor = context.__enter__.return_value
+                    cursor.description = [SimpleNamespace(name=name) for name in yard_headers]
+                    cursor.__iter__.return_value = iter([] if empty else yard_rows)
+                    contexts.append(context)
+                removed_context = MagicMock()
+                removed_cursor = removed_context.__enter__.return_value
+                removed_cursor.description = [SimpleNamespace(name=name)
+                                              for name in ("DB_BLOCK", "ROW_NO", "SLOT_NO")]
+                removed_rows = [("0010", 1, 2), ("11", 2, 1)]
+                if selected is None:
+                    removed_rows.append(("999", 1, 1))
+                elif not selected:
+                    removed_rows = []
+                removed_cursor.__iter__.return_value = iter(removed_rows)
+                contexts.append(removed_context)
+                connection.cursor.side_effect = contexts
+
+                opened_csv = []
+                original_open = CSVLoader.open
+
+                def record_open(loader):
+                    opened_csv.append(loader.file_path)
+                    return original_open(loader)
+
+                def check_scope(query, parameters):
+                    if source == "csv":
+                        self.assertIn(block_path, opened_csv)
+                    if selected is None:
+                        self.assertNotIn("WHERE", query.as_string())
+                        self.assertEqual(parameters, ())
+                    else:
+                        self.assertIn('COALESCE("DB_BLOCK"::text', query.as_string())
+                        self.assertIn("= ANY(%s)", query.as_string())
+                        self.assertEqual(parameters, (selected,))
+
+                removed_cursor.execute.side_effect = check_scope
+                with patch.object(CSVLoader, "open", record_open):
+                    inputs = load_yard_inputs(settings, connection=connection, include_shifting=False)
+                self.assertEqual(inputs["removed_slots"], [
+                    ("10" if block == "0010" else block, row - 1, slot - 1)
+                    for block, row, slot in removed_rows
+                ])
+                self.assertEqual(connection.cursor.call_count, len(contexts))
+                removed_cursor.execute.assert_called_once()
+                if source == "csv":
+                    self.assertEqual(opened_csv.count(block_path), 1)
 
     @unittest.skipUnless(importlib.util.find_spec("psycopg"), "Query composition requires Psycopg")
     def test_sql_branch_reference_uses_both_id_filters(self):

@@ -3,6 +3,7 @@
 from config import ConfigurationError
 from config.application.input_filters import active_filters, mapped_filters
 from config.csv_import.mapping_loader import load_mapping
+from utils import strGeneralize
 
 from .csvloader import CSVLoader, BRANCH_WHITESPACE
 from .branch_repository import BranchDirectory, BranchRepository
@@ -41,7 +42,8 @@ def _read_datasets(make_loader, profiles, *, datasets=None):
     }
 
 
-def _sql_loader(connection, name, definition, *, branch_column=None, branch_codes=()):
+def _sql_loader(connection, name, definition, *, membership_filters=()):
+    """Membership entries are (source column, values, 'branch_code' or 'id')."""
     from psycopg import sql
 
     query = sql.SQL("SELECT * FROM {}").format(
@@ -50,9 +52,21 @@ def _sql_loader(connection, name, definition, *, branch_column=None, branch_code
     filters = active_filters(definition["filters"])
     clauses = [sql.SQL("{} = %s").format(sql.Identifier(column)) for column in filters]
     parameters = list(filters.values())
-    if branch_column is not None:
-        clauses.append(sql.SQL("UPPER(BTRIM({}::text, %s)) = ANY(%s)").format(sql.Identifier(branch_column)))
-        parameters.extend((BRANCH_WHITESPACE, [code.strip().upper() for code in branch_codes]))
+    for column, values, normalization in membership_filters:
+        if normalization == "branch_code":
+            expression = sql.SQL("UPPER(BTRIM({}::text, %s))").format(sql.Identifier(column))
+            parameters.append(BRANCH_WHITESPACE)
+            values = [code.strip().upper() for code in values]
+        elif normalization == "id":
+            # Match Repository's strGeneralize, including all-zero and empty IDs.
+            expression = sql.SQL(
+                "UPPER(REGEXP_REPLACE(COALESCE({}::text, ''), '^0+(?!$)', ''))"
+            ).format(sql.Identifier(column))
+            values = [strGeneralize(str(value)) for value in values]
+        else:
+            raise ValueError(f"Unknown membership normalization: {normalization!r}.")
+        clauses.append(sql.SQL("{} = ANY(%s)").format(expression))
+        parameters.append(list(values))
     if clauses:
         query += sql.SQL(" WHERE ") + sql.SQL(" AND ").join(clauses)
     if definition["order_by"]:
@@ -79,6 +93,7 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None):
 
     def read_inputs(connection=None):
         directory = None
+        selected_block_ids = None
 
         def make_loader(name):
             branch_column = None
@@ -92,16 +107,27 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None):
                     branch_codes=tuple(directory.by_code) if branch_column else None,
                     branch_column=branch_column,
                 )
-            return _sql_loader(
-                connection, name, settings["sql_datasets"][name], branch_column=branch_column,
-                branch_codes=tuple(directory.by_code) if branch_column else (),
-            )
+            membership_filters = []
+            if branch_column is not None:
+                membership_filters.append((branch_column, tuple(directory.by_code), "branch_code"))
+            if name == "removed_slots" and selected_block_ids is not None:
+                membership_filters.append((
+                    profiles[name].columns.get("block_id", "block_id"), selected_block_ids, "id",
+                ))
+            return _sql_loader(connection, name, settings["sql_datasets"][name],
+                               membership_filters=membership_filters)
 
         reference = _read_datasets(make_loader, profiles, datasets=("terminal_branches",))
         directory = BranchDirectory(reference["terminal_branches"])
-        inputs = reference | _read_datasets(
-            make_loader, profiles, datasets=tuple(name for name in sources if name != "terminal_branches"),
-        )
+        inputs = dict(reference)
+        if settings.get("filters") and sources.get("removed_slots") == "sql":
+            if "yard_blocks" in sources:
+                inputs.update(_read_datasets(make_loader, profiles, datasets=("yard_blocks",)))
+            # None disables scoping; an empty selection must still restrict SQL.
+            selected_block_ids = tuple(sorted({row["block_id"] for row in inputs.get("yard_blocks", [])}))
+        inputs.update(_read_datasets(
+            make_loader, profiles, datasets=tuple(name for name in sources if name not in inputs),
+        ))
         for name in ("existing_containers", "inbound_containers"):
             if name in inputs and profiles[name].branch_kind == "code":
                 inputs[name] = directory.normalize_containers(inputs[name], scoped=bool(settings.get("filters")))
