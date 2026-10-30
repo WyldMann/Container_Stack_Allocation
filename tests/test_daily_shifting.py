@@ -30,7 +30,8 @@ HEADER = "cy_name,shifting_code,lifting_count,shifting_count,report_date\n"
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 
 
-def daily_workbook(path, lifting=200, shifting=20, latest="10/27/2026", serial=False):
+def daily_workbook(path, lifting=200, shifting=20, latest="10/27/2026", serial=False,
+                   sheet_name="Per Alat Daily"):
     write_workbook(path, lifting=lifting, shifting=shifting)
     with ZipFile(path) as archive:
         contents = {name: archive.read(name) for name in archive.namelist()}
@@ -46,7 +47,9 @@ def daily_workbook(path, lifting=200, shifting=20, latest="10/27/2026", serial=F
             else:
                 cell.find("m:is/m:t", NS).text = value
     contents["xl/worksheets/sheet1.xml"] = ET.tostring(root)
-    contents["xl/workbook.xml"] = contents["xl/workbook.xml"].replace(b"Per Alat Weekly", b"Per Alat Daily")
+    contents["xl/workbook.xml"] = contents["xl/workbook.xml"].replace(
+        b"Per Alat Weekly", sheet_name.encode("utf-8")
+    )
     with ZipFile(path, "w") as archive:
         for name, value in contents.items():
             archive.writestr(name, value)
@@ -167,6 +170,56 @@ class DailyShiftingTests(unittest.TestCase):
         refresh_shifting_csv(workbook, self.csv, "Per Alat Daily")
         with self.csv.open(encoding="utf-8-sig", newline="") as stream:
             self.assertEqual(list(csv.DictReader(stream))[0]["report_date"], "2026-10-27")
+
+    def test_both_daily_sheet_names_accept_either_configuration(self):
+        workbook = self.root / "daily.xlsx"
+        names = ("Per Alat Daily", "Per Alat Daily per Branch")
+        for actual_name in names:
+            daily_workbook(workbook, sheet_name=actual_name)
+            for configured_name in names:
+                with self.subTest(actual=actual_name, configured=configured_name):
+                    self.assertEqual(refresh_shifting_csv(workbook, self.csv, configured_name), 4)
+                    with self.csv.open(encoding="utf-8-sig", newline="") as stream:
+                        rows = list(csv.DictReader(stream))
+                    self.assertEqual(rows[2]["report_date"], "2026-10-27")
+                    self.assertEqual(rows[2]["lifting_count"], "200")
+
+    def test_daily_sheet_alias_does_not_select_weekly_or_unrelated_sheets(self):
+        workbook = self.root / "weekly.xlsx"
+        write_workbook(workbook)
+        self.csv.write_text("existing data", encoding="utf-8")
+        for name in ("Per Alat Daily", "Per Alat Daily per Branch", "Missing"):
+            with self.subTest(name=name), self.assertRaisesRegex(InputError, "Available worksheets: 'Per Alat Weekly'"):
+                refresh_shifting_csv(workbook, self.csv, name)
+            self.assertEqual(self.csv.read_text(encoding="utf-8"), "existing data")
+
+    def test_configured_daily_sheet_takes_precedence_when_both_exist(self):
+        workbook = self.root / "both.xlsx"
+        branch_workbook = self.root / "branch.xlsx"
+        daily_workbook(workbook, lifting=200)
+        daily_workbook(branch_workbook, lifting=500, sheet_name="Per Alat Daily per Branch")
+        with ZipFile(workbook) as archive:
+            contents = {name: archive.read(name) for name in archive.namelist()}
+        with ZipFile(branch_workbook) as archive:
+            contents["xl/worksheets/sheet2.xml"] = archive.read("xl/worksheets/sheet1.xml")
+        root = ET.fromstring(contents["xl/workbook.xml"])
+        ET.SubElement(root.find("m:sheets", NS), "{" + NS["m"] + "}sheet", {
+            "name": "Per Alat Daily per Branch", "sheetId": "2",
+            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": "rId2",
+        })
+        contents["xl/workbook.xml"] = ET.tostring(root)
+        relations = ET.fromstring(contents["xl/_rels/workbook.xml.rels"])
+        ET.SubElement(relations, "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship",
+                      Id="rId2", Target="worksheets/sheet2.xml")
+        contents["xl/_rels/workbook.xml.rels"] = ET.tostring(relations)
+        with ZipFile(workbook, "w") as archive:
+            for name, value in contents.items():
+                archive.writestr(name, value)
+        for configured_name, lifting in (("Per Alat Daily", "200"), ("Per Alat Daily per Branch", "500")):
+            with self.subTest(configured=configured_name):
+                refresh_shifting_csv(workbook, self.csv, configured_name)
+                with self.csv.open(encoding="utf-8-sig", newline="") as stream:
+                    self.assertEqual(list(csv.DictReader(stream))[2]["lifting_count"], lifting)
 
 
 class DailyMainTests(unittest.TestCase):

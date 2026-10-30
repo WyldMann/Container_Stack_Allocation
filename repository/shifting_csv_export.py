@@ -20,6 +20,10 @@ _HEADERS = ("cy_name", "shifting_code", "lifting_count", "shifting_count",
             "report_month", "week_number")
 _DAILY_HEADERS = ("cy_name", "shifting_code", "lifting_count", "shifting_count",
                   "report_date", "period_start", "period_end")
+_DAILY_SHEET_ALIASES = {
+    "Per Alat Daily": "Per Alat Daily per Branch",
+    "Per Alat Daily per Branch": "Per Alat Daily",
+}
 
 
 def _column(reference):
@@ -67,8 +71,14 @@ def _read_report(workbook_path, sheet_name):
         workbook = ET.fromstring(archive.read("xl/workbook.xml"))
         sheets = workbook.findall("m:sheets/m:sheet", _NS)
         sheet = next((item for item in sheets if item.get("name") == sheet_name), None)
+        if sheet is None and sheet_name in _DAILY_SHEET_ALIASES:
+            alias = _DAILY_SHEET_ALIASES[sheet_name]
+            sheet = next((item for item in sheets if item.get("name") == alias), None)
         if sheet is None:
-            raise InputError(f"Missing shifting worksheet {sheet_name!r}.")
+            available = ", ".join(repr(item.get("name")) for item in sheets)
+            raise InputError(
+                f"Missing shifting worksheet {sheet_name!r}. Available worksheets: {available}."
+            )
         relations = {
             item.get("Id"): item for item in
             ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
