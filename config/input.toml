@@ -23,7 +23,7 @@ existing_containers = "sql"
 inbound_containers = "csv"
 master_equipment = "csv"
 equipment_history = "csv"
-shifting_summary = "sql"
+shifting_summary = "csv"
 
 # SQL uses a rolling window ending at recording time: daily = last 24 hours,
 # weekly = last 7 days. Source activity date text is interpreted as WIB.
@@ -56,9 +56,9 @@ mapping_file = "csv_mapping.toml"
 # Select the latest date before today with both counts for every required loaded-block code.
 # Incomplete recent dates fall back to the preceding complete date. Blank is not zero.
 # The flat daily CSV contains report_date, period_start, and period_end (exclusive).
-shifting_summary_file = "../data_CY219/Shifting_Report_Summary_2026-10_Daily_20261028050957.csv"
+shifting_summary_file = "../data_CY219/Shifting_Report_Summary_2026-10_Daily_20261030012721.csv"
 # When configured, regenerate the CSV from this workbook on every data load.
-shifting_workbook_file = "../data_CY219/Shifting_Report_Summary_2026-10_Daily_20261028050957.xlsx"
+shifting_workbook_file = "../data_CY219/Shifting_Report_Summary_2026-10_Daily_20261030012721.xlsx"
 shifting_workbook_sheet = "Per Alat Daily"
 
 [csv.files]
