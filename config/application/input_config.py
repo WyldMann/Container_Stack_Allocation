@@ -6,7 +6,7 @@ from pathlib import Path
 from .config_loader import ConfigurationError, _read_document, _read_section
 from .input_filters import FILTER_NAMES, active_filters, mapped_filters, read_filter_columns
 from .shifting_period import parse_shifting_period
-from .shifting_input import csv_cutoff_timestamp, shifting_settings, sql_shifting_settings
+from .shifting_input import shifting_settings, sql_shifting_settings
 from ..csv_import.mapping_settings import SCHEMAS
 
 
@@ -85,14 +85,12 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
     csv = _read_section(document, "csv", {
         "files", "mapping_file", "shifting_block_mapping_file",
         "shifting_workbook_file", "shifting_workbook_sheet",
-        "shifting_operations_file", "shifting_cutoff",
+        "shifting_operations_file",
     })
     if shifting_source == "csv":
         settings["shifting_operations_file"] = resolve(
             csv.get("shifting_operations_file"), "csv.shifting_operations_file",
         )
-        if "shifting_cutoff" in csv:
-            settings["shifting_csv_cutoff"] = csv_cutoff_timestamp(csv["shifting_cutoff"])
     workbook_file = csv.get("shifting_workbook_file")
     if shifting_source == "xlsx" and workbook_file is not None:
         settings["shifting_workbook_file"] = resolve(workbook_file, "csv.shifting_workbook_file")

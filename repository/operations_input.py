@@ -19,7 +19,7 @@ def load_operations(settings, branches, block_ids, *, connection=None, latest_on
             cy_name, branches.records[0]["branch_code"],
             settings["shifting_block_mapping_file"], block_ids,
             period_granularity=settings.get("shifting_granularity", "daily"),
-            recorded_at=settings.get("shifting_csv_cutoff", recorded_at), diagnostics=diagnostics,
+            diagnostics=diagnostics,
         )
     if source == "sql":
         if connection is None:

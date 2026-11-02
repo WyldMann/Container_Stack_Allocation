@@ -3,12 +3,13 @@
 from collections import Counter
 from datetime import datetime
 
+from config import ConfigurationError
 from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
 
 from .csvloader import CSVLoader
 from .loader import InputError
 from .repository import Repository
-from .shifting_dates import WIB, operations_period_boundaries
+from .shifting_dates import WIB
 from .shifting_repository import ShiftingSummary
 
 
@@ -17,13 +18,8 @@ class OperationsRepository(Repository):
         "DTL_ID", "DOC_ID", "ACTIVITY", "ACTIVITY_DATE_TIME", "KODE_CABANG", "ALAT",
     )
 
-    def read_summaries(self, cy_name, mapping, block_ids, activities, *,
-                       period_start, period_end, diagnostics=None):
-        block_ids = set(block_ids)
-        active = {code: block for code, block in mapping.items() if block in block_ids}
-        counts = {code: Counter() for code in active}
-        categories = {activity: kind for kind, names in activities.items() for activity in names}
-        excluded = Counter()
+    def _iter_operations(self, active):
+        """Read dated, countable operations for equipment in the loaded yard."""
         for location, row in self._iter_rows():
             code = row["ALAT"].strip().casefold()
             if code not in active:
@@ -39,10 +35,30 @@ class OperationsRepository(Repository):
                 raise InputError(
                     f"{location}: ACTIVITY_DATE_TIME must be DD-MM-YYYY HH:MM in WIB."
                 ) from error
+            yield timestamp, code, row["ACTIVITY"]
+
+    def read_summaries(self, cy_name, mapping, block_ids, activities, *,
+                       period_granularity="daily", diagnostics=None):
+        if period_granularity not in ("daily", "weekly"):
+            raise ConfigurationError("shifting.period_granularity must be 'daily' or 'weekly'.")
+        block_ids = set(block_ids)
+        active = {code: block for code, block in mapping.items() if block in block_ids}
+        # The export has no ordering guarantee. Find its first timestamp before counting;
+        # two streaming passes avoid retaining the full activity history in memory.
+        period_start = min((timestamp for timestamp, _, _ in self._iter_operations(active)), default=None)
+        if diagnostics is not None:
+            diagnostics["excluded_activities"] = {}
+        if period_start is None:
+            return []
+        duration = 86400 if period_granularity == "daily" else 7 * 86400
+        period_end = period_start + duration
+        counts = {code: Counter() for code in active}
+        categories = {activity: kind for kind, names in activities.items() for activity in names}
+        excluded = Counter()
+        for timestamp, code, activity in self._iter_operations(active):
             if not period_start <= timestamp < period_end:
                 continue
             # Match SQL's exact activity comparison; equipment codes ignore case/whitespace.
-            activity = row["ACTIVITY"]
             kind = categories.get(activity)
             if kind is None:
                 excluded[activity] += 1
@@ -61,11 +77,10 @@ class OperationsRepository(Repository):
 
 
 def load_csv_shifting_summary(path, activities, cy_name, branch_code, mapping_path, block_ids, *,
-                              period_granularity="daily", recorded_at=None, diagnostics=None):
+                              period_granularity="daily", diagnostics=None):
     mapping = load_shifting_block_mapping(mapping_path, cy_name)
-    start, end = operations_period_boundaries(period_granularity, recorded_at)
     loader = CSVLoader(path, branch_column="KODE_CABANG", branch_codes=(branch_code,))
     return OperationsRepository(loader).read_summaries(
         cy_name, mapping, block_ids, activities,
-        period_start=start, period_end=end, diagnostics=diagnostics,
+        period_granularity=period_granularity, diagnostics=diagnostics,
     )
