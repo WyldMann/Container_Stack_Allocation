@@ -5,13 +5,14 @@ Select `shifting_summary = "csv"` in `[input.sources]` and configure:
 ```toml
 [csv]
 shifting_operations_file = "../data_CY219/shifting_operations.csv"
-# Optional historical cutoff. Include the timezone explicitly.
-shifting_cutoff = "2026-01-29T00:00:00+07:00"
 ```
 
-Paths resolve from `input.toml`. The cutoff defaults to recording time. It applies
-only to the CSV operations source and does not change `recorded_at`, which records
-when the yard metrics were produced. XLSX and SQL remain independently selectable.
+Paths resolve from `input.toml`. The CSV window starts at the earliest activity
+timestamp for the selected branch and equipment mapped to loaded yard blocks,
+among rows with a nonempty `DTL_ID`. Activities outside the configured categories
+also participate in finding that first timestamp. Row order does not affect it.
+`recorded_at` records when the yard metrics were produced, not the window start.
+XLSX and SQL remain independently selectable.
 
 Export a UTF-8 CSV with these six uniquely named columns:
 
@@ -54,18 +55,26 @@ a limited query result.
 - Reuse `[shifting.activities]` for both CSV and SQL. Activity values match exactly.
   `Lift On Delivery` is currently excluded; add it to the shared lifting list only
   if it belongs in that metric. There is no automatic prefix classification.
-- `shifting.period_granularity = "daily"` means the last 24 hours before the cutoff;
-  `"weekly"` means the last 7 days. The start is inclusive and the end is exclusive.
+- `shifting.period_granularity = "daily"` means the first 24 hours from that timestamp;
+  `"weekly"` means the first 7 weeks (49 days). The start is inclusive and the end
+  is exclusive. One common window applies to all equipment codes. The importer
+  scans twice to find the earliest timestamp and count the selected window without
+  retaining the full export in memory.
 - Produce one existing `ShiftingSummary` per mapped equipment code assigned to a
   loaded block, including zero counts when there are no matches. Multiple codes
   may contribute to the same block. Shifting percentage remains
   `100 * shifting / (lifting + shifting)`; an empty denominator yields `None`.
+  If there are no scoped, dated operations, return no observations and leave the
+  report window unavailable (`None`).
 
 The report records the CSV source, shared activity lists, window timestamps, and
+`operations_period_basis = "first_activity_window"` and
 `operations_completeness = "unverified"`. A zero means no qualifying rows in the
 supplied export, not proof that the export covers the entire window. No older
 period is selected automatically. Parameter compliance still reflects the current
-yard snapshot even when the operations cutoff is historical.
+yard snapshot even when the CSV operations are historical. The former
+`csv.shifting_cutoff` setting is no longer supported. SQL retains its rolling
+last-24-hours / last-7-days windows.
 
 `excluded_activities` in the JSONL report lists unclassified activity names and
 counts within the selected branch, mapped equipment, and window, for rows with

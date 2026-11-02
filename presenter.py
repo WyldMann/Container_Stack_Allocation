@@ -58,7 +58,9 @@ class YardPresenter(Presenter):
         self.out("Operations source:", operations_source)
         self.out("Loaded existing containers:", report["loaded_containers"])
         daily = report["period_granularity"] == "daily"
-        if raw_operations:
+        if operations_source == "csv":
+            self.out("Operations window:", "first 24 hours" if daily else "first 7 weeks (49 days)")
+        elif operations_source == "sql":
             self.out("Operations window:", "last 24 hours" if daily else "last 7 days")
         elif daily:
             self.out("Latest complete operations date (WIB):",

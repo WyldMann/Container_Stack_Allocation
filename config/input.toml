@@ -25,7 +25,8 @@ master_equipment = "csv"
 equipment_history = "csv"
 shifting_summary = "xlsx"
 
-# Raw CSV and SQL use a rolling window ending at recording time: daily = last 24 hours,
+# CSV starts at its earliest scoped activity: daily = first 24 hours, weekly = first 7 weeks.
+# SQL uses a rolling window ending at recording time: daily = last 24 hours,
 # weekly = last 7 days. Source activity date text is interpreted as WIB.
 # This does not infer ingestion completeness or automatically select older periods.
 [shifting]
@@ -50,8 +51,6 @@ mapping_file = "csv_mapping.toml"
 # For shifting_summary = "csv", export the six unique columns documented in
 # repository/shifting_csv_import.md. This is a raw activity CSV, not an XLSX summary.
 # shifting_operations_file = "../data_CY219/shifting_operations.csv"
-# Optional reproducible CSV window cutoff (otherwise recording time):
-# shifting_cutoff = "2026-01-29T00:00:00+07:00"
 # Read the existing shifting/lifting workbook directly on every data load.
 # Codes map to initial block assignments, not individual equipment.
 # Observations mapped to absent blocks are omitted before count validation.

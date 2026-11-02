@@ -13,7 +13,7 @@ WIB = timezone(timedelta(hours=7), "WIB")
 
 
 def operations_period_boundaries(period_granularity, recorded_at=None):
-    """One rolling, end-exclusive window for raw CSV and SQL operations."""
+    """One rolling, end-exclusive window for SQL operations."""
     if period_granularity not in ("daily", "weekly"):
         raise ConfigurationError("shifting.period_granularity must be 'daily' or 'weekly'.")
     end = int(unix_time() if recorded_at is None else recorded_at)

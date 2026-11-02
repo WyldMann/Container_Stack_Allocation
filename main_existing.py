@@ -89,11 +89,14 @@ def _build_loaded_report(input_settings, inputs, connection):
     latest_start = max((row.period_start for row in observations), default=None)
     latest_observations = [row for row in observations if row.period_start == latest_start]
     latest = latest_observations[0] if latest_observations else None
-    if raw_operations:
+    if sql_operations:
         granularity = input_settings.get("shifting_granularity", "daily")
-        cutoff = (input_settings.get("shifting_csv_cutoff", recorded_at)
-                  if operations_source == "csv" else recorded_at)
-        period_start, period_end = operations_period_boundaries(granularity, cutoff)
+        period_start, period_end = operations_period_boundaries(granularity, recorded_at)
+        period_metadata = {"period_granularity": granularity}
+    elif operations_source == "csv":
+        granularity = input_settings.get("shifting_granularity", "daily")
+        period_start = latest_start
+        period_end = latest.period_end if latest else None
         period_metadata = {"period_granularity": granularity}
     else:
         daily = bool(latest and latest.report_date)
@@ -166,7 +169,7 @@ def _build_loaded_report(input_settings, inputs, connection):
         "shifting_block_mapping_source": str(shifting_mapping_path),
         **({
             "shifting_activities": {kind: list(values) for kind, values in input_settings["shifting_activities"].items()},
-            "operations_period_basis": "rolling_window",
+            "operations_period_basis": "rolling_window" if sql_operations else "first_activity_window",
             "operations_completeness": "unverified",
         } if raw_operations else {}),
         **({"shifting_sql_mapping": input_settings["sql_shifting"]} if sql_operations else {}),
