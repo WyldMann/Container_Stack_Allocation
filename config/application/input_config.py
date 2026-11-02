@@ -49,9 +49,9 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
             raise ConfigurationError(f"input.filters.{name} must be a string or integer.")
     sources = section.get("sources")
     _dataset_names(sources, "input.sources", required=datasets, optional=("shifting_summary",))
-    shifting_source = sources.get("shifting_summary", "csv")
-    if shifting_source not in ("csv", "sql"):
-        raise ConfigurationError("input.sources.shifting_summary must be 'csv' or 'sql'.")
+    shifting_source = sources.get("shifting_summary", "xlsx")
+    if shifting_source not in ("xlsx", "sql"):
+        raise ConfigurationError("input.sources.shifting_summary must be 'xlsx' or 'sql'.")
     shifting, activities = shifting_settings(document, sql_required=shifting_source == "sql")
     sources = {name: source for name, source in sources.items() if name in datasets}
     for name, source in sources.items():
@@ -77,28 +77,21 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
                                "output.containers_file"),
     }
 
-    period_settings = parse_shifting_period(document) if shifting_source == "csv" else None
+    period_settings = parse_shifting_period(document) if shifting_source == "xlsx" else None
     if period_settings is not None:
         settings["shifting_period"] = period_settings
     csv = _read_section(document, "csv", {
-        "files", "mapping_file", "shifting_summary_file", "shifting_block_mapping_file",
+        "files", "mapping_file", "shifting_block_mapping_file",
         "shifting_workbook_file", "shifting_workbook_sheet",
     })
-    shifting_file = csv.get("shifting_summary_file")
     workbook_file = csv.get("shifting_workbook_file")
-    if shifting_source == "csv" and workbook_file is not None:
-        if shifting_file is None:
-            raise ConfigurationError("csv.shifting_workbook_file requires csv.shifting_summary_file.")
+    if shifting_source == "xlsx" and workbook_file is not None:
         settings["shifting_workbook_file"] = resolve(workbook_file, "csv.shifting_workbook_file")
         settings["shifting_workbook_sheet"] = _string(
             csv.get("shifting_workbook_sheet", "Per Alat Weekly"), "csv.shifting_workbook_sheet"
         ).strip()
-    if shifting_source == "csv" and shifting_file is not None:
-        settings["shifting_summary_file"] = resolve(
-            shifting_file, "csv.shifting_summary_file"
-        )
     mapping_file = shifting.get("block_mapping_file", "shifting_block_mapping.toml")
-    if shifting_source == "csv":
+    if shifting_source == "xlsx":
         mapping_file = csv.get("shifting_block_mapping_file", mapping_file)
     settings["shifting_block_mapping_file"] = resolve(mapping_file, "shifting.block_mapping_file")
 

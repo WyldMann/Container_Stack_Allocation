@@ -7,7 +7,7 @@ import json
 from time import time
 
 from config import (
-    ConfigurationError, DEFAULT_CONFIG_FILE, DEFAULT_INPUT_CONFIG_FILE,
+    DEFAULT_CONFIG_FILE, DEFAULT_INPUT_CONFIG_FILE,
     load_config, load_input_config,
 )
 from entities import Yard
@@ -55,11 +55,8 @@ def _build_report_and_yard(input_path):
 
 def _build_loaded_report(input_settings, inputs, connection):
     period_settings = input_settings.get("shifting_period")
-    operations_source = input_settings.get("shifting_source", "csv")
+    operations_source = input_settings.get("shifting_source", "xlsx")
     sql_operations = operations_source == "sql"
-    if not sql_operations and "shifting_summary_file" not in input_settings:
-        raise ConfigurationError("csv.shifting_summary_file is required for operations recording.")
-    shifting_path = input_settings.get("shifting_summary_file")
     shifting_mapping_path = input_settings["shifting_block_mapping_file"]
     workbook_path = input_settings.get("shifting_workbook_file")
     workbook_sheet = input_settings.get("shifting_workbook_sheet", "Per Alat Weekly")
@@ -154,7 +151,7 @@ def _build_loaded_report(input_settings, inputs, connection):
         "blocks": blocks,
         "shifting_source": (
             input_settings["sql_shifting"]["schema"] + "." + input_settings["sql_shifting"]["detail_relation"]
-            if sql_operations else str(shifting_path)
+            if sql_operations else str(workbook_path)
         ),
         "shifting_workbook_source": str(workbook_path) if workbook_path is not None else None,
         "shifting_block_mapping_source": str(shifting_mapping_path),

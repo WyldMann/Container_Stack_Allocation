@@ -15,12 +15,12 @@ from zipfile import ZipFile
 
 from config import DEFAULT_INPUT_CONFIG_FILE
 import main_existing
-from repository import InputError, load_yard_inputs
-from repository.shifting_csv_export import refresh_shifting_csv
+from repository import CSVLoader, InputError, load_yard_inputs
+from tests.shifting_fixtures import write_report
 from repository.shifting_dates import daily_boundaries, report_date
 from repository.shifting_repository import load_shifting_summary
 from tests import test_main_existing as main_tests
-from tests.test_shifting_csv_export import write_workbook
+from tests.test_shifting_xlsx_loader import write_workbook, read_workbook
 
 
 CY = "CY 219 (Lini 2)"
@@ -66,7 +66,7 @@ class DailyShiftingTests(unittest.TestCase):
 
     def load(self, rows, **kwargs):
         self.csv.write_text(HEADER + rows, encoding="utf-8")
-        return load_shifting_summary(self.csv, CY, self.mapping, {"10", "11"}, today=TODAY, **kwargs)
+        return load_shifting_summary(CSVLoader(self.csv), CY, self.mapping, {"10", "11"}, today=TODAY, **kwargs)
 
     def test_latest_closed_day_excludes_today_future_and_other_cys(self):
         rows = self.load(
@@ -139,7 +139,7 @@ class DailyShiftingTests(unittest.TestCase):
             f"{CY},SL,10,1,2026-10-27,0\n{CY},RS,10,1,2026-10-27,0\n", encoding="utf-8",
         )
         with self.assertRaisesRegex(InputError, "midnight WIB"):
-            load_shifting_summary(self.csv, CY, self.mapping, {"10", "11"}, today=TODAY)
+            load_shifting_summary(CSVLoader(self.csv), CY, self.mapping, {"10", "11"}, today=TODAY)
 
     def test_midnight_wib_handles_month_year_and_leap_day(self):
         for day in (date(2026, 1, 1), date(2026, 11, 1), date(2024, 2, 29)):
@@ -151,25 +151,20 @@ class DailyShiftingTests(unittest.TestCase):
         with self.assertRaises(InputError):
             report_date("10/31/2026", month="2026-11")
 
-    def test_daily_workbook_exports_all_dates_and_midnight_unix_then_refreshes(self):
+    def test_daily_workbook_reads_all_dates_and_midnight_unix_without_writes(self):
         workbook = self.root / "daily.xlsx"
         daily_workbook(workbook)
         original = workbook.read_bytes()
-        self.assertEqual(refresh_shifting_csv(workbook, self.csv, "Per Alat Daily"), 4)
-        with self.csv.open(encoding="utf-8-sig", newline="") as stream:
-            rows = list(csv.DictReader(stream))
+        self.assertEqual(len(read_workbook(workbook, "Per Alat Daily")), 4)
+        rows = read_workbook(workbook, "Per Alat Daily")
         self.assertEqual(rows[2]["report_date"], "2026-10-27")
         self.assertEqual(int(rows[2]["period_end"]) - int(rows[2]["period_start"]), 86400)
         self.assertNotIn("week_number", rows[0])
         self.assertEqual(workbook.read_bytes(), original)
         daily_workbook(workbook, lifting=500, shifting=50)
-        refresh_shifting_csv(workbook, self.csv, "Per Alat Daily")
-        with self.csv.open(encoding="utf-8-sig", newline="") as stream:
-            self.assertEqual(list(csv.DictReader(stream))[2]["lifting_count"], "500")
+        self.assertEqual(read_workbook(workbook, "Per Alat Daily")[2]["lifting_count"], "500")
         daily_workbook(workbook, serial=True)
-        refresh_shifting_csv(workbook, self.csv, "Per Alat Daily")
-        with self.csv.open(encoding="utf-8-sig", newline="") as stream:
-            self.assertEqual(list(csv.DictReader(stream))[0]["report_date"], "2026-10-27")
+        self.assertEqual(read_workbook(workbook, "Per Alat Daily")[0]["report_date"], "2026-10-27")
 
     def test_both_daily_sheet_names_accept_either_configuration(self):
         workbook = self.root / "daily.xlsx"
@@ -178,9 +173,8 @@ class DailyShiftingTests(unittest.TestCase):
             daily_workbook(workbook, sheet_name=actual_name)
             for configured_name in names:
                 with self.subTest(actual=actual_name, configured=configured_name):
-                    self.assertEqual(refresh_shifting_csv(workbook, self.csv, configured_name), 4)
-                    with self.csv.open(encoding="utf-8-sig", newline="") as stream:
-                        rows = list(csv.DictReader(stream))
+                    self.assertEqual(len(read_workbook(workbook, configured_name)), 4)
+                    rows = read_workbook(workbook, configured_name)
                     self.assertEqual(rows[2]["report_date"], "2026-10-27")
                     self.assertEqual(rows[2]["lifting_count"], "200")
 
@@ -190,7 +184,7 @@ class DailyShiftingTests(unittest.TestCase):
         self.csv.write_text("existing data", encoding="utf-8")
         for name in ("Per Alat Daily", "Per Alat Daily per Branch", "Missing"):
             with self.subTest(name=name), self.assertRaisesRegex(InputError, "Available worksheets: 'Per Alat Weekly'"):
-                refresh_shifting_csv(workbook, self.csv, name)
+                read_workbook(workbook, name)
             self.assertEqual(self.csv.read_text(encoding="utf-8"), "existing data")
 
     def test_configured_daily_sheet_takes_precedence_when_both_exist(self):
@@ -217,9 +211,7 @@ class DailyShiftingTests(unittest.TestCase):
                 archive.writestr(name, value)
         for configured_name, lifting in (("Per Alat Daily", "200"), ("Per Alat Daily per Branch", "500")):
             with self.subTest(configured=configured_name):
-                refresh_shifting_csv(workbook, self.csv, configured_name)
-                with self.csv.open(encoding="utf-8-sig", newline="") as stream:
-                    self.assertEqual(list(csv.DictReader(stream))[2]["lifting_count"], lifting)
+                self.assertEqual(read_workbook(workbook, configured_name)[2]["lifting_count"], lifting)
 
 
 class DailyMainTests(unittest.TestCase):
@@ -232,9 +224,14 @@ class DailyMainTests(unittest.TestCase):
         start = source.index("[shifting_period]")
         end = source.index("[input.sources]", start)
         self.path.write_text(source[:start] + source[end:], encoding="utf-8")
-        self.fixture.shifting_path.write_text(HEADER +
-            f"{CY},SL,200,20,2026-10-27\n{CY},RS,100,10,2026-10-27\n"
-            f"{CY},SL,999,999,2026-10-28\n{CY},RS,999,999,2026-10-28\n", encoding="utf-8")
+        self.daily_records = [
+            (CY, "SL", 200, 20, "2026-10", "2026-10-27"),
+            (CY, "RS", 100, 10, "2026-10", "2026-10-27"),
+            (CY, "SL", 999, 999, "2026-10", "2026-10-28"),
+            (CY, "RS", 999, 999, "2026-10", "2026-10-28"),
+        ]
+        write_report(self.fixture.shifting_path, self.daily_records, daily=True,
+                     sheet_name="Per Alat Weekly")
 
     def test_main_needs_no_benchmark_and_uses_wib_day_at_utc_evening(self):
         with patch.object(main_existing, "time", return_value=NOW):
@@ -259,8 +256,9 @@ class DailyMainTests(unittest.TestCase):
             expected = main_existing.build_report(self.path)
         with self.fixture.mapping_path.open("a", encoding="utf-8") as stream:
             stream.write('ABSENT = "9"\n')
-        with self.fixture.shifting_path.open("a", encoding="utf-8") as stream:
-            stream.write(f"{CY},ABSENT,bad,,invalid-date\n{CY},ABSENT,,,2026-10-27\n")
+        write_report(self.fixture.shifting_path, self.daily_records + [
+            (CY, "ABSENT", "bad", -1, "2026-10", "2026-10-27"),
+        ], daily=True, sheet_name="Per Alat Weekly")
         with patch.object(main_existing, "time", return_value=NOW), warnings.catch_warnings(record=True) as messages:
             report, yard = main_existing._build_report_and_yard(self.path)
         self.assertEqual(report, expected)

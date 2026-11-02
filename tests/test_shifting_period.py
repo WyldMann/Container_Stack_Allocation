@@ -84,20 +84,19 @@ class ShiftingPeriodInputTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from repository import load_yard_inputs
+        from tests.shifting_fixtures import write_report
 
         document = copy.deepcopy(self.document)
         document["shifting_period"] = {
             "benchmark_week": 40, "benchmark_period_start": 1857916800,
         }
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "shifting.csv"
+            path = Path(directory) / "shifting.xlsx"
             mapping = Path(directory) / "mapping.toml"
-            path.write_text(
-                "cy_name,shifting_code,lifting_count,shifting_count,report_month,week_number\n"
-                "CY 219 (Lini 2),SL,100,10,2026-10,44\n", encoding="utf-8",
-            )
+            write_report(path, [("CY 219 (Lini 2)", "SL", 100, 10, "2026-10", "44")])
             mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\n', encoding="utf-8")
-            document["csv"]["shifting_summary_file"] = path.as_posix()
+            document["csv"]["shifting_workbook_file"] = path.as_posix()
+            document["csv"]["shifting_workbook_sheet"] = "Per Alat Weekly"
             document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()
             settings = self.settings(document)
             self.assertEqual(settings["shifting_period"], ShiftingPeriodSettings(40, 1857916800))

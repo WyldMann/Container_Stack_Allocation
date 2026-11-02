@@ -23,7 +23,9 @@ class InputConfigTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name).resolve() / "input.toml"
         self.template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
-        for name in (*DATASETS, "shifting_summary"):
+        configured_containers = tomllib.loads(self.template)["csv"]["files"]["existing_containers"]
+        self.template = self.template.replace(configured_containers, "../data_CY219/containers.csv")
+        for name in DATASETS:
             self.template = self.template.replace(f'{name} = "sql"', f'{name} = "csv"')
         self.mapping_path = self.path.with_name("sql_mapping.toml")
         self.mapping_template = DEFAULT_INPUT_CONFIG_FILE.with_name(
@@ -247,7 +249,7 @@ class ConfiguredInputLoadingTests(unittest.TestCase):
         document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
         document["input"]["sources"] = dict.fromkeys(DATASETS, "csv")
         document["input"]["filters"] = {}
-        document["csv"].pop("shifting_summary_file", None)
+        document["csv"]["files"]["existing_containers"] = "../data_CY219/containers.csv"
         document["csv"].pop("shifting_workbook_file", None)
         with patch("config.application.input_config._read_document", return_value=document):
             self.csv_settings = load_input_config(DEFAULT_INPUT_CONFIG_FILE)

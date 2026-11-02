@@ -34,7 +34,7 @@ with input_connection(input_settings) as connection:
         heuristic_settings=settings.heuristic,
     )
     if (input_settings.get("shifting_source") == "sql"
-            or input_settings.get("shifting_summary_file") is not None):
+            or input_settings.get("shifting_workbook_file") is not None):
         shifting_summary = load_operations(
             input_settings, BranchDirectory(inputs["terminal_branches"]), yard.blocks_by_id,
             connection=connection,

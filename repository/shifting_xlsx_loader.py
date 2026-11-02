@@ -1,13 +1,11 @@
-"""Refresh flat daily or legacy weekly shifting CSVs from an XLSX report."""
+"""Read daily or legacy weekly shifting XLSX reports directly into memory."""
 
-import csv
+from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-import os
 from pathlib import Path
 import posixpath
 import re
-import tempfile
 import xml.etree.ElementTree as ET
 from zipfile import BadZipFile, ZipFile
 
@@ -34,7 +32,7 @@ def _column(reference):
 
 
 def _count_text(value):
-    """Preserve blanks and invalid source values for the CSV reader to validate."""
+    """Preserve blanks and invalid source values for repository validation."""
     if value is None or not str(value).strip():
         return ""
     text = str(value).strip()
@@ -171,29 +169,26 @@ def _read_report(workbook_path, sheet_name):
         return (_DAILY_HEADERS if daily else _HEADERS), output
 
 
-def refresh_shifting_csv(workbook_path, csv_path, sheet_name="Per Alat Weekly"):
-    """Always re-read the workbook and atomically replace the generated CSV."""
-    workbook_path, csv_path = Path(workbook_path), Path(csv_path)
-    if workbook_path.resolve() == csv_path.resolve() or csv_path.suffix.casefold() != ".csv":
-        raise InputError("The generated shifting CSV must have a separate .csv output path.")
-    temporary = None
-    try:
-        headers, rows = _read_report(workbook_path, sheet_name)
-        csv_path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8-sig", newline="", delete=False,
-            dir=csv_path.parent, prefix=csv_path.name + ".", suffix=".tmp",
-        ) as stream:
-            temporary = Path(stream.name)
-            writer = csv.writer(stream)
-            writer.writerow(headers)
-            writer.writerows(rows)
-        os.replace(temporary, csv_path)
-    except InputError:
-        raise
-    except (OSError, BadZipFile, ET.ParseError, KeyError, IndexError, ValueError) as error:
-        raise InputError(f"Cannot refresh shifting CSV from {workbook_path}: {error}") from error
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-    return len(rows)
+class ShiftingXLSXLoader:
+    """Expose report observations through the existing Loader interface."""
+
+    def __init__(self, file_path, sheet_name="Per Alat Weekly"):
+        self.file_path = Path(file_path)
+        self.sheet_name = sheet_name
+
+    @property
+    def source(self):
+        return f"{self.file_path}, worksheet {self.sheet_name!r}"
+
+    @contextmanager
+    def open(self):
+        try:
+            headers, rows = _read_report(self.file_path, self.sheet_name)
+        except InputError:
+            raise
+        except (OSError, BadZipFile, ET.ParseError, KeyError, IndexError, ValueError) as error:
+            raise InputError(f"Cannot read shifting workbook {self.source}: {error}") from error
+        yield headers, (
+            (f"{self.source}, record {number}", dict(zip(headers, values)))
+            for number, values in enumerate(rows, start=1)
+        )

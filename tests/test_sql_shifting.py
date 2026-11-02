@@ -47,10 +47,10 @@ class SQLShiftingFixture:
 
 
 class SQLShiftingConfigTests(SQLShiftingFixture, unittest.TestCase):
-    def test_sql_operations_alone_require_sql_settings_and_skip_csv_workbook(self):
+    def test_sql_operations_alone_require_sql_settings_and_skip_workbook(self):
         source = self.path.read_text(encoding="utf-8")
         self.path.write_text(source.replace(
-            '[csv]', '[csv]\nshifting_workbook_file = "missing.xlsx"',
+            self.fixture.shifting_path.as_posix(), 'missing.xlsx',
         ), encoding="utf-8")
         settings = self.settings()
         self.assertEqual(set(settings["sources"].values()), {"csv"})
@@ -355,11 +355,11 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         for connection_fails in (False, True):
             with self.subTest(connection_fails=connection_fails):
                 self.connect.side_effect = failure if connection_fails else None
-                with patch("repository.operations_input.load_shifting_summary") as csv_loader, patch.object(
+                with patch("repository.operations_input.load_shifting_summary") as workbook_loader, patch.object(
                     main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.path,
                 ), patch.object(Path, "open", checked_open), self.assertRaisesRegex(RuntimeError, "report query failed"):
                     main_existing.main()
-                csv_loader.assert_not_called()
+                workbook_loader.assert_not_called()
 
 
 if __name__ == "__main__":

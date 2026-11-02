@@ -6,7 +6,7 @@ import unittest
 
 from config import ConfigurationError
 from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
-from repository import InputError
+from repository import InputError, CSVLoader
 from repository.shifting_repository import (
     load_shifting_summary, validate_shifting_blocks,
 )
@@ -36,7 +36,7 @@ class ShiftingBlockMappingTests(unittest.TestCase):
         )
 
     def load(self):
-        return load_shifting_summary(self.csv, "CY219", self.mapping, {"10", "11"})
+        return load_shifting_summary(CSVLoader(self.csv), "CY219", self.mapping, {"10", "11"})
 
     def test_selected_cy_codes_normalized_and_many_codes_can_share_block(self):
         self.write_mapping('[CY218]\nSL = "99"\n[CY219]\n" SL " = "10"\n"RS MDL" = "10"\n')
@@ -45,22 +45,6 @@ class ShiftingBlockMappingTests(unittest.TestCase):
         self.assertEqual([row.block_id for row in rows], ["10", "10", "10"])
         self.assertEqual([row.shifting_code for row in rows], ["sl", "RS MDL", "sl"])
         self.assertEqual(sum(row.shifting_count for row in rows), 40)
-
-    def test_legacy_header_resolves_to_same_record(self):
-        self.write_mapping('[CY219]\nSL = "10"\n')
-        self.write_csv("CY219,SL,100,10\n")
-        expected = self.load()
-        self.write_csv("CY219,SL,100,10\n", code_header="equipment_group")
-        self.assertEqual(self.load(), expected)
-
-    def test_ambiguous_headers_rejected(self):
-        self.write_mapping('[CY219]\nSL = "10"\n')
-        self.csv.write_text(
-            "cy_name,shifting_code,equipment_group,lifting_count,shifting_count\n"
-            "CY219,SL,SL,100,10\n", encoding="utf-8",
-        )
-        with self.assertRaisesRegex(InputError, "exactly one"):
-            self.load()
 
     def test_unmapped_code_is_not_dropped(self):
         self.write_mapping('[CY219]\nSL = "10"\n')

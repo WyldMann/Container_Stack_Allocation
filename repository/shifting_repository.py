@@ -6,10 +6,8 @@ import re
 from config import ConfigurationError
 from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
 
-from .csvloader import CSVLoader
 from .loader import InputError
 from .repository import Repository
-from .shifting_csv_export import refresh_shifting_csv
 from .shifting_dates import daily_boundaries, report_date, today_wib
 
 
@@ -41,21 +39,9 @@ class ShiftingSummary:
 
 class ShiftingRepository(Repository):
     required_fields = (
-        "cy_name",
+        "cy_name", "shifting_code",
         "lifting_count", "shifting_count",
     )
-
-    def _resolve_columns(self, headers):
-        columns = super()._resolve_columns(headers)
-        names = {header.strip().casefold(): header for header in headers}
-        aliases = [name for name in ("shifting_code", "equipment_group") if name in names]
-        if len(aliases) != 1:
-            raise InputError(
-                f"{self.loader.source}: provide exactly one shifting_code column "
-                "(legacy equipment_group is also accepted)."
-            )
-        columns["shifting_code"] = names[aliases[0]]
-        return columns
 
     @staticmethod
     def _count(value, field, location):
@@ -211,16 +197,13 @@ def assign_shifting_periods(observations, period_settings):
 
 
 def load_shifting_summary(
-    file_path, cy_name, mapping_path, block_ids, *, period_settings=None,
+    loader, cy_name, mapping_path, block_ids, *, period_settings=None,
     latest_only=False,
-    workbook_path=None, workbook_sheet="Per Alat Weekly",
     today=None,
 ):
-    if workbook_path is not None:
-        refresh_shifting_csv(workbook_path, file_path, workbook_sheet)
     mapping = load_shifting_block_mapping(mapping_path, cy_name)
     block_ids = set(block_ids)
-    observations = ShiftingRepository(CSVLoader(file_path)).read_summaries(
+    observations = ShiftingRepository(loader).read_summaries(
         cy_name, latest_only=latest_only, today=today,
         required_codes={code for code, block in mapping.items() if block in block_ids},
         omitted_codes={code for code, block in mapping.items() if block not in block_ids},
@@ -232,7 +215,7 @@ def load_shifting_summary(
         key = row.shifting_code.casefold()
         if key not in mapping:
             raise InputError(
-                f"{file_path}: unmapped shifting code {row.shifting_code!r} for {cy_name!r}."
+                f"{loader.source}: unmapped shifting code {row.shifting_code!r} for {cy_name!r}."
             )
         result.append(replace(row, block_id=mapping[key]))
     result = validate_shifting_blocks(result, block_ids)

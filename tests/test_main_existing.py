@@ -16,6 +16,7 @@ from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE
 from config.application.input_config import DATASETS
 from repository import CSVLoader
 from repository.csvloader import BRANCH_WHITESPACE
+from tests.shifting_fixtures import write_report
 import main_existing
 
 
@@ -25,12 +26,14 @@ class ExistingYardMainTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
         self.input_path = self.root / "input.toml"
-        self.shifting_path = self.root / "shifting.csv"
+        self.shifting_path = self.root / "shifting.xlsx"
         self.mapping_path = self.root / "shifting_block_mapping.toml"
         # Test-only assignments, not actual operational assignments.
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "11"\n', encoding="utf-8")
         project = DEFAULT_INPUT_CONFIG_FILE.parent.parent
         template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
+        configured_containers = tomllib.loads(template)["csv"]["files"]["existing_containers"]
+        template = template.replace(configured_containers, "../data_CY219/containers.csv")
         # Legacy weekly fixtures supply their own benchmark; production uses daily dates.
         template = template.replace('[input.sources]', '''[shifting_period]
 benchmark_week = 40
@@ -49,14 +52,13 @@ benchmark_period_start = 1857916800
             'mapping_file = "' +
             DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml").as_posix() + '"',
         )
-        # Fixtures select CSV explicitly, independently of production sources.
-        for name in (*DATASETS, "shifting_summary"):
+        # Yard fixtures use CSV; operations use the real report workbook.
+        for name in DATASETS:
             template = template.replace(f'{name} = "sql"', f'{name} = "csv"')
         template = "\n".join(
-            'shifting_summary_file = "' + self.shifting_path.as_posix() + '"'
-            if line.lstrip("# ").startswith("shifting_summary_file =") else line
+            'shifting_workbook_file = "' + self.shifting_path.as_posix() + '"'
+            if line.startswith("shifting_workbook_file =") else line
             for line in template.splitlines()
-            if not line.lstrip("# ").startswith("shifting_workbook_file =")
         ) + "\n"
         self.input_path.write_text(template, encoding="utf-8")
         self.write_shifting(
@@ -70,13 +72,7 @@ benchmark_period_start = 1857916800
         for row in data:
             row[4] = row[4] or "2026-10"
             row[5] = row[5] or "40"
-        buffer = io.StringIO(newline="")
-        csv.writer(buffer).writerows(data)
-        self.shifting_path.write_text(
-            "cy_name,equipment_group,lifting_count,shifting_count,"
-            "report_month,week_number\n" + buffer.getvalue(),
-            encoding="utf-8",
-        )
+        write_report(self.shifting_path, data)
 
     def test_existing_yard_loads_without_inbound_or_sql(self):
         opened = []
@@ -93,7 +89,7 @@ benchmark_period_start = 1857916800
         ), patch.dict("sys.modules", {"psycopg": None}):
             report = main_existing.build_report(self.input_path)
 
-        self.assertEqual(len(opened), 9)
+        self.assertEqual(len(opened), 8)
         self.assertGreater(report["loaded_containers"], 0)
         self.assertEqual(
             report["loaded_containers"],
@@ -104,12 +100,14 @@ benchmark_period_start = 1857916800
         self.assertEqual(report["shifting_data_points"], 2)
         self.assertEqual(report["shifting_observations"][0]["report_month"], "2026-10")
         self.assertNotIn("inbound_containers", report["input_sources"])
-        self.assertEqual(set(report["input_sources"].values()), {"csv"})
+        self.assertEqual(report["input_sources"]["shifting_summary"], "xlsx")
+        self.assertEqual(report["shifting_source"], str(self.shifting_path))
 
     def set_source(self, name, source):
         text = self.input_path.read_text(encoding="utf-8")
         self.input_path.write_text(
-            text.replace(f'{name} = "csv"', f'{name} = "{source}"'), encoding="utf-8",
+            text.replace(f'{name} = "csv"', f'{name} = "{source}"').replace(
+                f'{name} = "xlsx"', f'{name} = "{source}"'), encoding="utf-8",
         )
 
     def sql_existing(self):
@@ -260,7 +258,6 @@ benchmark_period_start = 1857916800
         self.write_shifting(
             "CY 219 (Lini 2),SL,100,,2026-10,43\n"
             "CY 219 (Lini 2),RS,,,2026-10,43\n"
-            "CY 219 (Lini 2),UNKNOWN,bad,count,2026-10,42\n"
             "CY 219 (Lini 2),SL,200,20,2026-10,44\n"
             "CY 219 (Lini 2),RS,100,10,2026-10,44\n"
         )
@@ -273,10 +270,10 @@ benchmark_period_start = 1857916800
         self.assertEqual(report["missing_shifting_observations"], 0)
         self.assertEqual(len(report["shifting_observations"]), 2)
 
-    def test_absent_blocks_cannot_select_a_newer_week(self):
+    def test_absent_block_invalid_counts_do_not_affect_selected_week(self):
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
         self.write_shifting(
-            "CY 219 (Lini 2),SL,200,20,2026-10,43\nCY 219 (Lini 2),RS,100,10,2026-10,44\n"
+            "CY 219 (Lini 2),SL,200,20,2026-10,43\nCY 219 (Lini 2),RS,bad,-1,2026-10,43\n"
         )
         report = main_existing.build_report(self.input_path)
         self.assertEqual(report["latest_week"], 43)
@@ -406,10 +403,10 @@ benchmark_period_start = 1857916800
     def test_shifting_path_is_required(self):
         text = self.input_path.read_text(encoding="utf-8")
         self.input_path.write_text(
-            text.replace("\nshifting_summary_file =", "\n# shifting_summary_file ="),
+            text.replace("\nshifting_workbook_file =", "\n# shifting_workbook_file ="),
             encoding="utf-8",
         )
-        with self.assertRaisesRegex(ConfigurationError, "shifting_summary_file"):
+        with self.assertRaisesRegex(ConfigurationError, "shifting_workbook_file"):
             main_existing.build_report(self.input_path)
 
     def test_main_appends_one_json_record_per_run(self):

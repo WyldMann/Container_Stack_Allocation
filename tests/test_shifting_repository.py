@@ -1,4 +1,4 @@
-"""Shifting CSV observations are selected by CY, without period filtering."""
+"""Canonical shifting observations are selected by CY, without period filtering."""
 
 import copy
 import io
@@ -12,9 +12,10 @@ from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE, load_input_con
 from config.application.input_config import DATASETS
 from repository import CSVLoader, InputError, load_yard_inputs
 from repository.shifting_repository import ShiftingRepository
+from tests.shifting_fixtures import write_report
 
 
-HEADER = "cy_name,equipment_group,lifting_count,shifting_count"
+HEADER = "cy_name,shifting_code,lifting_count,shifting_count"
 
 
 class ShiftingRepositoryTests(unittest.TestCase):
@@ -91,7 +92,7 @@ class ShiftingRepositoryTests(unittest.TestCase):
 
     def test_invalid_headers_and_row_widths_are_rejected(self):
         for text in (
-            "cy_name,equipment_group\nCY 219 (Lini 2),SL\n",
+            "cy_name,shifting_code\nCY 219 (Lini 2),SL\n",
             HEADER + ",CY_NAME\nCY 219 (Lini 2),SL,1,1,CY 219 (Lini 2)\n",
             HEADER + "\nCY 219 (Lini 2),SL,1\n",
             HEADER + "\nCY 219 (Lini 2),SL,1,1,extra\n",
@@ -104,7 +105,6 @@ class ShiftingInputTests(unittest.TestCase):
     def setUp(self):
         self.document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
         self.document["input"]["sources"] = dict.fromkeys(DATASETS, "csv")
-        self.document["csv"].pop("shifting_summary_file", None)
         self.document["csv"].pop("shifting_workbook_file", None)
         self.document.pop("shifting_period", None)
 
@@ -115,11 +115,11 @@ class ShiftingInputTests(unittest.TestCase):
     def test_optional_report_does_not_change_existing_dataset_set(self):
         self.document["input"].pop("cy_name", None)
         settings = self.settings(self.document)
-        self.assertNotIn("shifting_summary_file", settings)
+        self.assertNotIn("shifting_workbook_file", settings)
         self.assertEqual(set(load_yard_inputs(settings)), set(DATASETS))
 
     def test_report_path_is_relative_and_cy_is_resolved_at_load(self):
-        self.document["csv"]["shifting_summary_file"] = "../reports/shifting.csv"
+        self.document["csv"]["shifting_workbook_file"] = "../reports/shifting.xlsx"
         settings = self.settings(self.document)
         self.assertNotIn("cy_name", settings)
         self.assertEqual(
@@ -127,22 +127,22 @@ class ShiftingInputTests(unittest.TestCase):
             DEFAULT_INPUT_CONFIG_FILE.with_name("shifting_block_mapping.toml"),
         )
         self.assertEqual(
-            settings["shifting_summary_file"],
-            (DEFAULT_INPUT_CONFIG_FILE.parent / "../reports/shifting.csv").resolve(),
+            settings["shifting_workbook_file"],
+            (DEFAULT_INPUT_CONFIG_FILE.parent / "../reports/shifting.xlsx").resolve(),
         )
 
     def test_report_requires_valid_path_and_rejects_obsolete_cy_setting(self):
         for value in ("", 123):
-            self.document["csv"]["shifting_summary_file"] = value
+            self.document["csv"]["shifting_workbook_file"] = value
             with self.assertRaises(ConfigurationError):
                 self.settings(self.document)
-        self.document["csv"]["shifting_summary_file"] = "shifting.csv"
+        self.document["csv"]["shifting_workbook_file"] = "shifting.xlsx"
         self.document["input"]["cy_name"] = "CY 219 (Lini 2)"
         with self.assertRaises(ConfigurationError):
             self.settings(self.document)
 
     def test_mapping_path_is_configurable_and_validated(self):
-        self.document["csv"]["shifting_summary_file"] = "shifting.csv"
+        self.document["csv"]["shifting_workbook_file"] = "shifting.xlsx"
         self.document["csv"]["shifting_block_mapping_file"] = "mappings/blocks.toml"
         self.assertEqual(
             self.settings(self.document)["shifting_block_mapping_file"],
@@ -155,16 +155,17 @@ class ShiftingInputTests(unittest.TestCase):
 
     def test_report_loaded_with_existing_yard_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "shifting.csv"
+            path = Path(directory) / "shifting.xlsx"
             mapping = Path(directory) / "mapping.toml"
             mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\n', encoding="utf-8")
             self.document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()
-            path.write_text(
-                HEADER + "\nCY 219 (Lini 2),SL,100,10\nCY218,SL,200,20\n"
-                "CY 219 (Lini 2),SL,100,10\n",
-                encoding="utf-8-sig",
-            )
-            self.document["csv"]["shifting_summary_file"] = path.as_posix()
+            write_report(path, [
+                ("CY 219 (Lini 2)", "SL", 100, 10, "2026-10", "40"),
+                ("CY218", "SL", 200, 20, "2026-10", "40"),
+                ("CY 219 (Lini 2)", "SL", 100, 10, "2026-10", "40"),
+            ])
+            self.document["csv"]["shifting_workbook_file"] = path.as_posix()
+            self.document["csv"]["shifting_workbook_sheet"] = "Per Alat Weekly"
             inputs = load_yard_inputs(self.settings(self.document))
         self.assertEqual(set(inputs), set(DATASETS) | {"shifting_summary"})
         self.assertEqual(len(inputs["shifting_summary"]), 2)
@@ -173,13 +174,15 @@ class ShiftingInputTests(unittest.TestCase):
 
     def test_missing_block_observations_are_omitted_by_shared_loader(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "shifting.csv"
+            path = Path(directory) / "shifting.xlsx"
             mapping = Path(directory) / "mapping.toml"
-            path.write_text(
-                HEADER + "\nCY 219 (Lini 2),SL,100,10\nCY 219 (Lini 2),RS,100,30\n", encoding="utf-8",
-            )
+            write_report(path, [
+                ("CY 219 (Lini 2)", "SL", 100, 10, "2026-10", "40"),
+                ("CY 219 (Lini 2)", "RS", 100, 30, "2026-10", "40"),
+            ])
             mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
-            self.document["csv"]["shifting_summary_file"] = path.as_posix()
+            self.document["csv"]["shifting_workbook_file"] = path.as_posix()
+            self.document["csv"]["shifting_workbook_sheet"] = "Per Alat Weekly"
             self.document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()
             inputs = load_yard_inputs(self.settings(self.document))
         self.assertEqual(len(inputs["shifting_summary"]), 1)
