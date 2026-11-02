@@ -33,7 +33,7 @@ with input_connection(input_settings) as connection:
         feasibility_settings=settings.feasibility,
         heuristic_settings=settings.heuristic,
     )
-    if (input_settings.get("shifting_source") == "sql"
+    if (input_settings.get("shifting_source") in ("csv", "sql")
             or input_settings.get("shifting_workbook_file") is not None):
         shifting_summary = load_operations(
             input_settings, BranchDirectory(inputs["terminal_branches"]), yard.blocks_by_id,

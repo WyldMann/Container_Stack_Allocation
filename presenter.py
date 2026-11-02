@@ -54,10 +54,11 @@ class YardPresenter(Presenter):
         self.out("CY:", report["cy_name"])
         self.out("Existing containers source:", report["input_sources"]["existing_containers"])
         operations_source = report["input_sources"].get("shifting_summary", "csv")
+        raw_operations = operations_source in ("csv", "sql")
         self.out("Operations source:", operations_source)
         self.out("Loaded existing containers:", report["loaded_containers"])
         daily = report["period_granularity"] == "daily"
-        if operations_source == "sql":
+        if raw_operations:
             self.out("Operations window:", "last 24 hours" if daily else "last 7 days")
         elif daily:
             self.out("Latest complete operations date (WIB):",
@@ -73,13 +74,15 @@ class YardPresenter(Presenter):
         self.out("Timestamps are Unix seconds; period_end is exclusive.")
         self.out("shifting_percentage uses 0-100; parameter_compliance uses 0-1; null means unavailable.")
         self.out("Parameter compliance basis:", report["parameter_compliance_basis"])
-        if operations_source == "sql":
+        if raw_operations:
             self.out("Operations period basis:", report["operations_period_basis"])
             self.out("Operations completeness:", report["operations_completeness"])
+        if report.get("excluded_activities"):
+            self.out("Excluded activities in the operations window:", report["excluded_activities"])
         self.out("Included JSONL shifting_observations:")
         observations = report["shifting_observations"]
         if observations:
-            period_fields = (("period_start", "period_end") if operations_source == "sql" else
+            period_fields = (("period_start", "period_end") if raw_operations else
                              ("report_date",) if daily else ("report_month", "week_number"))
             table(observations, (*period_fields, "shifting_code", "block_id", "lifting_count", "shifting_count"))
         else:

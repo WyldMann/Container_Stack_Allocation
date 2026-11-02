@@ -1,12 +1,24 @@
-"""Daily report dates use midnight WIB (UTC+7), independent of host timezone."""
+"""Rolling operation windows and calendar report dates, independent of host timezone."""
 
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from time import time as unix_time
+
+from config import ConfigurationError
 
 from .loader import InputError
 
 
 WIB = timezone(timedelta(hours=7), "WIB")
+
+
+def operations_period_boundaries(period_granularity, recorded_at=None):
+    """One rolling, end-exclusive window for raw CSV and SQL operations."""
+    if period_granularity not in ("daily", "weekly"):
+        raise ConfigurationError("shifting.period_granularity must be 'daily' or 'weekly'.")
+    end = int(unix_time() if recorded_at is None else recorded_at)
+    duration = 86400 if period_granularity == "daily" else 7 * 86400
+    return end - duration, end
 
 
 def today_wib():

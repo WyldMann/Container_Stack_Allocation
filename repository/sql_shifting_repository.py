@@ -2,12 +2,12 @@
 
 from time import time
 
-from config import ConfigurationError
 from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
 
 from .csvloader import BRANCH_WHITESPACE
 from .loader import InputError
 from .shifting_repository import ShiftingSummary
+from .shifting_dates import operations_period_boundaries
 from .sqlloader import SQLLoader
 
 
@@ -41,11 +41,10 @@ AND TO_TIMESTAMP({a_activity_time} || %(utc_offset)s, %(datetime_format)s)
 
 
 def sql_period_boundaries(period_granularity, recorded_at=None):
-    if period_granularity not in ("daily", "weekly"):
-        raise ConfigurationError("shifting.period_granularity must be 'daily' or 'weekly'.")
-    end = int(time() if recorded_at is None else recorded_at)
-    duration = 86400 if period_granularity == "daily" else 7 * 86400
-    return end - duration, end
+    """Compatibility entrypoint for SQL callers of the shared period helper."""
+    return operations_period_boundaries(
+        period_granularity, time() if recorded_at is None else recorded_at,
+    )
 
 
 def load_sql_shifting_summary(

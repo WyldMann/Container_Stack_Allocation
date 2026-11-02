@@ -1,9 +1,11 @@
-"""Validate shared operations settings and the reporting SQL mapping."""
+"""Validate shared operations settings and source-specific options."""
+
+from datetime import datetime
 
 from .config_loader import ConfigurationError, _read_section
 
 
-def shifting_settings(document, *, sql_required=False):
+def shifting_settings(document, *, activities_required=False):
     section = _read_section(document, "shifting", {
         "block_mapping_file", "period_granularity", "timezone", "activities",
     })
@@ -15,7 +17,7 @@ def shifting_settings(document, *, sql_required=False):
     result = {}
     for kind in ("lifting", "shifting"):
         values = activities.get(kind)
-        if values is None and not sql_required:
+        if values is None and not activities_required:
             continue
         if (not isinstance(values, list) or not values
                 or any(not isinstance(value, str) or not value.strip() for value in values)
@@ -25,6 +27,22 @@ def shifting_settings(document, *, sql_required=False):
     if set(result.get("lifting", ())) & set(result.get("shifting", ())):
         raise ConfigurationError("Lifting and shifting activity lists must not overlap.")
     return section, result
+
+
+def csv_cutoff_timestamp(value):
+    """Historical CSV cutoffs must specify their timezone explicitly."""
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        cutoff = datetime.fromisoformat(value)
+        if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+            raise ValueError
+        return int(cutoff.timestamp())
+    except (ValueError, OverflowError, OSError) as error:
+        raise ConfigurationError(
+            "csv.shifting_cutoff must be an ISO 8601 timestamp with a timezone, "
+            "for example '2026-01-29T00:00:00+07:00'."
+        ) from error
 
 
 def sql_shifting_settings(definition):

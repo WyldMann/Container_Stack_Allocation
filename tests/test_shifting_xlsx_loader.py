@@ -172,9 +172,9 @@ class WorkbookSharedInputTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ConfigurationError):
                 self.settings(self.document)
 
-    def test_csv_source_and_removed_csv_output_setting_are_rejected(self):
+    def test_raw_csv_requires_its_path_and_removed_summary_output_setting_is_rejected(self):
         self.document["input"]["sources"]["shifting_summary"] = "csv"
-        with self.assertRaisesRegex(ConfigurationError, "'xlsx' or 'sql'"):
+        with self.assertRaisesRegex(ConfigurationError, "shifting_operations_file"):
             self.settings(self.document)
         self.document["input"]["sources"]["shifting_summary"] = "xlsx"
         self.document["csv"]["shifting_summary_file"] = "old.csv"

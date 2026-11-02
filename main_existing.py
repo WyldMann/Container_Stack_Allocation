@@ -16,8 +16,7 @@ from repository import load_yard_inputs
 from repository.branch_repository import BranchDirectory
 from repository.operations_input import load_operations
 from repository.sql_connection import input_connection
-from repository.sql_shifting_repository import sql_period_boundaries
-from repository.shifting_dates import WIB
+from repository.shifting_dates import WIB, operations_period_boundaries
 
 
 EXISTING_YARD_DATASETS = (
@@ -57,6 +56,7 @@ def _build_loaded_report(input_settings, inputs, connection):
     period_settings = input_settings.get("shifting_period")
     operations_source = input_settings.get("shifting_source", "xlsx")
     sql_operations = operations_source == "sql"
+    raw_operations = operations_source in ("csv", "sql")
     shifting_mapping_path = input_settings["shifting_block_mapping_file"]
     workbook_path = input_settings.get("shifting_workbook_file")
     workbook_sheet = input_settings.get("shifting_workbook_sheet", "Per Alat Weekly")
@@ -78,18 +78,22 @@ def _build_loaded_report(input_settings, inputs, connection):
     )
 
     recorded_at = int(time())
+    operations_diagnostics = {}
     observations = load_operations(
         input_settings, branches, yard.blocks_by_id,
         connection=connection, latest_only=True,
         today=datetime.fromtimestamp(recorded_at, WIB).date(),
         recorded_at=recorded_at,
+        diagnostics=operations_diagnostics,
     )
     latest_start = max((row.period_start for row in observations), default=None)
     latest_observations = [row for row in observations if row.period_start == latest_start]
     latest = latest_observations[0] if latest_observations else None
-    if sql_operations:
+    if raw_operations:
         granularity = input_settings.get("shifting_granularity", "daily")
-        period_start, period_end = sql_period_boundaries(granularity, recorded_at)
+        cutoff = (input_settings.get("shifting_csv_cutoff", recorded_at)
+                  if operations_source == "csv" else recorded_at)
+        period_start, period_end = operations_period_boundaries(granularity, cutoff)
         period_metadata = {"period_granularity": granularity}
     else:
         daily = bool(latest and latest.report_date)
@@ -130,6 +134,14 @@ def _build_loaded_report(input_settings, inputs, connection):
             weighted_compliance += compliance * count
             container_count += count
 
+    if sql_operations:
+        source = input_settings["sql_shifting"]
+        operations_location = source["schema"] + "." + source["detail_relation"]
+    elif operations_source == "csv":
+        operations_location = str(input_settings["shifting_operations_file"])
+    else:
+        operations_location = str(workbook_path)
+
     report = {
         "recorded_at": recorded_at,
         "period_start": period_start,
@@ -149,18 +161,17 @@ def _build_loaded_report(input_settings, inputs, connection):
             if container_count else None
         ),
         "blocks": blocks,
-        "shifting_source": (
-            input_settings["sql_shifting"]["schema"] + "." + input_settings["sql_shifting"]["detail_relation"]
-            if sql_operations else str(workbook_path)
-        ),
+        "shifting_source": operations_location,
         "shifting_workbook_source": str(workbook_path) if workbook_path is not None else None,
         "shifting_block_mapping_source": str(shifting_mapping_path),
         **({
-            "shifting_sql_mapping": input_settings["sql_shifting"],
             "shifting_activities": {kind: list(values) for kind, values in input_settings["shifting_activities"].items()},
             "operations_period_basis": "rolling_window",
             "operations_completeness": "unverified",
-        } if sql_operations else {}),
+        } if raw_operations else {}),
+        **({"shifting_sql_mapping": input_settings["sql_shifting"]} if sql_operations else {}),
+        **({"excluded_activities": operations_diagnostics.get("excluded_activities", {})}
+           if operations_source == "csv" else {}),
         **shifting_metrics(latest_observations),
         "loaded_shifting_data_points": len(observations),
         "shifting_observations": [

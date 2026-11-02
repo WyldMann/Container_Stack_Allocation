@@ -3,15 +3,24 @@
 from config import ConfigurationError
 
 from .shifting_repository import load_shifting_summary
+from .operations_repository import load_csv_shifting_summary
 from .shifting_xlsx_loader import ShiftingXLSXLoader
 from .sql_connection import input_connection
 from .sql_shifting_repository import load_sql_shifting_summary
 
 
 def load_operations(settings, branches, block_ids, *, connection=None, latest_only=False,
-                    today=None, recorded_at=None):
+                    today=None, recorded_at=None, diagnostics=None):
     cy_name = branches.cy_name()
     source = settings.get("shifting_source", "xlsx")
+    if source == "csv":
+        return load_csv_shifting_summary(
+            settings["shifting_operations_file"], settings["shifting_activities"],
+            cy_name, branches.records[0]["branch_code"],
+            settings["shifting_block_mapping_file"], block_ids,
+            period_granularity=settings.get("shifting_granularity", "daily"),
+            recorded_at=settings.get("shifting_csv_cutoff", recorded_at), diagnostics=diagnostics,
+        )
     if source == "sql":
         if connection is None:
             with input_connection(settings) as connection:

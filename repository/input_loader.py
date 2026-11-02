@@ -137,7 +137,7 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None):
             )
         if settings.get("filters"):
             _scope_to_yard_blocks(inputs)
-        if include_shifting and (settings.get("shifting_source") == "sql"
+        if include_shifting and (settings.get("shifting_source") in ("csv", "sql")
                                  or settings.get("shifting_workbook_file") is not None):
             inputs["shifting_summary"] = load_operations(
                 settings, directory,
