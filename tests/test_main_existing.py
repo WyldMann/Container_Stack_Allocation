@@ -1,6 +1,7 @@
 """Existing-yard metrics never load or place inbound containers."""
 
 from contextlib import redirect_stdout
+from datetime import datetime
 import io
 import csv
 import json
@@ -16,6 +17,8 @@ from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE
 from config.application.input_config import DATASETS
 from repository import CSVLoader
 from repository.csvloader import BRANCH_WHITESPACE
+from repository.shifting_dates import WIB
+from repository.shifting_repository import ShiftingSummary
 from tests.shifting_fixtures import write_report
 import main_existing
 
@@ -91,21 +94,21 @@ benchmark_period_start = 1857916800
             main_existing.Yard, "assign_and_place",
             side_effect=AssertionError("Inbound placement called"),
         ), patch.dict("sys.modules", {"psycopg": None}):
-            report = main_existing.build_report(self.input_path)
+            report, yard = main_existing._build_report_and_yard(self.input_path)
 
         self.assertEqual(len(opened), 8)
-        self.assertGreater(report["loaded_containers"], 0)
-        self.assertEqual(
-            report["loaded_containers"],
-            sum(block["container_count"] for block in report["blocks"]),
-        )
-        self.assertTrue(0 <= report["parameter_compliance"] <= 1)
-        self.assertEqual(report["shifting_count"], 20)
-        self.assertEqual(report["shifting_data_points"], 2)
-        self.assertEqual(report["shifting_observations"][0]["report_month"], "2026-10")
-        self.assertNotIn("inbound_containers", report["input_sources"])
-        self.assertEqual(report["input_sources"]["shifting_summary"], "xlsx")
-        self.assertEqual(report["shifting_source"], str(self.shifting_path))
+        self.assertGreater(len(yard.containers), 0)
+        self.assertTrue(0 <= report["avg_parameter_compliance"] <= 100)
+        self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 20)
+        self.assertEqual(len(report["shifting_observations"]), 2)
+        self.assertEqual(list(report), [
+            "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
+            "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
+        ])
+        self.assertEqual(list(report["shifting_observations"][0]), [
+            "cy_name", "block_code", "shifting_code", "lifting_count", "shifting_count",
+            "shifting_percentage", "parameter_compliance",
+        ])
 
     def set_source(self, name, source):
         text = self.input_path.read_text(encoding="utf-8")
@@ -155,9 +158,6 @@ benchmark_period_start = 1857916800
         ), encoding="utf-8")
         with patch.object(main_existing.Yard, "assign_and_place", side_effect=AssertionError("Inbound")):
             report, yard = main_existing._build_report_and_yard(self.input_path)
-        self.assertEqual(report["input_sources"]["existing_containers"], "sql")
-        self.assertNotIn("inbound_containers", report["input_sources"])
-        self.assertEqual(report["existing_input_rows"], 1)
         self.assertEqual(set(yard.containers), {"SQL_ONLY_CONTAINER"})
         driver.connect.assert_called_once()
         driver.sql.Identifier.assert_any_call("TERMINAL_APP", "TRM_TRS_TARGET_CONTAINER")
@@ -189,10 +189,10 @@ benchmark_period_start = 1857916800
     def test_empty_sql_result_stays_empty(self):
         _, _, cursor = self.sql_existing()
         cursor.__iter__.side_effect = lambda: iter(())
-        report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["existing_input_rows"], 0)
-        self.assertEqual(report["loaded_containers"], 0)
-        self.assertIsNone(report["parameter_compliance"])
+        report, yard = main_existing._build_report_and_yard(self.input_path)
+        self.assertEqual(len(yard.containers), 0)
+        self.assertIsNone(report["avg_parameter_compliance"])
+        self.assertTrue(all(row["parameter_compliance"] is None for row in report["shifting_observations"]))
 
     def test_sql_setup_errors_stop_loading_without_csv_fallback(self):
         driver, _, _ = self.sql_existing()
@@ -214,24 +214,22 @@ benchmark_period_start = 1857916800
     def test_unused_inbound_sql_source_needs_no_database_settings(self):
         self.set_source("inbound_containers", "sql")
         with patch.dict(os.environ, {}, clear=True), patch.dict("sys.modules", {"psycopg": None}):
-            report = main_existing.build_report(self.input_path)
-        self.assertGreater(report["loaded_containers"], 0)
-        self.assertNotIn("inbound_containers", report["input_sources"])
+            report, yard = main_existing._build_report_and_yard(self.input_path)
+        self.assertGreater(len(yard.containers), 0)
 
     def test_inbound_source_and_file_can_be_omitted(self):
         text = self.input_path.read_text(encoding="utf-8")
         self.input_path.write_text("\n".join(
             line for line in text.splitlines() if not line.startswith("inbound_containers =")
         ), encoding="utf-8")
-        report = main_existing.build_report(self.input_path)
-        self.assertGreater(report["loaded_containers"], 0)
+        report, yard = main_existing._build_report_and_yard(self.input_path)
+        self.assertGreater(len(yard.containers), 0)
 
     def test_available_shifts_are_summed_and_missing_observations_counted(self):
         self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),SL,,,,\n")
         report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["shifting_count"], 10)
-        self.assertEqual(report["missing_shifting_observations"], 1)
-        self.assertNotIn("known_shifting_count", report)
+        self.assertEqual([row["shifting_count"] for row in report["shifting_observations"]], [10, None])
+        self.assertIsNone(report["avg_shifting_percentage"])
 
     def test_latest_week_uses_aggregate_operations_and_unix_recording_time(self):
         self.write_shifting(
@@ -243,18 +241,15 @@ benchmark_period_start = 1857916800
             report = main_existing.build_report(self.input_path)
         self.assertEqual(report["recorded_at"], 1234567890)
         self.assertNotIn("recorded_at_utc", report)
-        self.assertEqual(report["latest_week"], 44)
+        self.assertEqual(report["period_granularity"], "weekly")
+        self.assertIsNotNone(report["latest_date"])
         self.assertEqual(report["period_start"], 1860336000)
         self.assertEqual(report["period_end"], 1860940800)
-        self.assertEqual(report["lifting_count"], 1000)
-        self.assertEqual(report["shifting_count"], 100)
-        self.assertEqual(report["total_operations"], 1100)
-        self.assertAlmostEqual(report["shifting_percentage"], 100 * 100 / 1100)
-        self.assertEqual(report["shifting_data_points"], 2)
-        self.assertEqual(report["loaded_shifting_data_points"], 2)
+        self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 1000)
+        self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 100)
+        self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * 100 / 1100)
         self.assertEqual(len(report["shifting_observations"]), 2)
-        self.assertEqual(report["parameter_compliance_basis"], "current_yard_snapshot")
-        blocks = {block["block_code"]: block for block in report["blocks"]}
+        blocks = {row["block_code"]: row for row in report["shifting_observations"]}
         self.assertEqual(blocks["B"]["shifting_percentage"], 50)
         self.assertEqual(blocks["C"]["shifting_percentage"], 0)
 
@@ -266,12 +261,9 @@ benchmark_period_start = 1857916800
             "CY 219 (Lini 2),RS,100,10,2026-10,44\n"
         )
         report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["latest_week"], 44)
-        self.assertEqual(report["lifting_count"], 300)
-        self.assertEqual(report["shifting_count"], 30)
-        self.assertAlmostEqual(report["shifting_percentage"], 100 * 30 / 330)
-        self.assertEqual(report["missing_lifting_observations"], 0)
-        self.assertEqual(report["missing_shifting_observations"], 0)
+        self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 300)
+        self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 30)
+        self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * 30 / 330)
         self.assertEqual(len(report["shifting_observations"]), 2)
 
     def test_absent_block_invalid_counts_do_not_affect_selected_week(self):
@@ -280,9 +272,8 @@ benchmark_period_start = 1857916800
             "CY 219 (Lini 2),SL,200,20,2026-10,43\nCY 219 (Lini 2),RS,bad,-1,2026-10,43\n"
         )
         report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["latest_week"], 43)
-        self.assertEqual(report["shifting_count"], 20)
-        self.assertAlmostEqual(report["shifting_percentage"], 100 * 20 / 220)
+        self.assertEqual(report["shifting_observations"][0]["shifting_count"], 20)
+        self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * 20 / 220)
         self.assertNotIn("skipped_shifting_data_points", report)
 
     def test_incomplete_latest_week_keeps_counts_and_no_percentage(self):
@@ -292,41 +283,40 @@ benchmark_period_start = 1857916800
             "CY 219 (Lini 2),RS,,,2026-10,44\n"
         )
         report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["latest_week"], 44)
-        self.assertEqual(report["lifting_count"], 50)
-        self.assertEqual(report["shifting_count"], 10)
-        self.assertIsNone(report["shifting_percentage"])
-        self.assertEqual(report["missing_lifting_observations"], 1)
-        self.assertEqual(report["missing_shifting_observations"], 1)
+        self.assertEqual(report["shifting_observations"][0]["lifting_count"], 50)
+        self.assertEqual(report["shifting_observations"][0]["shifting_count"], 10)
+        self.assertIsNone(report["avg_shifting_percentage"])
+        self.assertIsNone(report["shifting_observations"][1]["lifting_count"])
+        self.assertIsNone(report["shifting_observations"][1]["shifting_count"])
 
     def test_zero_total_operations_has_no_percentage(self):
         self.write_shifting("CY 219 (Lini 2),SL,0,0,2026-10,44\n")
         report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["total_operations"], 0)
-        self.assertIsNone(report["shifting_percentage"])
+        self.assertEqual(report["shifting_observations"][0]["lifting_count"], 0)
+        self.assertEqual(report["shifting_observations"][0]["shifting_count"], 0)
+        self.assertIsNone(report["avg_shifting_percentage"])
+        self.assertIsNone(report["shifting_observations"][0]["shifting_percentage"])
 
     def test_older_block_data_is_not_joined_to_latest_week(self):
         self.write_shifting(
             "CY 219 (Lini 2),SL,50,10,2026-10,44\nCY 219 (Lini 2),RS,100,30,2026-10,43\n"
         )
         report = main_existing.build_report(self.input_path)
-        block = next(b for b in report["blocks"] if b["block_code"] == "C")
-        self.assertIsNone(block["lifting_count"])
-        self.assertIsNone(block["shifting_count"])
-        self.assertIsNone(block["shifting_percentage"])
+        rows = report["shifting_observations"]
+        self.assertEqual(rows[0]["block_code"], "B")
+        self.assertTrue(all(row["shifting_count"] is None for row in rows if row["block_code"] == "C"))
 
     def test_all_missing_observations_do_not_become_zero(self):
         self.write_shifting("CY 219 (Lini 2),SL,,,,\n")
         report = main_existing.build_report(self.input_path)
-        self.assertIsNone(report["shifting_count"])
-        self.assertEqual(report["missing_shifting_observations"], 1)
+        self.assertIsNone(report["shifting_observations"][0]["shifting_count"])
+        self.assertIsNone(report["avg_shifting_percentage"])
 
     def test_explicit_zero_remains_zero(self):
         self.write_shifting("CY 219 (Lini 2),SL,100,0,,\n")
         report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["shifting_count"], 0)
-        self.assertEqual(report["shifting_percentage"], 0)
-        self.assertEqual(report["missing_shifting_observations"], 0)
+        self.assertEqual(report["shifting_observations"][0]["shifting_count"], 0)
+        self.assertEqual(report["avg_shifting_percentage"], 0)
 
     def test_compliance_is_container_weighted(self):
         first = Mock()
@@ -351,8 +341,8 @@ benchmark_period_start = 1857916800
         )
         with patch.object(main_existing, "Yard", return_value=yard):
             report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["parameter_compliance"], 0.25)
-        self.assertTrue(report["has_bad_data"])
+        self.assertEqual(report["avg_parameter_compliance"], 25)
+        self.assertEqual(report["shifting_observations"][0]["parameter_compliance"], 100)
 
     def test_empty_yard_omits_all_observations_and_has_no_compliance(self):
         yard = SimpleNamespace(
@@ -361,48 +351,42 @@ benchmark_period_start = 1857916800
         )
         with patch.object(main_existing, "Yard", return_value=yard):
             report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["loaded_containers"], 0)
-        self.assertIsNone(report["parameter_compliance"])
-        self.assertIsNone(report["shifting_count"])
-        self.assertEqual(report["shifting_data_points"], 0)
+        self.assertIsNone(report["avg_parameter_compliance"])
+        self.assertEqual(report["shifting_observations"], [])
         self.assertIsNone(report["period_start"])
-        self.assertIsNone(report["lifting_count"])
-        self.assertIsNone(report["shifting_percentage"])
+        self.assertIsNone(report["latest_date"])
+        self.assertIsNone(report["avg_shifting_percentage"])
         self.assertNotIn("skipped_shifting_data_points", report)
 
     def test_absent_block_counts_are_excluded_from_yard_and_block_totals(self):
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "B"\nRS = "99"\n', encoding="utf-8")
         self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,100,30,,\n")
         report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["shifting_count"], 10)
-        self.assertEqual(report["shifting_data_points"], 1)
+        self.assertEqual(report["shifting_observations"][0]["shifting_count"], 10)
+        self.assertEqual(len(report["shifting_observations"]), 1)
         self.assertNotIn("skipped_shifting_data_points", report)
         self.assertNotIn("skipped_shifting_observations", report)
         self.assertEqual(
-            next(b for b in report["blocks"] if b["block_code"] == "B")["shifting_count"], 10,
+            report["shifting_observations"][0]["block_code"], "B",
         )
 
     def test_shifting_counts_are_joined_to_blocks(self):
         self.write_shifting(
             "CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,100,30,,\nCY 219 (Lini 2),SL,100,20,,\n"
         )
-        report = main_existing.build_report(self.input_path)
-        blocks = {block["block_code"]: block for block in report["blocks"]}
-        self.assertEqual(blocks["B"]["shifting_count"], 30)
-        self.assertEqual(blocks["B"]["shifting_data_points"], 2)
-        self.assertEqual(blocks["C"]["shifting_count"], 30)
-        self.assertEqual(report["shifting_count"], 60)
+        report, yard = main_existing._build_report_and_yard(self.input_path)
+        rows = report["shifting_observations"]
+        self.assertEqual(sum(row["shifting_count"] for row in rows if row["block_code"] == "B"), 30)
+        self.assertEqual(sum(row["shifting_count"] for row in rows
+                             if row["block_code"] == "C" and row["shifting_count"] is not None), 30)
         self.assertEqual(report["shifting_observations"][0]["shifting_code"], "SL")
-        self.assertEqual(report["shifting_observations"][0]["block_id"], blocks["B"]["block_id"])
+        block = next(block for block in yard.blocks_by_id.values() if block.getCode() == "B")
+        self.assertAlmostEqual(rows[0]["parameter_compliance"], block.parameterCompliance() * 100)
         self.assertNotIn("equipment_group", report["shifting_observations"][0])
 
     def test_block_without_observations_is_not_reported_as_zero(self):
         report = main_existing.build_report(self.input_path)
-        block = next(block for block in report["blocks"] if block["block_code"] == "C")
-        self.assertEqual(block["shifting_data_points"], 0)
-        self.assertIsNone(block["shifting_count"])
-        self.assertEqual(block["missing_shifting_observations"], 0)
-        self.assertNotIn("known_shifting_count", block)
+        self.assertNotIn("C", [row["block_code"] for row in report["shifting_observations"]])
 
     def test_shifting_path_is_required(self):
         text = self.input_path.read_text(encoding="utf-8")
@@ -428,18 +412,98 @@ benchmark_period_start = 1857916800
         output = self.root / "output" / "existing_yard_metrics.jsonl"
         records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(records, [report, report])
-        self.assertIn("Existing containers source: csv", captured.getvalue())
+        self.assertIn("parameter compliance use 0-100", captured.getvalue())
+        self.assertIn('"recorded_at": ', output.read_text(encoding="utf-8"))
+        self.assertIn(', "period_start": ', output.read_text(encoding="utf-8"))
         lines = captured.getvalue().splitlines()
         index = lines.index("JSONL metrics row:")
         displayed = dict(zip(lines[index + 1].split(), lines[index + 2].split(), strict=True))
         for field, value in displayed.items():
             self.assertEqual(value, "null" if records[0][field] is None else str(records[0][field]))
-        self.assertEqual(displayed["shifting_count"], "10")
-        self.assertEqual(displayed["lifting_count"], "100")
-        self.assertEqual(displayed["shifting_percentage"], "null")
-        self.assertIn("Missing shifting observations: 1", captured.getvalue())
+        self.assertEqual(displayed["avg_shifting_percentage"], "null")
         self.assertNotIn("Known shifting count:", captured.getvalue())
         self.assertNotIn("Skipped shifting observations:", captured.getvalue())
+
+
+class RecordedMetricsTests(unittest.TestCase):
+    def setUp(self):
+        self.now = int(datetime(2026, 11, 1, 0, 15, tzinfo=WIB).timestamp())
+        self.inputs = {name: [] for name in main_existing.EXISTING_YARD_DATASETS}
+        self.inputs["terminal_branches"] = [{
+            "branch_id": "2", "terminal_id": "1", "branch_code": "JKT74",
+            "branch_name": "CY 219 (Lini 2)",
+        }]
+        blocks = {}
+        for block_id, code, score in (("29", "B", 1.0), ("30", "C", 0.0), ("31", "D", None)):
+            block = Mock()
+            block.getId.return_value = block_id
+            block.getBranch.return_value = "2"
+            block.getCode.return_value = code
+            block.parameterCompliance.return_value = score
+            blocks[block_id] = block
+        containers = {}
+        for index, code in enumerate(("B", "C", "C", "C")):
+            container = Mock()
+            container.getCoordsStr.return_value = ("2", code, "1", "1", "1")
+            containers[str(index)] = container
+        self.yard = SimpleNamespace(containers=containers, blocks_by_id=blocks)
+
+    def report(self, source="csv", granularity="daily", empty=False):
+        start = self.now - (86400 if granularity == "daily" else 7 * 86400)
+        report_date = "2026-10-31" if source == "xlsx" and granularity == "daily" else None
+        rows = [] if empty else [
+            ShiftingSummary("CY 219 (Lini 2)", equipment, lifting, shifting,
+                            block_id=block_id, period_start=start, period_end=self.now,
+                            report_date=report_date)
+            for equipment, block_id, lifting, shifting in (
+                ("SL", "29", 100, 100), ("RS", "30", 900, 0),
+                ("EXTRA", "29", 0, 0), ("EMPTY", "31", 0, 0),
+            )
+        ]
+        settings = {"shifting_source": source, "shifting_granularity": granularity,
+                    "shifting_workbook_sheet": "Per Alat " + granularity.title(),
+                    "shifting_period": {}}
+        with patch.object(main_existing, "Yard", return_value=self.yard), patch.object(
+            main_existing, "load_operations", return_value=rows,
+        ), patch.object(main_existing, "time", return_value=self.now):
+            report, _ = main_existing._build_loaded_report(settings, self.inputs, None)
+        return report
+
+    def test_all_sources_share_ordered_schema_and_weighted_percentages(self):
+        for source in ("csv", "sql", "xlsx"):
+            for granularity in ("daily", "weekly"):
+                with self.subTest(source=source, granularity=granularity):
+                    report = self.report(source, granularity)
+                    self.assertEqual(list(report), [
+                        "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
+                        "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
+                    ])
+                    self.assertEqual(report["period_granularity"], granularity)
+                    self.assertEqual(report["latest_date"], "2026-10-31" if source == "xlsx" and
+                                     granularity == "daily" else "2026-11-01")
+                    self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * 100 / 1100)
+                    self.assertEqual(report["avg_parameter_compliance"], 25)
+                    self.assertEqual([row["parameter_compliance"] for row in report["shifting_observations"]],
+                                     [100, 0, 100, None])
+                    for row in report["shifting_observations"]:
+                        self.assertEqual(list(row), [
+                            "cy_name", "block_code", "shifting_code", "lifting_count", "shifting_count",
+                            "shifting_percentage", "parameter_compliance",
+                        ])
+                    json.dumps(report, allow_nan=False)
+
+    def test_empty_observations_keep_compliance_and_source_window_behavior(self):
+        for source in ("csv", "sql", "xlsx"):
+            with self.subTest(source=source):
+                report = self.report(source, empty=True)
+                self.assertEqual(report["shifting_observations"], [])
+                self.assertEqual(report["avg_parameter_compliance"], 25)
+                self.assertIsNone(report["avg_shifting_percentage"])
+                self.assertEqual(report["latest_date"], "2026-11-01" if source == "sql" else None)
+
+    def test_weekly_xlsx_date_uses_last_included_day_at_midnight(self):
+        self.now = int(datetime(2026, 11, 1, tzinfo=WIB).timestamp())
+        self.assertEqual(self.report("xlsx", "weekly")["latest_date"], "2026-10-31")
 
 
 if __name__ == "__main__":

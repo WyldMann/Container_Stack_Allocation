@@ -12,6 +12,9 @@ timestamp for the selected branch and equipment mapped to loaded yard blocks,
 among rows with a nonempty `DTL_ID`. Activities outside the configured categories
 also participate in finding that latest timestamp. Row order does not affect it.
 `recorded_at` records when the yard metrics were produced, not the window end.
+The report's `latest_date` (`YYYY-MM-DD`) is derived from the window end in WIB
+for both daily and weekly windows, and is `null` when no window is available.
+This label does not restrict the window to a calendar date or month.
 XLSX and SQL remain independently selectable.
 The CSV path is resolved with the other entries in `[csv.files]` and stored in
 `settings["csv_files"]["shifting_summary"]`. The former
@@ -52,7 +55,8 @@ a limited query result.
   ignoring case and surrounding whitespace.
 - Match `ALAT` through `shifting.block_mapping_file`, ignoring case and surrounding
   whitespace. Mapping values are yard `block_code` strings (for example, `SL = "2A"`),
-  resolved to the loaded yard's `block_id` for recorded metrics. Unmapped equipment
+  resolved to the loaded yard's `block_id` internally. Recorded observations use
+  `block_code`. Unmapped equipment
   and equipment assigned to absent yard block codes
   are excluded. `BLOK` and container coordinates do not determine this assignment.
 - Parse `ACTIVITY_DATE_TIME` as `DD-MM-YYYY HH:MM` or `DD/MM/YYYY HH:MM` in WIB
@@ -76,15 +80,40 @@ a limited query result.
   If there are no scoped, dated operations, return no observations and leave the
   report window unavailable (`None`).
 
-The report records the CSV source, shared activity lists, window timestamps, and
-`operations_period_basis = "latest_activity_window"` and
-`operations_completeness = "unverified"`. A zero means no qualifying rows in the
+The CSV uses the latest activity window, whose completeness is unverified.
+A zero means no qualifying rows in the
 supplied export, not proof that the export covers the entire window. No older
 period is selected automatically. Parameter compliance still reflects the current
 yard snapshot even when the CSV operations are historical. The former
 `csv.shifting_cutoff` setting is no longer supported. SQL retains its rolling
 last-24-hours / last-7-days windows.
 
-`excluded_activities` in the JSONL report lists unclassified activity names and
-counts within the selected branch, mapped equipment, and window, for rows with
-a nonempty operation identifier. The presenter displays nonempty exclusions.
+Importer diagnostics can collect `excluded_activities`, listing unclassified
+activity names and counts within the selected branch, mapped equipment, and
+window, for rows with a nonempty operation identifier. These diagnostics are
+not included in the shortened JSONL output.
+
+## Recorded JSONL format
+
+CSV, SQL, and XLSX reports use the same ordered fields:
+`recorded_at`, `period_start`, `period_end`, `latest_date`, `period_granularity`,
+`avg_shifting_percentage`, `avg_parameter_compliance`, `shifting_observations`.
+Each record occupies one line, with a space after commas and colons.
+
+Each observation contains, in order: `cy_name`, `block_code`, `shifting_code`,
+`lifting_count`, `shifting_count`, `shifting_percentage`, `parameter_compliance`.
+Observations come from the selected latest reporting period.
+
+`avg_shifting_percentage` is `100 * total shifting / total operations`, not the
+arithmetic mean of equipment percentages. It is `null` for zero operations or
+incomplete counts. `avg_parameter_compliance` is the container-weighted average
+across all loaded blocks, multiplied by 100. Each observation's compliance is
+its block's compliance multiplied by 100. Multiple equipment codes may repeat
+a block's compliance without giving that block additional weight in the average.
+An empty yard or empty block has `null` compliance; zero compliance remains zero.
+The internal block compliance method continues to return a 0-1 ratio.
+
+`latest_date` labels the CSV/SQL window end in WIB. XLSX uses its report date,
+or the last included WIB date for weekly periods. SQL still defines its window
+and date when observations are empty; CSV/XLSX have `null` dates without a window.
+Parameter compliance always describes the current yard snapshot.

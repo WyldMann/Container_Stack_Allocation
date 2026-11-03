@@ -2,7 +2,7 @@
 
 from contextlib import redirect_stdout
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime
 import csv
 import importlib.util
 import io
@@ -19,7 +19,7 @@ from config.application.shifting_input import sql_shifting_settings
 import main_existing
 from repository import InputError, load_yard_inputs
 from repository.sql_shifting_repository import load_sql_shifting_summary, operations_count_query, sql_period_boundaries
-from repository.shifting_dates import daily_boundaries
+from repository.shifting_dates import WIB, daily_boundaries
 from tests import test_main_existing as main_tests
 
 
@@ -242,16 +242,11 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         self.assertEqual(report["period_start"], NOW - 86400)
         self.assertEqual(report["period_end"], report["recorded_at"])
         self.assertEqual(report["period_granularity"], "daily")
-        self.assertNotIn("latest_date", report)
+        self.assertEqual(report["latest_date"], datetime.fromtimestamp(NOW, WIB).date().isoformat())
         self.assertNotIn("latest_week", report)
-        self.assertEqual(report["lifting_count"], 300)
-        self.assertEqual(report["shifting_count"], 30)
-        self.assertEqual(report["total_operations"], 330)
-        self.assertAlmostEqual(report["shifting_percentage"], 100 * 30 / 330)
-        self.assertEqual(report["input_sources"]["shifting_summary"], "sql")
-        self.assertIsNone(report["shifting_workbook_source"])
-        self.assertEqual(report["operations_completeness"], "unverified")
-        self.assertEqual(report["operations_period_basis"], "rolling_window")
+        self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 300)
+        self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 30)
+        self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * 30 / 330)
         self.assertNotIn("period_selection", report)
         json.dumps(report, allow_nan=False)
         output = io.StringIO()
@@ -260,12 +255,11 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         ), patch.object(main_existing.YardPresenter, "outYard"), redirect_stdout(output):
             main_existing.main()
         record = json.loads((self.fixture.root / "output" / "existing_yard_metrics.jsonl").read_text())
-        self.assertEqual(record["lifting_count"], 300)
-        self.assertEqual(record["shifting_count"], 30)
+        self.assertEqual(record, report)
         self.assertEqual(record["period_end"], record["recorded_at"])
         self.assertEqual(record["period_end"] - record["period_start"], 86400)
-        self.assertIn("Operations window: last 24 hours", output.getvalue())
-        self.assertIn("period_start period_end shifting_code", output.getvalue())
+        self.assertIn("daily", output.getvalue())
+        self.assertIn("block_code shifting_code", output.getvalue())
         self.assertNotIn("Latest complete operations date", output.getvalue())
 
     def test_shared_input_loader_dispatches_sql_operations_in_its_snapshot(self):
@@ -285,17 +279,14 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         self.assertEqual(report["period_start"], NOW - 604800)
         self.assertEqual(report["period_end"], report["recorded_at"])
         self.assertNotIn("latest_week", report)
-        self.assertNotIn("latest_date", report)
-        self.assertTrue(all(row["period_start"] == report["period_start"]
-                            and row["period_end"] == report["period_end"]
-                            for row in report["shifting_observations"]))
+        self.assertEqual(report["latest_date"], datetime.fromtimestamp(NOW, WIB).date().isoformat())
         self.assertTrue(all(item["period_start"] == report["period_start"]
                             and item["period_end"] == report["period_end"]
                             for item in self.parameters()))
         output = io.StringIO()
         with redirect_stdout(output):
             main_existing.YardPresenter().outRecordedMetrics(report)
-        self.assertIn("Operations window: last 7 days", output.getvalue())
+        self.assertIn("weekly", output.getvalue())
         self.assertNotIn("operations week", output.getvalue())
         record = json.loads(json.dumps(report, allow_nan=False))
         self.assertEqual(record["period_end"] - record["period_start"], 604800)
@@ -308,7 +299,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
             report = main_existing.build_report(self.path)
         self.assertEqual(report["shifting_observations"], [])
         self.assertEqual((report["period_start"], report["period_end"]), (START, END))
-        self.assertIsNone(report["shifting_count"])
+        self.assertIsNone(report["avg_shifting_percentage"])
         self.connection.cursor.assert_not_called()
 
     def test_container_sql_and_operations_sql_share_the_same_transaction(self):
@@ -337,8 +328,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         with patch.object(main_existing, "time", return_value=NOW):
             report, yard = main_existing._build_report_and_yard(self.path)
         self.assertIn("SQL_ONLY_CONTAINER", yard.containers)
-        self.assertEqual(report["input_sources"]["existing_containers"], "sql")
-        self.assertEqual(report["shifting_count"], 30)
+        self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 30)
         self.assertEqual(self.connection.cursor.call_count, 5)
         self.connect.assert_called_once()
         context.__exit__.assert_called_once()

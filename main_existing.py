@@ -1,7 +1,6 @@
 """Record existing-yard compliance and operations from the selected source."""
 
-from collections import Counter, defaultdict
-from dataclasses import asdict
+from collections import Counter
 from datetime import datetime
 import json
 from time import time
@@ -56,14 +55,10 @@ def _build_loaded_report(input_settings, inputs, connection):
     period_settings = input_settings.get("shifting_period")
     operations_source = input_settings.get("shifting_source", "xlsx")
     sql_operations = operations_source == "sql"
-    raw_operations = operations_source in ("csv", "sql")
-    shifting_mapping_path = input_settings["shifting_block_mapping_file"]
-    workbook_path = input_settings.get("shifting_workbook_file")
     workbook_sheet = input_settings.get("shifting_workbook_sheet", "Per Alat Weekly")
 
     branches = BranchDirectory(inputs["terminal_branches"])
     cy_name = branches.cy_name()
-
     settings = load_config(DEFAULT_CONFIG_FILE)
     yard = Yard(
         yard_blocks_input=inputs["yard_blocks"],
@@ -78,7 +73,6 @@ def _build_loaded_report(input_settings, inputs, connection):
     )
 
     recorded_at = int(time())
-    operations_diagnostics = {}
     observations = load_operations(
         input_settings, branches,
         [{"block_id": block.getId(), "block_code": block.getCode()}
@@ -86,7 +80,6 @@ def _build_loaded_report(input_settings, inputs, connection):
         connection=connection, latest_only=True,
         today=datetime.fromtimestamp(recorded_at, WIB).date(),
         recorded_at=recorded_at,
-        diagnostics=operations_diagnostics,
     )
     latest_start = max((row.period_start for row in observations), default=None)
     latest_observations = [row for row in observations if row.period_start == latest_start]
@@ -94,94 +87,62 @@ def _build_loaded_report(input_settings, inputs, connection):
     if sql_operations:
         granularity = input_settings.get("shifting_granularity", "daily")
         period_start, period_end = operations_period_boundaries(granularity, recorded_at)
-        period_metadata = {"period_granularity": granularity}
     elif operations_source == "csv":
         granularity = input_settings.get("shifting_granularity", "daily")
         period_start = latest_start
         period_end = latest.period_end if latest else None
-        period_metadata = {"period_granularity": granularity}
     else:
         daily = bool(latest and latest.report_date)
         if latest is None:
             daily = "daily" in workbook_sheet.casefold() or period_settings is None
         period_start = latest_start
         period_end = latest.period_end if latest else None
-        period_metadata = (
-            {"latest_date": latest.report_date if latest else None, "period_granularity": "daily"}
-            if daily else {
-                "latest_week": int(latest.week_number) if latest else None, "period_granularity": "weekly",
-            }
-        )
-    by_block = defaultdict(list)
-    for row in latest_observations:
-        by_block[row.block_id].append(row)
+        granularity = "daily" if daily else "weekly"
+
+    latest_date = latest.report_date if latest else None
+    if latest_date is None and period_end is not None:
+        # XLSX periods end exclusively; raw CSV/SQL dates label the window end.
+        date_timestamp = period_end - 1 if operations_source == "xlsx" else period_end
+        latest_date = datetime.fromtimestamp(date_timestamp, WIB).date().isoformat()
 
     # The accepted-container registry counts each 40-foot container once.
     counts = Counter(
         tuple(container.getCoordsStr()[:2])
         for container in yard.containers.values()
     )
-    blocks = []
+    compliance_by_block = {}
     weighted_compliance = 0.0
     container_count = 0
     for block in yard.blocks_by_id.values():
         count = counts[(block.getBranch(), block.getCode())]
         compliance = block.parameterCompliance()
-        blocks.append({
-            "block_id": block.getId(),
-            "branch_id": block.getBranch(),
-            "block_code": block.getCode(),
-            "container_count": count,
-            "parameter_compliance": compliance,
-            **shifting_metrics(by_block[block.getId()]),
-        })
+        compliance_by_block[block.getId()] = compliance * 100 if compliance is not None else None
         if compliance is not None:
             weighted_compliance += compliance * count
             container_count += count
-
-    if sql_operations:
-        source = input_settings["sql_shifting"]
-        operations_location = source["schema"] + "." + source["detail_relation"]
-    elif operations_source == "csv":
-        operations_location = str(input_settings["csv_files"]["shifting_summary"])
-    else:
-        operations_location = str(workbook_path)
 
     report = {
         "recorded_at": recorded_at,
         "period_start": period_start,
         "period_end": period_end,
-        **period_metadata,
-        "report_month": latest.report_month if latest else None,
-        "parameter_compliance_basis": "current_yard_snapshot",
-        "cy_name": cy_name,
-        "branch": dict(branches.records[0]),
-        "input_sources": {**input_settings["sources"], "shifting_summary": operations_source},
-        "input_filters": dict(input_settings.get("filters", {})),
-        "existing_input_rows": len(inputs["existing_containers"]),
-        "loaded_containers": len(yard.containers),
-        "has_bad_data": yard.bad_data.anyBadData(),
-        "parameter_compliance": (
-            weighted_compliance / container_count
+        "latest_date": latest_date,
+        "period_granularity": granularity,
+        "avg_shifting_percentage": shifting_metrics(latest_observations)["shifting_percentage"],
+        "avg_parameter_compliance": (
+            weighted_compliance / container_count * 100
             if container_count else None
         ),
-        "blocks": blocks,
-        "shifting_source": operations_location,
-        "shifting_workbook_source": str(workbook_path) if workbook_path is not None else None,
-        "shifting_block_mapping_source": str(shifting_mapping_path),
-        **({
-            "shifting_activities": {kind: list(values) for kind, values in input_settings["shifting_activities"].items()},
-            "operations_period_basis": "rolling_window" if sql_operations else "latest_activity_window",
-            "operations_completeness": "unverified",
-        } if raw_operations else {}),
-        **({"shifting_sql_mapping": input_settings["sql_shifting"]} if sql_operations else {}),
-        **({"excluded_activities": operations_diagnostics.get("excluded_activities", {})}
-           if operations_source == "csv" else {}),
-        **shifting_metrics(latest_observations),
-        "loaded_shifting_data_points": len(observations),
         "shifting_observations": [
-            {**asdict(row), "shifting_percentage": row.shifting_percentage}
-            for row in observations
+            {
+                "cy_name": cy_name,
+                "block_code": yard.blocks_by_id[row.block_id].getCode(),
+                "shifting_code": row.shifting_code,
+                "lifting_count": row.lifting_count,
+                "shifting_count": row.shifting_count,
+                "shifting_percentage": row.shifting_percentage,
+                "parameter_compliance": compliance_by_block[row.block_id],
+            }
+            for row in latest_observations
         ],
     }
     return report, yard
@@ -198,7 +159,7 @@ def main():
         DEFAULT_INPUT_CONFIG_FILE.parent.parent
         / "output" / "existing_yard_metrics.jsonl"
     )
-    line = json.dumps(report, ensure_ascii=False, allow_nan=False)
+    line = json.dumps(report, ensure_ascii=False, allow_nan=False, separators=(", ", ": "))
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("a", encoding="utf-8") as file:
         file.write(line + "\n")

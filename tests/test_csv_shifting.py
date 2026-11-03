@@ -310,14 +310,12 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
             report = main_existing.build_report(self.path)
         self.assertEqual(report["recorded_at"], NOW + 10 * 86400)
         self.assertEqual((report["period_start"], report["period_end"]), (LATEST - 86400, LATEST))
-        self.assertEqual(report["input_sources"]["shifting_summary"], "csv")
-        self.assertEqual(report["shifting_source"], str(self.csv_path))
-        self.assertIsNone(report["shifting_workbook_source"])
-        self.assertEqual(report["operations_period_basis"], "latest_activity_window")
-        self.assertEqual(report["operations_completeness"], "unverified")
-        self.assertEqual(report["excluded_activities"], {"Lift On Delivery": 1})
-        self.assertEqual(report["shifting_percentage"], 50)
-        self.assertNotIn("latest_date", report)
+        self.assertEqual(report["avg_shifting_percentage"], 50)
+        self.assertEqual(report["latest_date"], "2026-10-29")
+        self.assertEqual(list(report), [
+            "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
+            "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
+        ])
         json.dumps(report, allow_nan=False)
         output = io.StringIO()
         with patch.object(main_existing, "_build_report_and_yard", return_value=(report, None)), patch.object(
@@ -326,10 +324,28 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
             main_existing.main()
         saved = json.loads((self.fixture.root / "output" / "existing_yard_metrics.jsonl").read_text())
         self.assertEqual(saved, report)
-        self.assertIn("Operations window: last 24 hours ending at the latest CSV activity", output.getvalue())
-        self.assertIn("period_start is exclusive and period_end is inclusive", output.getvalue())
-        self.assertIn("Lift On Delivery", output.getvalue())
-        self.assertIn("period_start period_end shifting_code", output.getvalue())
+        self.assertIn("latest_date is in WIB", output.getvalue())
+        self.assertIn("parameter compliance use 0-100", output.getvalue())
+        self.assertNotIn("Lift On Delivery", output.getvalue())
+        self.assertIn("block_code shifting_code", output.getvalue())
+        lines = output.getvalue().splitlines()
+        index = lines.index("JSONL metrics row:")
+        displayed = dict(zip(lines[index + 1].split(), lines[index + 2].split(), strict=True))
+        self.assertEqual(displayed["latest_date"], saved["latest_date"])
+        self.assertEqual(float(displayed["avg_parameter_compliance"]), saved["avg_parameter_compliance"])
+
+    def test_csv_date_uses_window_end_in_wib_for_daily_and_weekly_reports(self):
+        original = self.path.read_text(encoding="utf-8")
+        write_csv(self.csv_path, [operation(timestamp="01-11-2026 00:15")])
+        for granularity in ("daily", "weekly"):
+            with self.subTest(granularity=granularity):
+                self.path.write_text(original.replace(
+                    'period_granularity = "daily"', f'period_granularity = "{granularity}"',
+                ), encoding="utf-8")
+                with patch.object(main_existing, "time", return_value=NOW):
+                    report = main_existing.build_report(self.path)
+                self.assertEqual(report["latest_date"], "2026-11-01")
+                self.assertNotIn("report_month", report)
 
     def test_weekly_report_uses_latest_seven_days(self):
         text = self.path.read_text(encoding="utf-8")
@@ -341,7 +357,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         output = io.StringIO()
         with redirect_stdout(output):
             main_existing.YardPresenter().outRecordedMetrics(report)
-        self.assertIn("Operations window: last 7 days ending at the latest CSV activity", output.getvalue())
+        self.assertIn("weekly", output.getvalue())
 
     def test_old_cutoff_setting_is_rejected_instead_of_silently_overriding_latest_window(self):
         text = self.path.read_text(encoding="utf-8")
@@ -371,17 +387,15 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         text = self.path.read_text(encoding="utf-8")
         self.path.write_text(text.replace('lifting = [', 'lifting = ["Lift On Delivery",'), encoding="utf-8")
         report = main_existing.build_report(self.path)
-        self.assertEqual(report["lifting_count"], 2)
-        self.assertEqual(report["shifting_count"], 1)
-        self.assertEqual(report["excluded_activities"], {})
+        self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 2)
+        self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 1)
+        self.assertAlmostEqual(report["avg_shifting_percentage"], 100 / 3)
 
     def test_csv_operations_can_accompany_sql_yard_data(self):
         driver, connection, cursor = self.fixture.sql_existing()
         report = main_existing.build_report(self.path)
-        self.assertEqual(report["input_sources"]["existing_containers"], "sql")
-        self.assertEqual(report["input_sources"]["shifting_summary"], "csv")
-        self.assertEqual(report["lifting_count"], 1)
-        self.assertEqual(report["shifting_count"], 1)
+        self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 1)
+        self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 1)
         driver.connect.assert_called_once()
         cursor.execute.assert_called_once()
         self.assertTrue(connection.read_only)
@@ -395,14 +409,18 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
             report = main_existing.build_report(self.path)
         self.assertEqual(report["shifting_observations"], [])
         self.assertEqual((report["period_start"], report["period_end"]), (None, None))
-        self.assertIsNone(report["shifting_count"])
+        self.assertIsNone(report["avg_shifting_percentage"])
+        self.assertIsNone(report["latest_date"])
+        self.assertIsNone(report["avg_parameter_compliance"])
 
     def test_empty_csv_report_does_not_invent_a_window(self):
         write_csv(self.csv_path, [])
         report = main_existing.build_report(self.path)
         self.assertEqual(report["shifting_observations"], [])
         self.assertEqual((report["period_start"], report["period_end"]), (None, None))
-        self.assertIsNone(report["shifting_count"])
+        self.assertIsNone(report["avg_shifting_percentage"])
+        self.assertIsNone(report["latest_date"])
+        self.assertIsNotNone(report["avg_parameter_compliance"])
 
     def test_invalid_csv_does_not_fall_back_or_write_jsonl(self):
         self.csv_path.write_text("invalid CSV", encoding="utf-8")

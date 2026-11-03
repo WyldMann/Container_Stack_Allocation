@@ -240,10 +240,9 @@ class DailyMainTests(unittest.TestCase):
         self.assertEqual(report["latest_date"], "2026-10-27")
         self.assertEqual(report["period_granularity"], "daily")
         self.assertNotIn("latest_week", report)
-        self.assertEqual(report["lifting_count"], 300)
-        self.assertEqual(report["shifting_count"], 30)
-        self.assertAlmostEqual(report["shifting_percentage"], 100 * 30 / 330)
-        self.assertEqual(report["missing_lifting_observations"], 0)
+        self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 300)
+        self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 30)
+        self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * 30 / 330)
 
     def test_shared_input_loader_also_selects_one_complete_day(self):
         settings = main_existing.load_input_config(self.path)
@@ -288,7 +287,7 @@ class DailyMainTests(unittest.TestCase):
                     main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
                 ), patch.object(main_existing.YardPresenter, "outYard") as out_yard, redirect_stdout(output):
                     main_existing.main()
-                self.assertIn("Latest complete operations date (WIB): " + ("N/A" if omit_all else "2026-10-27"), output.getvalue())
+                self.assertIn("latest_date is in WIB", output.getvalue())
                 self.assertNotIn("operations week", output.getvalue())
                 self.assertNotIn("Skipped shifting", output.getvalue())
                 self.assertNotIn(": None", output.getvalue())
@@ -302,15 +301,15 @@ class DailyMainTests(unittest.TestCase):
                     self.assertEqual(displayed["period_start"], "null")
                     self.assertEqual(displayed["period_end"], "null")
                     self.assertIn("No operations observations.", output.getvalue())
-                    self.assertEqual(report["shifting_data_points"], 0)
+                    self.assertEqual(report["shifting_observations"], [])
                 else:
                     observation_index = lines.index("Included JSONL shifting_observations:")
                     self.assertEqual(lines[observation_index + 1].split(),
-                                     ["report_date", "shifting_code", "block_id", "lifting_count", "shifting_count"])
-                    for line, row in zip(lines[observation_index + 2:observation_index + 4], report["shifting_observations"], strict=True):
-                        self.assertEqual(line.split(), [str(row[field]) for field in (
-                            "report_date", "shifting_code", "block_id", "lifting_count", "shifting_count",
-                        )])
+                                     ["cy_name", "block_code", "shifting_code", "lifting_count", "shifting_count",
+                                      "shifting_percentage", "parameter_compliance"])
+                    for row in report["shifting_observations"]:
+                        self.assertIn(row["cy_name"], output.getvalue())
+                        self.assertTrue(0 <= row["parameter_compliance"] <= 100)
                 out_yard.assert_called_once_with(yard)
 
 
