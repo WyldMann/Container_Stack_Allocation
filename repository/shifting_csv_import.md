@@ -53,7 +53,8 @@ a limited query result.
 - Match `ALAT` through `shifting.block_mapping_file`, ignoring case and surrounding
   whitespace. Unmapped equipment and equipment assigned to absent yard blocks
   are excluded. `BLOK` and container coordinates do not determine this assignment.
-- Parse `ACTIVITY_DATE_TIME` as `DD-MM-YYYY HH:MM` in WIB (UTC+7). Creation and
+- Parse `ACTIVITY_DATE_TIME` as `DD-MM-YYYY HH:MM` or `DD/MM/YYYY HH:MM` in WIB
+  (UTC+7). Both formats are day-first and accept unpadded days/months. Creation and
   modification timestamps are not used. Blank or whitespace-only timestamps are
   skipped when selecting the first window and counting operations. Nonblank,
   invalid timestamps in scoped, countable rows raise a source/line error.

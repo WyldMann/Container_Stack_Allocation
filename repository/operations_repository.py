@@ -32,11 +32,12 @@ class OperationsRepository(Repository):
                 continue
             try:
                 timestamp = int(datetime.strptime(
-                    activity_time, "%d-%m-%Y %H:%M",
+                    activity_time.replace("/", "-"), "%d-%m-%Y %H:%M",
                 ).replace(tzinfo=WIB).timestamp())
             except ValueError as error:
                 raise InputError(
-                    f"{location}: ACTIVITY_DATE_TIME must be DD-MM-YYYY HH:MM in WIB."
+                    f"{location}: ACTIVITY_DATE_TIME must be DD-MM-YYYY HH:MM "
+                    "or DD/MM/YYYY HH:MM in WIB."
                 ) from error
             yield timestamp, code, row["ACTIVITY"]
 

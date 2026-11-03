@@ -133,9 +133,26 @@ class CSVOperationsTests(unittest.TestCase):
         self.assertEqual(self.load([operation(timestamp="bad")], blocks=iter(())), [])
 
     def test_invalid_dates_report_location(self):
-        for value in ("2026-10-29 14:30", "31-02-2026 12:00"):
+        for value in ("2026-10-29 14:30", "31-02-2026 12:00", "31/02/2026 12:00", "10/29/2026 14:30"):
             with self.subTest(value=value), self.assertRaisesRegex(InputError, "line 2.*ACTIVITY_DATE_TIME"):
                 self.load([operation(timestamp=value)])
+
+    def test_slash_and_hyphen_dates_are_day_first_in_wib(self):
+        expected = int(datetime(2026, 10, 1, 10, 33, tzinfo=WIB).timestamp())
+        for value in ("1/10/2026 10:33", "01/10/2026 10:33", "1-10-2026 10:33"):
+            with self.subTest(value=value):
+                rows = self.load([operation(timestamp=value), operation(timestamp="01-10-2026 10:33")])
+                self.assertEqual(rows[0].lifting_count, 2)
+                self.assertEqual(rows[0].period_start, expected)
+
+    def test_mixed_date_separators_preserve_first_window_and_exclusive_end(self):
+        rows = self.load([
+            operation(timestamp="2/10/2026 10:33"),
+            operation(timestamp="01-10-2026 10:33"),
+            operation(timestamp="2/10/2026 10:32", activity="Shifting Delivery"),
+        ])
+        self.assertEqual((rows[0].lifting_count, rows[0].shifting_count), (1, 1))
+        self.assertEqual(rows[0].period_end - rows[0].period_start, 86400)
 
     def test_blank_activity_times_are_skipped_when_selecting_and_counting_window(self):
         for granularity, duration in (("daily", 86400), ("weekly", 7 * 86400)):
