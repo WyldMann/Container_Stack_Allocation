@@ -141,7 +141,7 @@ def _build_loaded_report(input_settings, inputs, connection):
         source = input_settings["sql_shifting"]
         operations_location = source["schema"] + "." + source["detail_relation"]
     elif operations_source == "csv":
-        operations_location = str(input_settings["shifting_operations_file"])
+        operations_location = str(input_settings["csv_files"]["shifting_summary"])
     else:
         operations_location = str(workbook_path)
 

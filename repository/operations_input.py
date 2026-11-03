@@ -15,7 +15,7 @@ def load_operations(settings, branches, block_ids, *, connection=None, latest_on
     source = settings.get("shifting_source", "xlsx")
     if source == "csv":
         return load_csv_shifting_summary(
-            settings["shifting_operations_file"], settings["shifting_activities"],
+            settings["csv_files"]["shifting_summary"], settings["shifting_activities"],
             cy_name, branches.records[0]["branch_code"],
             settings["shifting_block_mapping_file"], block_ids,
             period_granularity=settings.get("shifting_granularity", "daily"),

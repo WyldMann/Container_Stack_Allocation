@@ -32,6 +32,10 @@ class ExistingYardMainTests(unittest.TestCase):
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "11"\n', encoding="utf-8")
         project = DEFAULT_INPUT_CONFIG_FILE.parent.parent
         template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
+        # Tests choose their own operations source, independent of the user's default.
+        template = template.replace('shifting_summary = "csv"', 'shifting_summary = "xlsx"')
+        template = template.replace('# shifting_workbook_file =', 'shifting_workbook_file =')
+        template = template.replace('# shifting_workbook_sheet =', 'shifting_workbook_sheet =')
         configured_containers = tomllib.loads(template)["csv"]["files"]["existing_containers"]
         template = template.replace(configured_containers, "../data_CY219/containers.csv")
         # Legacy weekly fixtures supply their own benchmark; production uses daily dates.

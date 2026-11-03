@@ -85,12 +85,7 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
     csv = _read_section(document, "csv", {
         "files", "mapping_file", "shifting_block_mapping_file",
         "shifting_workbook_file", "shifting_workbook_sheet",
-        "shifting_operations_file",
     })
-    if shifting_source == "csv":
-        settings["shifting_operations_file"] = resolve(
-            csv.get("shifting_operations_file"), "csv.shifting_operations_file",
-        )
     workbook_file = csv.get("shifting_workbook_file")
     if shifting_source == "xlsx" and workbook_file is not None:
         settings["shifting_workbook_file"] = resolve(workbook_file, "csv.shifting_workbook_file")
@@ -107,12 +102,14 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
         settings["mapping_files"]["csv"] = resolve(
             csv.get("mapping_file", "csv_mapping.toml"), "csv.mapping_file"
         )
+    csv_file_names = csv_names | ({"shifting_summary"} if shifting_source == "csv" else set())
+    if csv_file_names:
         files = csv.get("files")
-        _dataset_names(files, "csv.files", required=csv_names)
+        _dataset_names(files, "csv.files", required=csv_file_names, optional=("shifting_summary",))
         settings["csv_files"] = {
             name: resolve(value, f"csv.files.{name}")
             for name, value in files.items()
-            if name in csv_names
+            if name in csv_file_names
         }
 
     if not sql_names and shifting_source != "sql":

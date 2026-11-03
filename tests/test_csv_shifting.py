@@ -11,7 +11,7 @@ import tomllib
 import unittest
 from unittest.mock import patch
 
-from config import ConfigurationError, load_input_config
+from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE, load_input_config
 import main_existing
 from repository import InputError, load_yard_inputs
 from repository.operations_repository import load_csv_shifting_summary
@@ -154,6 +154,77 @@ class CSVOperationsTests(unittest.TestCase):
                 self.load(rows, headers=headers)
 
 
+class CSVOperationsConfigTests(unittest.TestCase):
+    def setUp(self):
+        self.document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
+        self.document["csv"]["files"]["shifting_summary"] = "../operations.csv"
+
+    def settings(self):
+        with patch("config.application.input_config._read_document", return_value=self.document):
+            return load_input_config(DEFAULT_INPUT_CONFIG_FILE)
+
+    def test_operations_path_uses_shared_csv_files_and_config_directory(self):
+        settings = self.settings()
+        self.assertEqual(settings["csv_files"]["shifting_summary"],
+                         (DEFAULT_INPUT_CONFIG_FILE.parent / "../operations.csv").resolve())
+        self.assertNotIn("shifting_operations_file", settings)
+
+    def test_workbook_settings_are_not_read_for_csv_operations(self):
+        self.document["csv"]["shifting_workbook_file"] = []
+        self.document["csv"]["shifting_workbook_sheet"] = []
+        settings = self.settings()
+        self.assertNotIn("shifting_workbook_file", settings)
+        self.assertNotIn("shifting_workbook_sheet", settings)
+        self.assertIn("shifting_summary", settings["csv_files"])
+
+    def test_csv_operations_path_is_required_and_validated(self):
+        for value in ("", 123, None):
+            with self.subTest(value=value):
+                self.document["csv"]["files"]["shifting_summary"] = value
+                with self.assertRaisesRegex(ConfigurationError, "csv.files.shifting_summary"):
+                    self.settings()
+        del self.document["csv"]["files"]["shifting_summary"]
+        with self.assertRaisesRegex(ConfigurationError, "csv.files.*shifting_summary"):
+            self.settings()
+
+    def test_obsolete_standalone_csv_path_is_rejected(self):
+        self.document["csv"]["shifting_operations_file"] = "old.csv"
+        with self.assertRaisesRegex(ConfigurationError, "shifting_operations_file"):
+            self.settings()
+
+    def test_xlsx_source_does_not_require_or_load_csv_operations_path(self):
+        self.document["input"]["sources"]["shifting_summary"] = "xlsx"
+        del self.document["csv"]["files"]["shifting_summary"]
+        self.document["csv"]["shifting_workbook_file"] = "source.xlsx"
+        settings = self.settings()
+        self.assertNotIn("shifting_summary", settings["csv_files"])
+        self.assertEqual(settings["shifting_workbook_file"], DEFAULT_INPUT_CONFIG_FILE.parent / "source.xlsx")
+
+    def test_only_operations_csv_with_sql_yard_needs_no_csv_mapping(self):
+        self.document["input"]["sources"] = {
+            name: "sql" if name != "shifting_summary" else "csv"
+            for name in self.document["input"]["sources"]
+        }
+        self.document["csv"].pop("mapping_file", None)
+        sql_mapping = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml").read_text(encoding="utf-8"))
+        with patch("config.application.input_config._read_document", side_effect=[self.document, sql_mapping]), patch.dict(
+            "os.environ", {"YARD_DB_HOST": "example", "YARD_DB_NAME": "test", "YARD_DB_USER": "reader"},
+        ):
+            settings = load_input_config(DEFAULT_INPUT_CONFIG_FILE)
+        self.assertEqual(set(settings["csv_files"]), {"shifting_summary"})
+        self.assertNotIn("csv", settings["mapping_files"])
+
+    def test_dispatch_uses_path_from_csv_files(self):
+        from types import SimpleNamespace
+        from repository.operations_input import load_operations
+
+        settings = self.settings()
+        branches = SimpleNamespace(cy_name=lambda: CY, records=[{"branch_code": "JKT74"}])
+        with patch("repository.operations_input.load_csv_shifting_summary", return_value=[]) as loader:
+            self.assertEqual(load_operations(settings, branches, {"10"}), [])
+        self.assertEqual(loader.call_args.args[0], settings["csv_files"]["shifting_summary"])
+
+
 class CSVOperationsIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.fixture = main_tests.ExistingYardMainTests()
@@ -163,8 +234,11 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         self.path = self.fixture.input_path
         self.csv_path = self.fixture.root / "operations.csv"
         text = self.path.read_text(encoding="utf-8")
+        configured = tomllib.loads(text)["csv"]["files"].get("shifting_summary")
+        if configured is not None:
+            text = text.replace('shifting_summary = "' + configured + '"', '')
         self.path.write_text(text.replace(
-            "[csv]", '[csv]\nshifting_operations_file = "operations.csv"',
+            "[csv.files]", '[csv.files]\nshifting_summary = "operations.csv"',
         ), encoding="utf-8")
         write_csv(self.csv_path, [operation(), operation(activity="Shifting Delivery"),
                                   operation(activity="Lift On Delivery")])
@@ -177,7 +251,8 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         with patch.dict("sys.modules", {"psycopg": None}), patch.dict("os.environ", {}, clear=True):
             settings = self.settings()
             rows = load_yard_inputs(settings)["shifting_summary"]
-        self.assertEqual(settings["shifting_operations_file"], self.csv_path)
+        self.assertEqual(settings["csv_files"]["shifting_summary"], self.csv_path)
+        self.assertNotIn("shifting_operations_file", settings)
         self.assertNotIn("shifting_workbook_file", settings)
         self.assertNotIn("shifting_period", settings)
         self.assertNotIn("connection", settings)
@@ -234,8 +309,8 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
     def test_missing_csv_path_and_missing_activity_lists_are_errors(self):
         original = self.path.read_text(encoding="utf-8")
         for old, new, error in (
-            ('shifting_operations_file = "operations.csv"', '', 'shifting_operations_file'),
-            ('shifting_operations_file = "operations.csv"', 'shifting_operations_file = ""', 'shifting_operations_file'),
+            ('shifting_summary = "operations.csv"', '', 'shifting_summary'),
+            ('shifting_summary = "operations.csv"', 'shifting_summary = ""', 'csv.files.shifting_summary'),
         ):
             with self.subTest(old=old, new=new):
                 self.path.write_text(original.replace(old, new), encoding="utf-8")

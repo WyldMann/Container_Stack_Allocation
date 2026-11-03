@@ -3,8 +3,8 @@
 Select `shifting_summary = "csv"` in `[input.sources]` and configure:
 
 ```toml
-[csv]
-shifting_operations_file = "../data_CY219/shifting_operations.csv"
+[csv.files]
+shifting_summary = "../data_CY219/shfiting_report.csv"
 ```
 
 Paths resolve from `input.toml`. The CSV window starts at the earliest activity
@@ -13,6 +13,10 @@ among rows with a nonempty `DTL_ID`. Activities outside the configured categorie
 also participate in finding that first timestamp. Row order does not affect it.
 `recorded_at` records when the yard metrics were produced, not the window start.
 XLSX and SQL remain independently selectable.
+The CSV path is resolved with the other entries in `[csv.files]` and stored in
+`settings["csv_files"]["shifting_summary"]`. The former
+`csv.shifting_operations_file` setting is rejected. `csv.shifting_workbook_file`
+and `csv.shifting_workbook_sheet` apply only to the XLSX source.
 
 Export a UTF-8 CSV with these six uniquely named columns:
 

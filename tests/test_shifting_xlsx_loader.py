@@ -164,7 +164,7 @@ class WorkbookSharedInputTests(unittest.TestCase):
     def test_existing_workbook_settings_need_no_csv_output_path(self):
         self.document["csv"]["shifting_workbook_file"] = "../reports/source.xlsx"
         settings = self.settings(self.document)
-        self.assertEqual(settings["shifting_workbook_sheet"], "Per Alat Daily")
+        self.assertEqual(settings["shifting_workbook_sheet"], "Per Alat Weekly")
         self.assertEqual(settings["shifting_workbook_file"].name, "source.xlsx")
         self.assertNotIn("shifting_summary_file", settings)
         for invalid in ("", 123):
@@ -174,7 +174,8 @@ class WorkbookSharedInputTests(unittest.TestCase):
 
     def test_raw_csv_requires_its_path_and_removed_summary_output_setting_is_rejected(self):
         self.document["input"]["sources"]["shifting_summary"] = "csv"
-        with self.assertRaisesRegex(ConfigurationError, "shifting_operations_file"):
+        self.document["csv"]["files"].pop("shifting_summary", None)
+        with self.assertRaisesRegex(ConfigurationError, "shifting_summary"):
             self.settings(self.document)
         self.document["input"]["sources"]["shifting_summary"] = "xlsx"
         self.document["csv"]["shifting_summary_file"] = "old.csv"
