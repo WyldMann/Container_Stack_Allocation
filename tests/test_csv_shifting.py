@@ -133,9 +133,28 @@ class CSVOperationsTests(unittest.TestCase):
         self.assertEqual(self.load([operation(timestamp="bad")], blocks=iter(())), [])
 
     def test_invalid_dates_report_location(self):
-        for value in ("", "2026-10-29 14:30", "31-02-2026 12:00"):
+        for value in ("2026-10-29 14:30", "31-02-2026 12:00"):
             with self.subTest(value=value), self.assertRaisesRegex(InputError, "line 2.*ACTIVITY_DATE_TIME"):
                 self.load([operation(timestamp=value)])
+
+    def test_blank_activity_times_are_skipped_when_selecting_and_counting_window(self):
+        for granularity, duration in (("daily", 86400), ("weekly", 7 * 86400)):
+            with self.subTest(granularity=granularity):
+                diagnostics = {}
+                rows = self.load([
+                    operation(timestamp=""),
+                    operation(),
+                    operation(timestamp=" \t ", activity="Shifting Delivery"),
+                    operation(activity="Shifting Delivery"),
+                    operation(timestamp="", activity="Unclassified"),
+                ], period_granularity=granularity, diagnostics=diagnostics)
+                self.assertEqual(rows[0].lifting_count, 1)
+                self.assertEqual(rows[0].shifting_count, 1)
+                self.assertEqual({(r.period_start, r.period_end) for r in rows}, {(START, START + duration)})
+                self.assertEqual(diagnostics, {"excluded_activities": {}})
+
+    def test_only_blank_activity_times_returns_no_observations(self):
+        self.assertEqual(self.load([operation(timestamp=""), operation(timestamp=" \t ")]), [])
 
     def test_headers_allow_case_whitespace_and_extra_unique_columns(self):
         headers = tuple(" " + name.lower() + " " for name in HEADER) + ("CONTAINER_NO",)

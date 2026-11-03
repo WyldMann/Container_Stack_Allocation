@@ -54,8 +54,9 @@ a limited query result.
   whitespace. Unmapped equipment and equipment assigned to absent yard blocks
   are excluded. `BLOK` and container coordinates do not determine this assignment.
 - Parse `ACTIVITY_DATE_TIME` as `DD-MM-YYYY HH:MM` in WIB (UTC+7). Creation and
-  modification timestamps are not used. Invalid timestamps in scoped, countable
-  rows raise a source/line error.
+  modification timestamps are not used. Blank or whitespace-only timestamps are
+  skipped when selecting the first window and counting operations. Nonblank,
+  invalid timestamps in scoped, countable rows raise a source/line error.
 - Reuse `[shifting.activities]` for both CSV and SQL. Activity values match exactly.
   `Lift On Delivery` is currently excluded; add it to the shared lifting list only
   if it belongs in that metric. There is no automatic prefix classification.

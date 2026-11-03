@@ -27,9 +27,12 @@ class OperationsRepository(Repository):
             # COUNT(DTL_ID) excludes null identifiers. Empty CSV cells represent nulls.
             if not row["DTL_ID"].strip():
                 continue
+            activity_time = row["ACTIVITY_DATE_TIME"].strip()
+            if not activity_time:
+                continue
             try:
                 timestamp = int(datetime.strptime(
-                    row["ACTIVITY_DATE_TIME"].strip(), "%d-%m-%Y %H:%M",
+                    activity_time, "%d-%m-%Y %H:%M",
                 ).replace(tzinfo=WIB).timestamp())
             except ValueError as error:
                 raise InputError(
