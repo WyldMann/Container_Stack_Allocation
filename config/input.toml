@@ -13,17 +13,17 @@ terminal_id = 1
 branch_id = 2
 
 [input.sources]
-terminal_branches = "sql"
+terminal_branches = "csv"
 # Yard datasets select "csv" or "sql"; shifting_summary selects "xlsx", "csv" or "sql".
-yard_blocks = "sql"
-yard_planning = "sql"
-removed_slots = "sql"
-parameters = "sql"
+yard_blocks = "csv"
+yard_planning = "csv"
+removed_slots = "csv"
+parameters = "csv"
 existing_containers = "csv"
 inbound_containers = "csv"
 master_equipment = "csv"
 equipment_history = "csv"
-shifting_summary = "xlsx"
+shifting_summary = "csv"
 
 # CSV starts at its earliest scoped activity: daily = first 24 hours, weekly = first 7 days.
 # SQL uses a rolling window ending at recording time: daily = last 24 hours,
@@ -60,12 +60,12 @@ shifting_workbook_file = "../data_CY219/Shifting_Report_Summary_2026-10_Daily_20
 shifting_workbook_sheet = "Per Alat Daily"
 
 [csv.files]
-terminal_branches = "../data_CY219/_TRM_MST_TERMINAL_BRANCH.csv"
-yard_blocks = "../data_CY219/_TRM_MST_YARD_BLOCK__202610141439.csv"
-yard_planning = "../data_CY219/_TRM_TRS_YARD_PLANNING_ITEM__202610141445.csv"
+terminal_branches = "../data_CY219/terminal_branch.csv"
+yard_blocks = "../data_CY219/yard_block.csv"
+yard_planning = "../data_CY219/yard_planning.csv"
 removed_slots = "../data_CY219/removed_slots.csv"
-parameters = "../data_CY219/_TRM_MST_YARD_PARAMETER__202610141443.csv"
-existing_containers = "../data_CY219/_TRM_TRS_TARGET_CONTAINER__202610301612.csv"
+parameters = "../data_CY219/parameters.csv"
+existing_containers = "containers.csv"
 inbound_containers = "../data_CY219/inbound.csv"
 master_equipment = "../data_CY219/master_equipment.csv"
 equipment_history = "../data_CY219/equipment_history.csv"
