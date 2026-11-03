@@ -80,7 +80,9 @@ def _build_loaded_report(input_settings, inputs, connection):
     recorded_at = int(time())
     operations_diagnostics = {}
     observations = load_operations(
-        input_settings, branches, yard.blocks_by_id,
+        input_settings, branches,
+        [{"block_id": block.getId(), "block_code": block.getCode()}
+         for block in yard.blocks_by_id.values()],
         connection=connection, latest_only=True,
         today=datetime.fromtimestamp(recorded_at, WIB).date(),
         recorded_at=recorded_at,
@@ -169,7 +171,7 @@ def _build_loaded_report(input_settings, inputs, connection):
         "shifting_block_mapping_source": str(shifting_mapping_path),
         **({
             "shifting_activities": {kind: list(values) for kind, values in input_settings["shifting_activities"].items()},
-            "operations_period_basis": "rolling_window" if sql_operations else "first_activity_window",
+            "operations_period_basis": "rolling_window" if sql_operations else "latest_activity_window",
             "operations_completeness": "unverified",
         } if raw_operations else {}),
         **({"shifting_sql_mapping": input_settings["sql_shifting"]} if sql_operations else {}),

@@ -131,7 +131,8 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
     def summaries(self, blocks=("10", "11"), *, granularity="daily", recorded_at=NOW):
         return load_sql_shifting_summary(
             self.connection, self.loaded["sql_shifting"], self.loaded["shifting_activities"],
-            "CY 219 (Lini 2)", "JKT74", self.fixture.mapping_path, blocks,
+            "CY 219 (Lini 2)", "JKT74", self.fixture.mapping_path,
+            [{"block_code": {"10": "B", "11": "C"}[block], "block_id": block} for block in blocks],
             period_granularity=granularity, recorded_at=recorded_at,
         )
 
@@ -205,7 +206,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         payload = "JKT74' OR TRUE --"
         load_sql_shifting_summary(
             self.connection, definition, self.loaded["shifting_activities"], "CY 219 (Lini 2)",
-            payload, self.fixture.mapping_path, ("10",), recorded_at=NOW,
+            payload, self.fixture.mapping_path, [{"block_code": "B", "block_id": "10"}], recorded_at=NOW,
         )
         self.assertNotIn(payload, self.contexts[0].__enter__.return_value.execute.call_args.args[0].as_string())
         self.assertEqual(self.parameters()[0]["branch_code"], payload)

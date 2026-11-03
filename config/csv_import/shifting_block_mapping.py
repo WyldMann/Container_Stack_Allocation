@@ -16,17 +16,17 @@ def load_shifting_block_mapping(path, cy_name):
     definitions = selected[0]
     if not isinstance(definitions, dict) or not definitions:
         raise ConfigurationError(
-            f"{path}: fill in shifting-code to block_id assignments for {cy_name!r}."
+            f"{path}: fill in shifting-code to block_code assignments for {cy_name!r}."
         )
 
     mapping = {}
-    for code, block_id in definitions.items():
+    for code, block_code in definitions.items():
         key = code.strip().casefold()
         if not key or key in mapping:
             raise ConfigurationError(f"{path}: blank or ambiguous shifting code {code!r}.")
-        if not isinstance(block_id, str) or not block_id.strip():
+        if not isinstance(block_code, str) or not block_code.strip():
             raise ConfigurationError(
-                f"{path}: {code!r} must map to one non-empty block_id string."
+                f"{path}: {code!r} must map to one non-empty block_code string."
             )
-        mapping[key] = block_id.strip()
+        mapping[key] = block_code.strip()
     return mapping

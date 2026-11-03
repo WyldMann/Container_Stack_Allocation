@@ -7,11 +7,11 @@ Select `shifting_summary = "csv"` in `[input.sources]` and configure:
 shifting_summary = "../data_CY219/shfiting_report.csv"
 ```
 
-Paths resolve from `input.toml`. The CSV window starts at the earliest activity
+Paths resolve from `input.toml`. The CSV window ends at the most recent activity
 timestamp for the selected branch and equipment mapped to loaded yard blocks,
 among rows with a nonempty `DTL_ID`. Activities outside the configured categories
-also participate in finding that first timestamp. Row order does not affect it.
-`recorded_at` records when the yard metrics were produced, not the window start.
+also participate in finding that latest timestamp. Row order does not affect it.
+`recorded_at` records when the yard metrics were produced, not the window end.
 XLSX and SQL remain independently selectable.
 The CSV path is resolved with the other entries in `[csv.files]` and stored in
 `settings["csv_files"]["shifting_summary"]`. The former
@@ -51,20 +51,23 @@ a limited query result.
 - Resolve the selected branch through `terminal_branches`; match `KODE_CABANG`
   ignoring case and surrounding whitespace.
 - Match `ALAT` through `shifting.block_mapping_file`, ignoring case and surrounding
-  whitespace. Unmapped equipment and equipment assigned to absent yard blocks
+  whitespace. Mapping values are yard `block_code` strings (for example, `SL = "2A"`),
+  resolved to the loaded yard's `block_id` for recorded metrics. Unmapped equipment
+  and equipment assigned to absent yard block codes
   are excluded. `BLOK` and container coordinates do not determine this assignment.
 - Parse `ACTIVITY_DATE_TIME` as `DD-MM-YYYY HH:MM` or `DD/MM/YYYY HH:MM` in WIB
   (UTC+7). Both formats are day-first and accept unpadded days/months. Creation and
   modification timestamps are not used. Blank or whitespace-only timestamps are
-  skipped when selecting the first window and counting operations. Nonblank,
+  skipped when selecting the latest window and counting operations. Nonblank,
   invalid timestamps in scoped, countable rows raise a source/line error.
 - Reuse `[shifting.activities]` for both CSV and SQL. Activity values match exactly.
   `Lift On Delivery` is currently excluded; add it to the shared lifting list only
   if it belongs in that metric. There is no automatic prefix classification.
-- `shifting.period_granularity = "daily"` means the first 24 hours from that timestamp;
-  `"weekly"` means the first 7 days. The start is inclusive and the end
-  is exclusive. One common window applies to all equipment codes. The importer
-  scans twice to find the earliest timestamp and count the selected window without
+- `shifting.period_granularity = "daily"` means the 24 hours ending at that timestamp;
+  `"weekly"` means the preceding 7 days. The start is exclusive and the end
+  is inclusive, so operations at the latest timestamp are counted. One common
+  window applies to all equipment codes. The importer scans twice to find the
+  latest timestamp and count the selected window without
   retaining the full export in memory.
 - Produce one existing `ShiftingSummary` per mapped equipment code assigned to a
   loaded block, including zero counts when there are no matches. Multiple codes
@@ -74,7 +77,7 @@ a limited query result.
   report window unavailable (`None`).
 
 The report records the CSV source, shared activity lists, window timestamps, and
-`operations_period_basis = "first_activity_window"` and
+`operations_period_basis = "latest_activity_window"` and
 `operations_completeness = "unverified"`. A zero means no qualifying rows in the
 supplied export, not proof that the export covers the entire window. No older
 period is selected automatically. Parameter compliance still reflects the current

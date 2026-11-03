@@ -157,7 +157,7 @@ class ShiftingInputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "shifting.xlsx"
             mapping = Path(directory) / "mapping.toml"
-            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\n', encoding="utf-8")
+            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "B"\n', encoding="utf-8")
             self.document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()
             write_report(path, [
                 ("CY 219 (Lini 2)", "SL", 100, 10, "2026-10", "40"),
@@ -170,7 +170,8 @@ class ShiftingInputTests(unittest.TestCase):
         self.assertEqual(set(inputs), set(DATASETS) | {"shifting_summary"})
         self.assertEqual(len(inputs["shifting_summary"]), 2)
         self.assertEqual(inputs["shifting_summary"][0].lifting_count, 100)
-        self.assertEqual(inputs["shifting_summary"][0].block_id, "10")
+        self.assertEqual(inputs["shifting_summary"][0].block_id,
+                         next(row["block_id"] for row in inputs["yard_blocks"] if row["block_code"] == "B"))
 
     def test_missing_block_observations_are_omitted_by_shared_loader(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -180,7 +181,7 @@ class ShiftingInputTests(unittest.TestCase):
                 ("CY 219 (Lini 2)", "SL", 100, 10, "2026-10", "40"),
                 ("CY 219 (Lini 2)", "RS", 100, 30, "2026-10", "40"),
             ])
-            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
+            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "B"\nRS = "99"\n', encoding="utf-8")
             self.document["csv"]["shifting_workbook_file"] = path.as_posix()
             self.document["csv"]["shifting_workbook_sheet"] = "Per Alat Weekly"
             self.document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()

@@ -147,7 +147,7 @@ class WorkbookSharedInputTests(unittest.TestCase):
             root = Path(directory)
             workbook, mapping = root / "report.xlsx", root / "mapping.toml"
             write_workbook(workbook)
-            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\n', encoding="utf-8")
+            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "B"\n', encoding="utf-8")
             self.document["csv"].update(
                 shifting_workbook_file=workbook.as_posix(),
                 shifting_block_mapping_file=mapping.as_posix(),

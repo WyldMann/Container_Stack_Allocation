@@ -62,11 +62,11 @@ class DailyShiftingTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.csv = self.root / "daily.csv"
         self.mapping = self.root / "mapping.toml"
-        self.mapping.write_text('["' + CY + '"]\nSL = "11"\nRS = "10"\nABSENT = "9"\n', encoding="utf-8")
+        self.mapping.write_text('["' + CY + '"]\nSL = "C"\nRS = "B"\nABSENT = "9"\n', encoding="utf-8")
 
     def load(self, rows, **kwargs):
         self.csv.write_text(HEADER + rows, encoding="utf-8")
-        return load_shifting_summary(CSVLoader(self.csv), CY, self.mapping, {"10", "11"}, today=TODAY, **kwargs)
+        return load_shifting_summary(CSVLoader(self.csv), CY, self.mapping, [{"block_code": "B", "block_id": "10"}, {"block_code": "C", "block_id": "11"}], today=TODAY, **kwargs)
 
     def test_latest_closed_day_excludes_today_future_and_other_cys(self):
         rows = self.load(
@@ -139,7 +139,7 @@ class DailyShiftingTests(unittest.TestCase):
             f"{CY},SL,10,1,2026-10-27,0\n{CY},RS,10,1,2026-10-27,0\n", encoding="utf-8",
         )
         with self.assertRaisesRegex(InputError, "midnight WIB"):
-            load_shifting_summary(CSVLoader(self.csv), CY, self.mapping, {"10", "11"}, today=TODAY)
+            load_shifting_summary(CSVLoader(self.csv), CY, self.mapping, [{"block_code": "B", "block_id": "10"}, {"block_code": "C", "block_id": "11"}], today=TODAY)
 
     def test_midnight_wib_handles_month_year_and_leap_day(self):
         for day in (date(2026, 1, 1), date(2026, 11, 1), date(2024, 2, 29)):

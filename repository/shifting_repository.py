@@ -5,6 +5,7 @@ import re
 
 from config import ConfigurationError
 from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
+from utils import strGeneralize
 
 from .loader import InputError
 from .repository import Repository
@@ -160,6 +161,21 @@ class ShiftingRepository(Repository):
         )
 
 
+def resolve_shifting_blocks(mapping, blocks):
+    """Resolve equipment's configured block codes to loaded yard IDs; absent codes yield None."""
+    by_code = {}
+    for block in blocks:
+        code = strGeneralize(block["block_code"])
+        by_code.setdefault(code, set()).add(block["block_id"])
+    result = {}
+    for equipment, code in mapping.items():
+        matches = by_code.get(strGeneralize(code), set())
+        if len(matches) > 1:
+            raise InputError(f"Shifting block_code {code!r} matches multiple loaded yard blocks.")
+        result[equipment] = next(iter(matches), None)
+    return result
+
+
 def validate_shifting_blocks(observations, block_ids):
     """Silently omit observations for blocks absent from the loaded yard."""
     block_ids = set(block_ids)
@@ -197,12 +213,12 @@ def assign_shifting_periods(observations, period_settings):
 
 
 def load_shifting_summary(
-    loader, cy_name, mapping_path, block_ids, *, period_settings=None,
+    loader, cy_name, mapping_path, blocks, *, period_settings=None,
     latest_only=False,
     today=None,
 ):
-    mapping = load_shifting_block_mapping(mapping_path, cy_name)
-    block_ids = set(block_ids)
+    mapping = resolve_shifting_blocks(load_shifting_block_mapping(mapping_path, cy_name), blocks)
+    block_ids = {block for block in mapping.values() if block is not None}
     observations = ShiftingRepository(loader).read_summaries(
         cy_name, latest_only=latest_only, today=today,
         required_codes={code for code, block in mapping.items() if block in block_ids},

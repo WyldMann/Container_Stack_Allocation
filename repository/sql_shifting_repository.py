@@ -6,7 +6,7 @@ from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
 
 from .csvloader import BRANCH_WHITESPACE
 from .loader import InputError
-from .shifting_repository import ShiftingSummary
+from .shifting_repository import ShiftingSummary, resolve_shifting_blocks
 from .shifting_dates import operations_period_boundaries
 from .sqlloader import SQLLoader
 
@@ -48,12 +48,11 @@ def sql_period_boundaries(period_granularity, recorded_at=None):
 
 
 def load_sql_shifting_summary(
-    connection, definition, activities, cy_name, branch_code, mapping_path, block_ids, *,
+    connection, definition, activities, cy_name, branch_code, mapping_path, blocks, *,
     period_granularity="daily", recorded_at=None,
 ):
-    mapping = load_shifting_block_mapping(mapping_path, cy_name)
-    block_ids = set(block_ids)
-    active = {code: block for code, block in mapping.items() if block in block_ids}
+    mapping = resolve_shifting_blocks(load_shifting_block_mapping(mapping_path, cy_name), blocks)
+    active = {code: block for code, block in mapping.items() if block is not None}
     if not active:
         return []
     start, end = sql_period_boundaries(period_granularity, recorded_at)

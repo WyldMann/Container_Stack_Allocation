@@ -94,7 +94,7 @@ class ShiftingPeriodInputTests(unittest.TestCase):
             path = Path(directory) / "shifting.xlsx"
             mapping = Path(directory) / "mapping.toml"
             write_report(path, [("CY 219 (Lini 2)", "SL", 100, 10, "2026-10", "44")])
-            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "10"\n', encoding="utf-8")
+            mapping.write_text('["CY 219 (Lini 2)"]\nSL = "B"\n', encoding="utf-8")
             document["csv"]["shifting_workbook_file"] = path.as_posix()
             document["csv"]["shifting_workbook_sheet"] = "Per Alat Weekly"
             document["csv"]["shifting_block_mapping_file"] = mapping.as_posix()

@@ -1,15 +1,15 @@
-# Map equipment codes to assigned block_id strings for the selected CY.
-# CSV labels these codes shifting_code; the SQL source uses header ALAT.
+# Map equipment codes to assigned block_code strings for the selected CY.
+# Raw CSV and SQL use ALAT; XLSX reports use equipment labels.
 # Reuse these assignments for both lifting and shifting operations.
 # Omit codes assigned to absent yard blocks before querying or calculating SQL counts.
 # Multiple codes may map to one block. Each code must identify exactly one block.
 # Match shifting codes ignoring case and surrounding whitespace.
 # Section names match the full BRANCH_NAME using uppercase comparison.
 # Whitespace is significant; the original name is preserved in output.
-# Block IDs must match the loaded yard. Do not infer them from equipment location.
-# Fill in verified assignments before enabling shifting_summary_file.
+# Block codes use the yard's uppercase/leading-zero normalization.
+# Do not infer them from equipment location.
+# Fill in verified assignments before loading operations.
 
 ["CY 219 (Lini 2)"]
-"SL" = "30"
-"RS MDL" = "29"
-"RS TPK" = "28"
+"SL" = "C"
+"RS MDL" = "B"

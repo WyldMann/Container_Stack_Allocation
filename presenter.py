@@ -59,7 +59,8 @@ class YardPresenter(Presenter):
         self.out("Loaded existing containers:", report["loaded_containers"])
         daily = report["period_granularity"] == "daily"
         if operations_source == "csv":
-            self.out("Operations window:", "first 24 hours" if daily else "first 7 days")
+            self.out("Operations window:", "last 24 hours" if daily else "last 7 days",
+                     "ending at the latest CSV activity")
         elif operations_source == "sql":
             self.out("Operations window:", "last 24 hours" if daily else "last 7 days")
         elif daily:
@@ -73,7 +74,10 @@ class YardPresenter(Presenter):
             "recorded_at", "period_start", "period_end", "lifting_count", "shifting_count",
             "total_operations", "shifting_percentage", "parameter_compliance",
         ))
-        self.out("Timestamps are Unix seconds; period_end is exclusive.")
+        if operations_source == "csv":
+            self.out("Timestamps are Unix seconds; period_start is exclusive and period_end is inclusive.")
+        else:
+            self.out("Timestamps are Unix seconds; period_end is exclusive.")
         self.out("shifting_percentage uses 0-100; parameter_compliance uses 0-1; null means unavailable.")
         self.out("Parameter compliance basis:", report["parameter_compliance_basis"])
         if raw_operations:

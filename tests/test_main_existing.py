@@ -29,7 +29,7 @@ class ExistingYardMainTests(unittest.TestCase):
         self.shifting_path = self.root / "shifting.xlsx"
         self.mapping_path = self.root / "shifting_block_mapping.toml"
         # Test-only assignments, not actual operational assignments.
-        self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "11"\n', encoding="utf-8")
+        self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "B"\nRS = "C"\n', encoding="utf-8")
         project = DEFAULT_INPUT_CONFIG_FILE.parent.parent
         template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
         # Tests choose their own operations source, independent of the user's default.
@@ -254,9 +254,9 @@ benchmark_period_start = 1857916800
         self.assertEqual(report["loaded_shifting_data_points"], 2)
         self.assertEqual(len(report["shifting_observations"]), 2)
         self.assertEqual(report["parameter_compliance_basis"], "current_yard_snapshot")
-        blocks = {block["block_id"]: block for block in report["blocks"]}
-        self.assertEqual(blocks["10"]["shifting_percentage"], 50)
-        self.assertEqual(blocks["11"]["shifting_percentage"], 0)
+        blocks = {block["block_code"]: block for block in report["blocks"]}
+        self.assertEqual(blocks["B"]["shifting_percentage"], 50)
+        self.assertEqual(blocks["C"]["shifting_percentage"], 0)
 
     def test_missing_historical_counts_do_not_block_latest_week(self):
         self.write_shifting(
@@ -275,7 +275,7 @@ benchmark_period_start = 1857916800
         self.assertEqual(len(report["shifting_observations"]), 2)
 
     def test_absent_block_invalid_counts_do_not_affect_selected_week(self):
-        self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
+        self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "B"\nRS = "99"\n', encoding="utf-8")
         self.write_shifting(
             "CY 219 (Lini 2),SL,200,20,2026-10,43\nCY 219 (Lini 2),RS,bad,-1,2026-10,43\n"
         )
@@ -310,7 +310,7 @@ benchmark_period_start = 1857916800
             "CY 219 (Lini 2),SL,50,10,2026-10,44\nCY 219 (Lini 2),RS,100,30,2026-10,43\n"
         )
         report = main_existing.build_report(self.input_path)
-        block = next(b for b in report["blocks"] if b["block_id"] == "11")
+        block = next(b for b in report["blocks"] if b["block_code"] == "C")
         self.assertIsNone(block["lifting_count"])
         self.assertIsNone(block["shifting_count"])
         self.assertIsNone(block["shifting_percentage"])
@@ -371,7 +371,7 @@ benchmark_period_start = 1857916800
         self.assertNotIn("skipped_shifting_data_points", report)
 
     def test_absent_block_counts_are_excluded_from_yard_and_block_totals(self):
-        self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "10"\nRS = "99"\n', encoding="utf-8")
+        self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "B"\nRS = "99"\n', encoding="utf-8")
         self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,100,30,,\n")
         report = main_existing.build_report(self.input_path)
         self.assertEqual(report["shifting_count"], 10)
@@ -379,7 +379,7 @@ benchmark_period_start = 1857916800
         self.assertNotIn("skipped_shifting_data_points", report)
         self.assertNotIn("skipped_shifting_observations", report)
         self.assertEqual(
-            next(b for b in report["blocks"] if b["block_id"] == "10")["shifting_count"], 10,
+            next(b for b in report["blocks"] if b["block_code"] == "B")["shifting_count"], 10,
         )
 
     def test_shifting_counts_are_joined_to_blocks(self):
@@ -387,18 +387,18 @@ benchmark_period_start = 1857916800
             "CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,100,30,,\nCY 219 (Lini 2),SL,100,20,,\n"
         )
         report = main_existing.build_report(self.input_path)
-        blocks = {block["block_id"]: block for block in report["blocks"]}
-        self.assertEqual(blocks["10"]["shifting_count"], 30)
-        self.assertEqual(blocks["10"]["shifting_data_points"], 2)
-        self.assertEqual(blocks["11"]["shifting_count"], 30)
+        blocks = {block["block_code"]: block for block in report["blocks"]}
+        self.assertEqual(blocks["B"]["shifting_count"], 30)
+        self.assertEqual(blocks["B"]["shifting_data_points"], 2)
+        self.assertEqual(blocks["C"]["shifting_count"], 30)
         self.assertEqual(report["shifting_count"], 60)
         self.assertEqual(report["shifting_observations"][0]["shifting_code"], "SL")
-        self.assertEqual(report["shifting_observations"][0]["block_id"], "10")
+        self.assertEqual(report["shifting_observations"][0]["block_id"], blocks["B"]["block_id"])
         self.assertNotIn("equipment_group", report["shifting_observations"][0])
 
     def test_block_without_observations_is_not_reported_as_zero(self):
         report = main_existing.build_report(self.input_path)
-        block = next(block for block in report["blocks"] if block["block_id"] == "11")
+        block = next(block for block in report["blocks"] if block["block_code"] == "C")
         self.assertEqual(block["shifting_data_points"], 0)
         self.assertIsNone(block["shifting_count"])
         self.assertEqual(block["missing_shifting_observations"], 0)

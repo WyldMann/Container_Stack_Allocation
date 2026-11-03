@@ -1,4 +1,4 @@
-"""CSV operations use the first scoped activity window, independent of row order."""
+"""CSV operations use the most recent scoped activity window, independent of row order."""
 
 from contextlib import redirect_stdout
 import csv
@@ -23,7 +23,7 @@ CY = "CY 219 (Lini 2)"
 HEADER = ("DTL_ID", "DOC_ID", "ACTIVITY", "ACTIVITY_DATE_TIME", "KODE_CABANG", "ALAT")
 ACTIVITIES = {"lifting": ("Lift On Loading",), "shifting": ("Shifting Delivery",)}
 NOW = int(datetime(2026, 10, 29, 15, tzinfo=WIB).timestamp())
-START = int(datetime(2026, 10, 29, 14, 30, tzinfo=WIB).timestamp())
+LATEST = int(datetime(2026, 10, 29, 14, 30, tzinfo=WIB).timestamp())
 
 
 def operation(identifier="1", document="100", activity="Lift On Loading",
@@ -45,12 +45,13 @@ class CSVOperationsTests(unittest.TestCase):
         root = Path(temporary.name)
         self.path = root / "operations.csv"
         self.mapping = root / "mapping.toml"
-        self.mapping.write_text(f'["{CY}"]\nSL = "10"\nRS = "11"\nABSENT = "9"\n', encoding="utf-8")
+        self.mapping.write_text(f'["{CY}"]\nSL = "B"\nRS = "C"\nABSENT = "9"\n', encoding="utf-8")
 
     def load(self, rows, *, headers=HEADER, blocks=("10", "11"), **kwargs):
         write_csv(self.path, rows, headers)
         return load_csv_shifting_summary(
-            self.path, ACTIVITIES, CY, "JKT74", self.mapping, blocks,
+            self.path, ACTIVITIES, CY, "JKT74", self.mapping,
+            [{"block_id": block, "block_code": {"10": "B", "11": "C"}[block]} for block in blocks],
             **kwargs,
         )
 
@@ -65,7 +66,7 @@ class CSVOperationsTests(unittest.TestCase):
             operation(timestamp="bad", equipment="ABSENT"),
             operation(timestamp="bad", equipment="UNMAPPED"),
             operation(timestamp="bad", identifier=""),
-            operation(timestamp="30-10-2026 14:30", activity="Excluded later activity"),
+            operation(timestamp="28-10-2026 14:30", activity="Excluded older activity"),
         ], diagnostics=diagnostics)
         self.assertEqual([(r.shifting_code, r.block_id, r.lifting_count, r.shifting_count)
                           for r in summaries], [("SL", "10", 1, 1), ("RS", "11", 0, 0)])
@@ -73,7 +74,7 @@ class CSVOperationsTests(unittest.TestCase):
         self.assertIsNone(summaries[1].shifting_percentage)
         self.assertEqual(diagnostics, {"excluded_activities": {"Lift On Delivery": 1, "lift on loading": 1}})
 
-    def test_first_daily_and_seven_day_windows_are_order_independent_and_end_exclusive(self):
+    def test_latest_daily_and_seven_day_windows_ignore_row_order_and_include_latest_timestamp(self):
         def text(timestamp):
             return datetime.fromtimestamp(timestamp, WIB).strftime("%d-%m-%Y %H:%M")
 
@@ -83,31 +84,31 @@ class CSVOperationsTests(unittest.TestCase):
         ):
             with self.subTest(granularity=granularity):
                 rows = self.load([
-                    operation(timestamp=text(START + duration + 3600)),
-                    operation(timestamp=text(START + duration - 60)),
-                    operation(timestamp=text(START + duration)),
-                    operation(timestamp=text(START)),
-                    operation(timestamp=text(START + 2 * 86400)),
-                    operation(timestamp="01-01-2020 00:00", branch="OTHER"),
-                    operation(timestamp="01-01-2020 00:00", equipment="ABSENT"),
-                    operation(timestamp="01-01-2020 00:00", equipment="UNMAPPED"),
-                    operation(timestamp="01-01-2020 00:00", identifier=""),
+                    operation(timestamp=text(LATEST - duration - 3600)),
+                    operation(timestamp=text(LATEST - duration + 60)),
+                    operation(timestamp=text(LATEST - duration)),
+                    operation(timestamp=text(LATEST)),
+                    operation(timestamp=text(LATEST - 2 * 86400)),
+                    operation(timestamp="01-01-2030 00:00", branch="OTHER"),
+                    operation(timestamp="01-01-2030 00:00", equipment="ABSENT"),
+                    operation(timestamp="01-01-2030 00:00", equipment="UNMAPPED"),
+                    operation(timestamp="01-01-2030 00:00", identifier=""),
                 ], period_granularity=granularity)
                 self.assertEqual(rows[0].lifting_count, expected)
-                self.assertEqual({(r.period_start, r.period_end) for r in rows}, {(START, START + duration)})
+                self.assertEqual({(r.period_start, r.period_end) for r in rows}, {(LATEST - duration, LATEST)})
                 self.assertTrue(all(r.report_date is None and r.week_number is None for r in rows))
 
-    def test_all_codes_share_one_window_instead_of_starting_at_each_codes_first_activity(self):
+    def test_all_codes_share_one_window_ending_at_the_latest_equipment_activity(self):
         rows = self.load([operation(equipment="RS", timestamp="31-10-2026 14:30"), operation()])
-        self.assertEqual([(r.lifting_count, r.shifting_count) for r in rows], [(1, 0), (0, 0)])
-        self.assertEqual({r.period_start for r in rows}, {START})
+        self.assertEqual([(r.lifting_count, r.shifting_count) for r in rows], [(0, 0), (1, 0)])
+        self.assertEqual({r.period_end for r in rows}, {LATEST + 2 * 86400})
 
     def test_excluded_activity_can_anchor_window_with_zero_classified_counts(self):
         diagnostics = {}
-        rows = self.load([operation(activity="Lift On Delivery"),
-                          operation(timestamp="30-10-2026 14:30")], diagnostics=diagnostics)
+        rows = self.load([operation(timestamp="30-10-2026 14:30", activity="Lift On Delivery"),
+                          operation()], diagnostics=diagnostics)
         self.assertEqual([(r.lifting_count, r.shifting_count) for r in rows], [(0, 0), (0, 0)])
-        self.assertEqual(rows[0].period_start, START)
+        self.assertEqual(rows[0].period_end, LATEST + 86400)
         self.assertEqual(diagnostics, {"excluded_activities": {"Lift On Delivery": 1}})
 
     def test_counts_operations_without_assuming_detail_ids_or_containers_are_unique(self):
@@ -115,7 +116,7 @@ class CSVOperationsTests(unittest.TestCase):
         self.assertEqual(rows[0].lifting_count, 3)
 
     def test_multiple_codes_can_contribute_to_one_block(self):
-        self.mapping.write_text(f'["{CY}"]\nSL = "10"\nRS = "10"\n', encoding="utf-8")
+        self.mapping.write_text(f'["{CY}"]\nSL = "B"\nRS = "B"\n', encoding="utf-8")
         rows = self.load([operation(), operation(equipment="RS", activity="Shifting Delivery")])
         self.assertEqual({r.block_id for r in rows}, {"10"})
         self.assertEqual(main_existing.shifting_metrics(rows)["shifting_percentage"], 50)
@@ -127,7 +128,7 @@ class CSVOperationsTests(unittest.TestCase):
     def test_historical_operations_do_not_depend_on_recording_time(self):
         rows = self.load([operation(timestamp="01-01-2020 00:00")])
         self.assertEqual(rows[0].lifting_count, 1)
-        self.assertEqual(rows[0].period_start, int(datetime(2020, 1, 1, tzinfo=WIB).timestamp()))
+        self.assertEqual(rows[0].period_end, int(datetime(2020, 1, 1, tzinfo=WIB).timestamp()))
 
     def test_no_loaded_blocks_ignores_invalid_activity_times(self):
         self.assertEqual(self.load([operation(timestamp="bad")], blocks=iter(())), [])
@@ -143,9 +144,9 @@ class CSVOperationsTests(unittest.TestCase):
             with self.subTest(value=value):
                 rows = self.load([operation(timestamp=value), operation(timestamp="01-10-2026 10:33")])
                 self.assertEqual(rows[0].lifting_count, 2)
-                self.assertEqual(rows[0].period_start, expected)
+                self.assertEqual(rows[0].period_end, expected)
 
-    def test_mixed_date_separators_preserve_first_window_and_exclusive_end(self):
+    def test_mixed_date_separators_preserve_latest_window_and_inclusive_end(self):
         rows = self.load([
             operation(timestamp="2/10/2026 10:33"),
             operation(timestamp="01-10-2026 10:33"),
@@ -167,7 +168,7 @@ class CSVOperationsTests(unittest.TestCase):
                 ], period_granularity=granularity, diagnostics=diagnostics)
                 self.assertEqual(rows[0].lifting_count, 1)
                 self.assertEqual(rows[0].shifting_count, 1)
-                self.assertEqual({(r.period_start, r.period_end) for r in rows}, {(START, START + duration)})
+                self.assertEqual({(r.period_start, r.period_end) for r in rows}, {(LATEST - duration, LATEST)})
                 self.assertEqual(diagnostics, {"excluded_activities": {}})
 
     def test_only_blank_activity_times_returns_no_observations(self):
@@ -257,7 +258,7 @@ class CSVOperationsConfigTests(unittest.TestCase):
         settings = self.settings()
         branches = SimpleNamespace(cy_name=lambda: CY, records=[{"branch_code": "JKT74"}])
         with patch("repository.operations_input.load_csv_shifting_summary", return_value=[]) as loader:
-            self.assertEqual(load_operations(settings, branches, {"10"}), [])
+            self.assertEqual(load_operations(settings, branches, [{"block_id": "10", "block_code": "B"}]), [])
         self.assertEqual(loader.call_args.args[0], settings["csv_files"]["shifting_summary"])
 
 
@@ -278,6 +279,12 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         ), encoding="utf-8")
         write_csv(self.csv_path, [operation(), operation(activity="Shifting Delivery"),
                                   operation(activity="Lift On Delivery")])
+        # Assign equipment using the selected yard block codes.
+        yard_inputs = load_yard_inputs(self.settings(), include_shifting=False)
+        block_codes = [row["block_code"] for row in yard_inputs["yard_blocks"]]
+        self.fixture.mapping_path.write_text(
+            f'["{CY}"]\nSL = "{block_codes[0]}"\nRS = "{block_codes[-1]}"\n', encoding="utf-8",
+        )
 
     def settings(self):
         return load_input_config(self.path, datasets=main_existing.EXISTING_YARD_DATASETS)
@@ -298,15 +305,15 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         updated = load_yard_inputs(settings)["shifting_summary"]
         self.assertEqual(sum(r.lifting_count for r in updated), 2)
 
-    def test_first_activity_window_report_jsonl_and_presenter(self):
+    def test_latest_activity_window_report_jsonl_and_presenter(self):
         with patch.object(main_existing, "time", return_value=NOW + 10 * 86400):
             report = main_existing.build_report(self.path)
         self.assertEqual(report["recorded_at"], NOW + 10 * 86400)
-        self.assertEqual((report["period_start"], report["period_end"]), (START, START + 86400))
+        self.assertEqual((report["period_start"], report["period_end"]), (LATEST - 86400, LATEST))
         self.assertEqual(report["input_sources"]["shifting_summary"], "csv")
         self.assertEqual(report["shifting_source"], str(self.csv_path))
         self.assertIsNone(report["shifting_workbook_source"])
-        self.assertEqual(report["operations_period_basis"], "first_activity_window")
+        self.assertEqual(report["operations_period_basis"], "latest_activity_window")
         self.assertEqual(report["operations_completeness"], "unverified")
         self.assertEqual(report["excluded_activities"], {"Lift On Delivery": 1})
         self.assertEqual(report["shifting_percentage"], 50)
@@ -319,23 +326,24 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
             main_existing.main()
         saved = json.loads((self.fixture.root / "output" / "existing_yard_metrics.jsonl").read_text())
         self.assertEqual(saved, report)
-        self.assertIn("Operations window: first 24 hours", output.getvalue())
+        self.assertIn("Operations window: last 24 hours ending at the latest CSV activity", output.getvalue())
+        self.assertIn("period_start is exclusive and period_end is inclusive", output.getvalue())
         self.assertIn("Lift On Delivery", output.getvalue())
         self.assertIn("period_start period_end shifting_code", output.getvalue())
 
-    def test_weekly_report_uses_first_seven_days(self):
+    def test_weekly_report_uses_latest_seven_days(self):
         text = self.path.read_text(encoding="utf-8")
         self.path.write_text(text.replace('period_granularity = "daily"', 'period_granularity = "weekly"'),
                              encoding="utf-8")
         with patch.object(main_existing, "time", return_value=NOW):
             report = main_existing.build_report(self.path)
-        self.assertEqual((report["period_start"], report["period_end"]), (START, START + 7 * 86400))
+        self.assertEqual((report["period_start"], report["period_end"]), (LATEST - 7 * 86400, LATEST))
         output = io.StringIO()
         with redirect_stdout(output):
             main_existing.YardPresenter().outRecordedMetrics(report)
-        self.assertIn("Operations window: first 7 days", output.getvalue())
+        self.assertIn("Operations window: last 7 days ending at the latest CSV activity", output.getvalue())
 
-    def test_old_cutoff_setting_is_rejected_instead_of_silently_overriding_first_window(self):
+    def test_old_cutoff_setting_is_rejected_instead_of_silently_overriding_latest_window(self):
         text = self.path.read_text(encoding="utf-8")
         self.path.write_text(text.replace('[csv]', '[csv]\nshifting_cutoff = "2026-10-29T15:00:00+07:00"'),
                              encoding="utf-8")

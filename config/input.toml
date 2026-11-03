@@ -25,7 +25,7 @@ master_equipment = "csv"
 equipment_history = "csv"
 shifting_summary = "csv"
 
-# CSV starts at its earliest scoped activity: daily = first 24 hours, weekly = first 7 days.
+# CSV ends at its latest scoped activity: daily = preceding 24 hours, weekly = preceding 7 days.
 # SQL uses a rolling window ending at recording time: daily = last 24 hours,
 # weekly = last 7 days. Source activity date text is interpreted as WIB.
 # This does not infer ingestion completeness or automatically select older periods.

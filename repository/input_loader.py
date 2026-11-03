@@ -141,7 +141,7 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None):
                                  or settings.get("shifting_workbook_file") is not None):
             inputs["shifting_summary"] = load_operations(
                 settings, directory,
-                {row["block_id"] for row in inputs["yard_blocks"]},
+                inputs["yard_blocks"],
                 connection=connection,
             )
         return inputs
