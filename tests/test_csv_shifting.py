@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE, load_input_config
+from config.application.shifting_input import shifting_settings
 import main_existing
 from repository import InputError, load_yard_inputs
 from repository.operations_repository import load_csv_shifting_summary
@@ -47,10 +48,10 @@ class CSVOperationsTests(unittest.TestCase):
         self.mapping = root / "mapping.toml"
         self.mapping.write_text(f'["{CY}"]\nSL = "B"\nRS = "C"\nABSENT = "9"\n', encoding="utf-8")
 
-    def load(self, rows, *, headers=HEADER, blocks=("10", "11"), **kwargs):
+    def load(self, rows, *, headers=HEADER, blocks=("10", "11"), activities=ACTIVITIES, **kwargs):
         write_csv(self.path, rows, headers)
         return load_csv_shifting_summary(
-            self.path, ACTIVITIES, CY, "JKT74", self.mapping,
+            self.path, activities, CY, "JKT74", self.mapping,
             [{"block_id": block, "block_code": {"10": "B", "11": "C"}[block]} for block in blocks],
             **kwargs,
         )
@@ -69,10 +70,26 @@ class CSVOperationsTests(unittest.TestCase):
             operation(timestamp="28-10-2026 14:30", activity="Excluded older activity"),
         ], diagnostics=diagnostics)
         self.assertEqual([(r.shifting_code, r.block_id, r.lifting_count, r.shifting_count)
-                          for r in summaries], [("SL", "10", 1, 1), ("RS", "11", 0, 0)])
-        self.assertEqual(summaries[0].shifting_percentage, 50)
+                          for r in summaries], [("SL", "10", 2, 1), ("RS", "11", 0, 0)])
+        self.assertAlmostEqual(summaries[0].shifting_percentage, 100 / 3)
         self.assertIsNone(summaries[1].shifting_percentage)
-        self.assertEqual(diagnostics, {"excluded_activities": {"Lift On Delivery": 1, "lift on loading": 1}})
+        self.assertEqual(diagnostics, {"excluded_activities": {"Lift On Delivery": 1}})
+
+    def test_all_eight_requested_activity_names_are_counted_with_default_configuration(self):
+        document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
+        _, activities = shifting_settings(document, activities_required=True)
+        labels = (
+            "Lift On Delivery", "Shifting", "Lift Off Discharge", "Lift on Relokasi",
+            "Lift on Loading", "Shifting Delivery", "Lift Off Receiving", "Shifting Muat",
+        )
+        for transform in (str, str.lower, str.upper):
+            with self.subTest(case=transform.__name__):
+                diagnostics = {}
+                rows = self.load([operation(activity=transform(label)) for label in labels],
+                                 activities=activities, diagnostics=diagnostics)
+                self.assertEqual((rows[0].lifting_count, rows[0].shifting_count), (5, 3))
+                self.assertEqual(rows[0].shifting_percentage, 37.5)
+                self.assertEqual(diagnostics, {"excluded_activities": {}})
 
     def test_latest_daily_and_seven_day_windows_ignore_row_order_and_include_latest_timestamp(self):
         def text(timestamp):
@@ -299,7 +316,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         self.assertNotIn("shifting_workbook_file", settings)
         self.assertNotIn("shifting_period", settings)
         self.assertNotIn("connection", settings)
-        self.assertEqual(sum(r.lifting_count for r in rows), 1)
+        self.assertEqual(sum(r.lifting_count for r in rows), 2)
         self.assertEqual(sum(r.shifting_count for r in rows), 1)
         write_csv(self.csv_path, [operation(), operation()])
         updated = load_yard_inputs(settings)["shifting_summary"]
@@ -310,7 +327,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
             report = main_existing.build_report(self.path)
         self.assertEqual(report["recorded_at"], NOW + 10 * 86400)
         self.assertEqual((report["period_start"], report["period_end"]), (LATEST - 86400, LATEST))
-        self.assertEqual(report["avg_shifting_percentage"], 50)
+        self.assertAlmostEqual(report["avg_shifting_percentage"], 100 / 3)
         self.assertEqual(report["latest_date"], "2026-10-29")
         self.assertEqual(list(report), [
             "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
@@ -383,9 +400,9 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
             with self.assertRaisesRegex(ConfigurationError, "activities.lifting"):
                 self.settings()
 
-    def test_shared_activity_configuration_can_include_delivery_lifting(self):
+    def test_shared_activity_configuration_matches_different_capitalization(self):
         text = self.path.read_text(encoding="utf-8")
-        self.path.write_text(text.replace('lifting = [', 'lifting = ["Lift On Delivery",'), encoding="utf-8")
+        self.path.write_text(text.replace('"Lift On Delivery"', '"lift on delivery"'), encoding="utf-8")
         report = main_existing.build_report(self.path)
         self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 2)
         self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 1)
@@ -394,7 +411,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
     def test_csv_operations_can_accompany_sql_yard_data(self):
         driver, connection, cursor = self.fixture.sql_existing()
         report = main_existing.build_report(self.path)
-        self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 1)
+        self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 2)
         self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 1)
         driver.connect.assert_called_once()
         cursor.execute.assert_called_once()

@@ -19,11 +19,14 @@ def shifting_settings(document, *, activities_required=False):
             continue
         if (not isinstance(values, list) or not values
                 or any(not isinstance(value, str) or not value.strip() for value in values)
-                or len(set(values)) != len(values)):
-            raise ConfigurationError(f"shifting.activities.{kind} must be a non-empty list of unique activity names.")
+                or len({value.upper() for value in values}) != len(values)):
+            raise ConfigurationError(
+                f"shifting.activities.{kind} must be a non-empty list of unique activity names (ignoring case)."
+            )
         result[kind] = tuple(values)
-    if set(result.get("lifting", ())) & set(result.get("shifting", ())):
-        raise ConfigurationError("Lifting and shifting activity lists must not overlap.")
+    if ({value.upper() for value in result.get("lifting", ())}
+            & {value.upper() for value in result.get("shifting", ())}):
+        raise ConfigurationError("Lifting and shifting activity lists must not overlap (ignoring case).")
     return section, result
 
 

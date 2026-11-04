@@ -40,10 +40,12 @@ lifting = [
     "Lift On Relokasi",
     "Lift Off Receiving",
     "Lift Off Discharge",
+    "Lift On Delivery",
 ]
 shifting = [
     "Shifting Delivery",
     "Shifting Muat",
+    "Shifting",
 ]
 
 [csv]

@@ -57,14 +57,14 @@ class OperationsRepository(Repository):
         duration = 86400 if period_granularity == "daily" else 7 * 86400
         period_start = period_end - duration
         counts = {code: Counter() for code in active}
-        categories = {activity: kind for kind, names in activities.items() for activity in names}
+        categories = {activity.upper(): kind for kind, names in activities.items() for activity in names}
         excluded = Counter()
         for timestamp, code, activity in self._iter_operations(active):
             # Include the newest activity; exclude the exact trailing-window cutoff.
             if not period_start < timestamp <= period_end:
                 continue
-            # Match SQL's exact activity comparison; equipment codes ignore case/whitespace.
-            kind = categories.get(activity)
+            # Use the same case-insensitive activity comparison as the SQL source.
+            kind = categories.get(activity.upper())
             if kind is None:
                 excluded[activity] += 1
             else:

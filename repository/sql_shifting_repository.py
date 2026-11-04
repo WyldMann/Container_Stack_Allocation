@@ -32,7 +32,7 @@ WHERE EXISTS (
       AND {b_branch_code} = %(branch_code)s
       AND UPPER(BTRIM({b_equipment_code}::text, %(whitespace)s)) = %(equipment_code)s
 )
-AND {a_activity} = ANY(%(activities)s::text[])
+AND UPPER({a_activity}::text) = ANY(%(activities)s::text[])
 AND TO_TIMESTAMP({a_activity_time} || %(utc_offset)s, %(datetime_format)s)
     >= TO_TIMESTAMP(%(period_start)s::double precision)
 AND TO_TIMESTAMP({a_activity_time} || %(utc_offset)s, %(datetime_format)s)
@@ -66,7 +66,7 @@ def load_sql_shifting_summary(
                 "branch_code": branch_code,
                 "equipment_code": code.upper(),
                 "whitespace": BRANCH_WHITESPACE,
-                "activities": list(activities[kind]),
+                "activities": [activity.upper() for activity in activities[kind]],
                 "utc_offset": " +07:00",
                 "datetime_format": definition["datetime_format"] + " TZH:TZM",
                 "period_start": start,

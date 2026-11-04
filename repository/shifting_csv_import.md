@@ -64,9 +64,11 @@ a limited query result.
   modification timestamps are not used. Blank or whitespace-only timestamps are
   skipped when selecting the latest window and counting operations. Nonblank,
   invalid timestamps in scoped, countable rows raise a source/line error.
-- Reuse `[shifting.activities]` for both CSV and SQL. Activity values match exactly.
-  `Lift On Delivery` is currently excluded; add it to the shared lifting list only
-  if it belongs in that metric. There is no automatic prefix classification.
+- Reuse `[shifting.activities]` for both CSV and SQL. Activity names match ignoring
+  capitalization, so `Lift on Loading` matches `Lift On Loading`. The configured
+  lifting activities include `Lift On Delivery`; shifting activities include
+  `Shifting`. Duplicate names and names assigned to both categories are rejected
+  ignoring capitalization. There is no automatic prefix classification.
 - `shifting.period_granularity = "daily"` means the 24 hours ending at that timestamp;
   `"weekly"` means the preceding 7 days. The start is exclusive and the end
   is inclusive, so operations at the latest timestamp are counted. One common

@@ -62,9 +62,9 @@ class SQLShiftingConfigTests(SQLShiftingFixture, unittest.TestCase):
         self.assertNotIn("shifting_workbook_file", settings)
         self.assertEqual(settings["shifting_block_mapping_file"], self.fixture.mapping_path.resolve())
         self.assertEqual(settings["shifting_activities"]["lifting"], (
-            "Lift On Loading", "Lift On Relokasi", "Lift Off Receiving", "Lift Off Discharge",
+            "Lift On Loading", "Lift On Relokasi", "Lift Off Receiving", "Lift Off Discharge", "Lift On Delivery",
         ))
-        self.assertEqual(settings["shifting_activities"]["shifting"], ("Shifting Delivery", "Shifting Muat"))
+        self.assertEqual(settings["shifting_activities"]["shifting"], ("Shifting Delivery", "Shifting Muat", "Shifting"))
         with patch.dict(os.environ, {}, clear=True), self.assertRaisesRegex(ConfigurationError, "YARD_DB_HOST"):
             self.settings()
 
@@ -76,7 +76,9 @@ class SQLShiftingConfigTests(SQLShiftingFixture, unittest.TestCase):
             ('timezone = "Asia/Jakarta"', 'timezone = "UTC"'),
             ('"Lift On Loading",', '"Shifting Delivery",'),
             ('"Lift On Loading",', '"Lift On Loading", "Lift On Loading",'),
-            ('"Shifting Delivery",\n    "Shifting Muat",', ''),
+            ('"Lift On Loading",', '"Lift On Loading", "lift on loading",'),
+            ('"Lift On Loading",', '"shifting delivery",'),
+            ('"Shifting Delivery",\n    "Shifting Muat",\n    "Shifting",', ''),
         )
         for old, new in replacements:
             with self.subTest(new=new):
@@ -151,8 +153,8 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         self.assertEqual([item["equipment_code"] for item in parameters], ["SL", "SL", "RS", "RS"])
         self.assertTrue(all(item["branch_code"] == "JKT74" for item in parameters))
         self.assertTrue(all(item["period_start"] == START and item["period_end"] == END for item in parameters))
-        self.assertEqual(parameters[0]["activities"], list(self.loaded["shifting_activities"]["lifting"]))
-        self.assertEqual(parameters[1]["activities"], list(self.loaded["shifting_activities"]["shifting"]))
+        self.assertEqual(parameters[0]["activities"], [value.upper() for value in self.loaded["shifting_activities"]["lifting"]])
+        self.assertEqual(parameters[1]["activities"], [value.upper() for value in self.loaded["shifting_activities"]["shifting"]])
         self.assertTrue(all(item["datetime_format"] == "DD-MM-YYYY HH24:MI TZH:TZM" for item in parameters))
         self.assertTrue(all(item["utc_offset"] == " +07:00" for item in parameters))
         for context in self.contexts:
@@ -198,6 +200,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         query = operations_count_query(definition).as_string()
         self.assertIn('"report""schema"."TBL_INSP_MAPPING_MSA_RECEIVINGDELIVERY_DTL"', query)
         self.assertIn('"b"."ALAT"', query)
+        self.assertIn('UPPER("a"."ACTIVITY"::text) = ANY(%(activities)s::text[])', query)
         self.assertIn('WHERE EXISTS', query)
         self.assertNotIn('JOIN', query)
         self.assertIn('>= TO_TIMESTAMP(%(period_start)s::double precision)', query)
@@ -308,7 +311,8 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         with Path(document["csv"]["files"]["existing_containers"]).open(encoding="utf-8-sig", newline="") as stream:
             reader = csv.reader(stream)
             headers, data = next(reader), list(reader)
-        data[0][headers.index("CONTNO")] = "SQL_ONLY_CONTAINER"
+        selected = next(row for row in data if row[headers.index("BRANCH")].strip().upper() == "JKT74")
+        selected[headers.index("CONTNO")] = "SQL_ONLY_CONTAINER"
         context = MagicMock()
         cursor = context.__enter__.return_value
         cursor.description = [SimpleNamespace(name=name) for name in headers]
