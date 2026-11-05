@@ -3,14 +3,11 @@
 # CY name and container branch codes are resolved through terminal_branches.
 
 [input.filters]
-# All non-empty filters are combined with AND. Blank or commented values disable them.
-# Insert cy terminal and branch id here
-# SQL applies them in WHERE; CSV yard inputs and container output use the same scope.
-# Column names are configured per dataset in sql_mapping.toml / csv_mapping.toml.
-# terminal_branches resolves these IDs to BRANCH_CODE and BRANCH_NAME.
-# Shifting reports require the selected reference to contain exactly one branch.
-terminal_id = 1
-branch_id = 2
+# Select the branch code, ignoring case and surrounding whitespace.
+# Blank or omitted values disable branch scoping.
+# terminal_branches resolves this code to the IDs used by yard inputs.
+# SQL, CSV, and container output use the same selected branch and yard blocks.
+branch_code = "JKT74"
 
 [input.sources]
 terminal_branches = "csv"

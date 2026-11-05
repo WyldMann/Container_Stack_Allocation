@@ -26,7 +26,7 @@ class BranchDirectory:
             branch_id = row["branch_id"]
             if code in self.by_code or branch_id in self.by_id:
                 raise InputError(
-                    "terminal_branches: ambiguous branch code or ID; narrow terminal_id/branch_id filters."
+                    "terminal_branches: ambiguous branch code or ID; select a unique branch_code."
                 )
             self.by_code[code] = row
             self.by_id[branch_id] = row
@@ -38,7 +38,7 @@ class BranchDirectory:
     def cy_name(self):
         if len(self.records) != 1:
             raise ConfigurationError(
-                "Shifting reports require exactly one branch; set terminal_id/branch_id filters."
+                "Shifting reports require exactly one branch; set input.filters.branch_code."
             )
         return self.records[0]["branch_name"]
 

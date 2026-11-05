@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from .config_loader import ConfigurationError, _read_document, _read_section
-from .input_filters import FILTER_NAMES, active_filters, mapped_filters, read_filter_columns
+from .input_filters import FILTER_NAMES, active_filters, read_filter_columns
 from .shifting_period import parse_shifting_period
 from .shifting_input import shifting_settings, sql_shifting_settings
 from ..csv_import.mapping_settings import SCHEMAS
@@ -45,8 +45,9 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
     section = _read_section(document, "input", {"sources", "filters"})
     filters = active_filters(_read_section(section, "filters", FILTER_NAMES), "input.filters")
     for name, value in filters.items():
-        if type(value) not in (str, int):
-            raise ConfigurationError(f"input.filters.{name} must be a string or integer.")
+        if not isinstance(value, str):
+            raise ConfigurationError(f"input.filters.{name} must be a string.")
+        filters[name] = value.strip().upper()
     sources = section.get("sources")
     _dataset_names(sources, "input.sources", required=datasets, optional=("shifting_summary",))
     shifting_source = sources.get("shifting_summary", "xlsx")
@@ -167,11 +168,7 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
         }:
             raise ConfigurationError(f"Invalid {label} settings.")
         filters = active_filters(definition.get("filters", {}), f"{label}.filters")
-        columns = read_filter_columns(definition.get("filter_columns", {}), f"{label}.filter_columns")
-        for column, value in mapped_filters(settings["filters"], columns).items():
-            if column in filters and filters[column] != value:
-                raise ConfigurationError(f"Conflicting filter values for {label}.{column}.")
-            filters[column] = value
+        read_filter_columns(definition.get("filter_columns", {}), f"{label}.filter_columns")
         order = definition.get("order_by", [])
         if not isinstance(order, list):
             raise ConfigurationError(f"{label}.order_by must be a list of column names.")

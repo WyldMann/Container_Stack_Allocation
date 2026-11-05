@@ -125,7 +125,7 @@ class BranchLoadingTests(unittest.TestCase):
         self.assertEqual(BranchDirectory(sql_rows).cy_name(), name)
 
     def test_missing_reference_match_fails_before_reading_containers(self):
-        self.path.write_text(self.path.read_text().replace("branch_id = 2", "branch_id = 999"))
+        self.path.write_text(self.path.read_text().replace('branch_code = "JKT74"', 'branch_code = "MISSING"'))
         with self.assertRaisesRegex(InputError, "no branches match"):
             load_yard_inputs(load_input_config(self.path), include_shifting=False)
 

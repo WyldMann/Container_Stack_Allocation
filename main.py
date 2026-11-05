@@ -36,7 +36,9 @@ with input_connection(input_settings) as connection:
     if (input_settings.get("shifting_source") in ("csv", "sql")
             or input_settings.get("shifting_workbook_file") is not None):
         shifting_summary = load_operations(
-            input_settings, BranchDirectory(inputs["terminal_branches"]), yard.blocks_by_id,
+            input_settings, BranchDirectory(inputs["terminal_branches"]),
+            [{"block_id": block.getId(), "block_code": block.getCode()}
+             for block in yard.blocks_by_id.values()],
             connection=connection,
         )
         inputs["shifting_summary"] = shifting_summary

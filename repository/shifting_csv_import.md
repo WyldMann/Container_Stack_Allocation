@@ -3,6 +3,9 @@
 Select `shifting_summary = "csv"` in `[input.sources]` and configure:
 
 ```toml
+[input.filters]
+branch_code = "JKT74"
+
 [csv.files]
 shifting_summary = "../data_CY219/shfiting_report.csv"
 ```
@@ -53,6 +56,10 @@ a limited query result.
 
 - Resolve the selected branch through `terminal_branches`; match `KODE_CABANG`
   ignoring case and surrounding whitespace.
+  Set `[input.filters].branch_code` to select the branch. Its terminal and branch
+  IDs are resolved internally for yard inputs; numeric ID input filters are no
+  longer supported. Blank or omitted branch codes disable yard scoping, and
+  shifting reports still require exactly one resolved branch.
 - Match `ALAT` through `shifting.block_mapping_file`, ignoring case and surrounding
   whitespace. Mapping values are yard `block_code` strings (for example, `SL = "2A"`),
   resolved to the loaded yard's `block_id` internally. Recorded observations use

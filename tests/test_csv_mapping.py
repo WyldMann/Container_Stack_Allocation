@@ -400,11 +400,11 @@ class CSVReaderMappingTests(unittest.TestCase):
         # loop or writing the output CSV.
         namespace = {"__file__": str(main_path), "__name__": "__main__"}
         from unittest.mock import patch
-        from tests.test_main_existing import ExistingYardMainTests
-        fixture = ExistingYardMainTests()
+        from tests import test_input_filters as filter_tests
+        fixture = filter_tests.InputFilterTests()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
-        with patch("config.DEFAULT_INPUT_CONFIG_FILE", fixture.input_path):
+        with patch("config.DEFAULT_INPUT_CONFIG_FILE", fixture.path):
             exec(compile(ast.Module(body=startup, type_ignores=[]), str(main_path), "exec"), namespace)
         self.assertTrue(namespace["yard"].blocks_by_id)
         self.assertTrue(namespace["yard"].containers)

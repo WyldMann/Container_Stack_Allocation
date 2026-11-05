@@ -3,7 +3,9 @@
 from .config_loader import ConfigurationError
 
 
-FILTER_NAMES = {"terminal_id", "branch_id"}
+FILTER_NAMES = {"branch_code"}
+# Source files may store numeric IDs, resolved internally from terminal_branches.
+SOURCE_FILTER_NAMES = FILTER_NAMES | {"terminal_id", "branch_id"}
 
 
 def active_filters(filters, label="filters"):
@@ -23,8 +25,8 @@ def active_filters(filters, label="filters"):
 
 
 def read_filter_columns(columns, label):
-    if not isinstance(columns, dict) or set(columns) - FILTER_NAMES:
-        raise ConfigurationError(f"{label} must map terminal_id or branch_id to source columns.")
+    if not isinstance(columns, dict) or set(columns) - SOURCE_FILTER_NAMES:
+        raise ConfigurationError(f"{label} must map branch_code, terminal_id or branch_id to source columns.")
     for column in columns.values():
         if not isinstance(column, str) or not column.strip():
             raise ConfigurationError(f"{label} source columns must be non-empty strings.")

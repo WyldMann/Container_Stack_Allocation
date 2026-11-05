@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from config import ConfigurationError, load_input_config
 from config.application.input_filters import active_filters, read_filter_columns
+from config.csv_import.mapping_loader import load_mapping
 from filewriter import ContainerFileWriter
 import main_existing
 from repository import CSVLoader, InputError, load_yard_inputs
@@ -30,6 +31,64 @@ class InputFilterTests(unittest.TestCase):
         self.addCleanup(self.fixture.doCleanups)
         self.path = self.fixture.input_path
         self.root = self.fixture.root
+        self.profiles = load_mapping(
+            Path(__file__).resolve().parents[1] / "config" / "csv_mapping.toml", source="csv",
+        )
+        self.data = {
+            "terminal_branches": [
+                dict(branch_id="2", terminal_id="1", branch_code="JKT74", branch_name="CY 219 (Lini 2)"),
+                dict(branch_id="3", terminal_id="1", branch_code="JKT75", branch_name="CY 220"),
+                dict(branch_id="4", terminal_id="2", branch_code="JKT76", branch_name="CY 221"),
+            ],
+            "yard_blocks": [
+                dict(block_id=block, terminal_id=terminal, branch_id=branch, block_code=code,
+                     slot_count="4", row_count="2", max_tier="3", pos_x="0", pos_y="0")
+                for block, terminal, branch, code in (
+                    ("10", "1", "2", "B"), ("11", "1", "2", "C"),
+                    ("12", "1", "3", "B"), ("13", "2", "4", "D"),
+                )
+            ],
+            "existing_containers": [
+                dict(container_id="BOX_" + code, branch_id=branch, block_code=block,
+                     row_no="1", slot_no="1", tier_no="1", container_size="20")
+                for code, branch, block in (("A", "JKT74", "B"), ("C", "JKT74", "C"),
+                                             ("OTHER", "JKT75", "B"), ("LAST", "JKT76", "D"))
+            ],
+            "removed_slots": [dict(block_id=block, row_no="2", slot_no="4")
+                              for block in ("10", "11", "12", "13")],
+            "parameters": [],
+            "yard_planning": [],
+            "equipment_history": [
+                dict(equipment_code="EQ_" + branch, branch_id=branch, block_code=block,
+                     row_no="1", slot_no="1", move_time="2026-10-01 00:00:00")
+                for branch, block in (("JKT74", "B"), ("JKT75", "B"), ("JKT76", "D"))
+            ],
+            "master_equipment": [],
+            "inbound_containers": [],
+        }
+        document = tomllib.loads(self.path.read_text(encoding="utf-8"))
+        text = self.path.read_text(encoding="utf-8")
+        for name, rows in self.data.items():
+            path = self.write_records(name, rows)
+            text = text.replace(document["csv"]["files"][name], path.as_posix())
+        self.path.write_text(text, encoding="utf-8")
+
+    def write_records(self, name, rows):
+        profile = self.profiles[name]
+        headers = list(dict.fromkeys([
+            *(profile.columns.get(field, field) for field in profile.schema.fields),
+            *profile.filter_columns.values(),
+        ]))
+        path = self.root / (name + ".csv")
+        with path.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=headers)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({
+                    profile.columns.get(field, profile.filter_columns.get(field, field)): value
+                    for field, value in row.items()
+                })
+        return path
 
     def set_filters(self, text):
         source = self.path.read_text(encoding="utf-8")
@@ -45,34 +104,90 @@ class InputFilterTests(unittest.TestCase):
         }):
             return load_input_config(self.path, datasets=main_existing.EXISTING_YARD_DATASETS)
 
-    def test_each_filter_is_independently_optional(self):
-        self.fixture.set_source("terminal_branches", "sql")
-        names = ("terminal_id", "branch_id")
-        columns = ("TERMINAL_ID", "BRANCH_ID")
-        values = (1, 2)
-        for enabled in itertools.product((False, True), repeat=2):
-            with self.subTest(enabled=enabled):
-                self.set_filters("\n".join(
-                    name + " = " + (str(value) if isinstance(value, int) else '"' + value + '"')
-                    if on else name + ' = "  "'
-                    for name, value, on in zip(names, values, enabled)
-                ))
-                settings = self.settings()
-                self.assertEqual(settings["sql_datasets"]["terminal_branches"]["filters"], {
-                    column: value for column, value, on in zip(columns, values, enabled) if on
-                })
+    def test_branch_code_is_optional_and_normalized(self):
+        for value, expected in (('"JKT74"', {"branch_code": "JKT74"}),
+                                ('"  jkt74  "', {"branch_code": "JKT74"}), ('"  "', {})):
+            with self.subTest(value=value):
+                self.set_filters("branch_code = " + value)
+                self.assertEqual(self.settings()["filters"], expected)
 
     def test_commented_filters_disable_scope_and_do_not_default_to_production_values(self):
         self.fixture.set_source("existing_containers", "sql")
-        self.set_filters('# terminal_id = 1\n# branch_id = 2')
+        self.set_filters('# branch_code = "JKT74"')
         settings = self.settings()
         self.assertEqual(settings["filters"], {})
         self.assertEqual(settings["sql_datasets"]["existing_containers"]["filters"], {})
 
+    def test_csv_reference_accepts_padded_lowercase_codes(self):
+        self.data["terminal_branches"][0]["branch_code"] = " \t jkt74 "
+        self.write_records("terminal_branches", self.data["terminal_branches"])
+        self.set_filters('branch_code = " JkT74 "')
+        inputs = load_yard_inputs(self.settings(), include_shifting=False)
+        self.assertEqual(len(inputs["terminal_branches"]), 1)
+        self.assertEqual({row["block_id"] for row in inputs["yard_blocks"]}, {"10", "11"})
+        self.assertEqual({row["branch_id"] for row in inputs["existing_containers"]}, {"2"})
+
+    def test_missing_branch_fails_before_loading_other_inputs(self):
+        self.set_filters('branch_code = "MISSING"')
+        opened = []
+        original_open = CSVLoader.open
+
+        def record_open(loader):
+            opened.append(loader.file_path.name)
+            return original_open(loader)
+
+        with patch.object(CSVLoader, "open", record_open), self.assertRaisesRegex(InputError, "no branches match"):
+            load_yard_inputs(self.settings(), include_shifting=False)
+        self.assertEqual(opened, ["terminal_branches.csv"])
+
+    def test_csv_parameters_and_planning_use_resolved_branch_ids(self):
+        self.write_records("parameters", [
+            dict(parameter_id=parameter, terminal_id=terminal, branch_id=branch)
+            for parameter, terminal, branch in (("201", "1", "2"), ("301", "1", "3"), ("401", "2", "4"))
+        ])
+        self.write_records("yard_planning", [
+            dict(parameter_id=parameter, block_id=block, terminal_id=terminal,
+                 branch_id=branch, row_no="1", slot_no="1")
+            for parameter, block, terminal, branch in (("201", "10", "1", "2"), ("301", "12", "1", "3"))
+        ])
+        inputs = load_yard_inputs(self.settings(), include_shifting=False)
+        self.assertEqual({row["parameter_id"] for row in inputs["parameters"]}, {"201"})
+        self.assertEqual(inputs["yard_planning"], {"201": [("10", 0, 0)]})
+
+    def test_inbound_branch_scope_preserves_unassigned_containers(self):
+        self.write_records("inbound_containers", [
+            dict(container_id=container, branch_id=branch)
+            for container, branch in (("SELECTED", "JKT74"), ("OTHER", "JKT75"), ("UNASSIGNED", ""))
+        ])
+        settings = self.settings()
+        # The existing-yard report intentionally omits inbound data; exercise the full loader.
+        settings["sources"]["inbound_containers"] = "csv"
+        settings["csv_files"]["inbound_containers"] = self.root / "inbound_containers.csv"
+        inputs = load_yard_inputs(settings, include_shifting=False)
+        self.assertEqual({row["container_id"] for row in inputs["inbound_containers"]}, {"SELECTED", "UNASSIGNED"})
+
+    @unittest.skipUnless(importlib.util.find_spec("psycopg"), "Query composition requires Psycopg")
+    def test_sql_parameters_receive_resolved_ids_and_conflicts_are_rejected(self):
+        self.fixture.set_source("parameters", "sql")
+        settings = self.settings()
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        profile = self.profiles["parameters"]
+        headers = [profile.columns.get(field, field) for field in profile.schema.fields]
+        cursor.description = [SimpleNamespace(name=name) for name in headers]
+        cursor.__iter__.return_value = iter(())
+        load_yard_inputs(settings, connection=connection, include_shifting=False)
+        query, parameters = cursor.execute.call_args.args
+        self.assertIn('WHERE "TERMINAL_ID" = %s AND "BRANCH_ID" = %s', query.as_string())
+        self.assertEqual(parameters, (1, 2))
+        settings["sql_datasets"]["parameters"]["filters"]["BRANCH_ID"] = 999
+        with self.assertRaisesRegex(ConfigurationError, "Conflicting filter values.*BRANCH_ID"):
+            load_yard_inputs(settings, connection=connection, include_shifting=False)
+
     @unittest.skipUnless(importlib.util.find_spec("psycopg"), "Query composition requires Psycopg")
     def test_sql_query_applies_resolved_branch_codes(self):
         self.fixture.set_source("existing_containers", "sql")
-        self.set_filters('terminal_id = 1\nbranch_id = 2')
+        self.set_filters('branch_code = "JKT74"')
         settings = self.settings()
         definition = settings["sql_datasets"]["existing_containers"]
         loader = _sql_loader(None, "existing_containers", definition,
@@ -81,7 +196,7 @@ class InputFilterTests(unittest.TestCase):
             'SELECT * FROM "TERMINAL_APP"."TRM_TRS_TARGET_CONTAINER" '
             'WHERE UPPER(BTRIM("BRANCH"::text, %s)) = ANY(%s)')
         self.assertEqual(loader.parameters, (BRANCH_WHITESPACE, ["JKT74"]))
-        self.set_filters('terminal_id = ""\nbranch_id = ""')
+        self.set_filters('branch_code = ""')
         definition = self.settings()["sql_datasets"]["existing_containers"]
         loader = _sql_loader(None, "existing_containers", definition)
         self.assertNotIn("WHERE", loader.query.as_string())
@@ -116,11 +231,10 @@ class InputFilterTests(unittest.TestCase):
         self.fixture.set_source("yard_blocks", "sql")
         self.fixture.set_source("removed_slots", "sql")
         cases = (
-            ('terminal_id = 1\nbranch_id = 2', False, ["10", "11"]),
-            ('terminal_id = 1\nbranch_id = ""', False, ["10", "11"]),
-            ('terminal_id = ""\nbranch_id = 2', False, ["10", "11"]),
-            ('terminal_id = 1\nbranch_id = 2', True, []),
-            ('# terminal_id = 1\n# branch_id = 2', False, None),
+            ('branch_code = "JKT74"', False, ["10", "11"]),
+            ('branch_code = " jkt74 "', False, ["10", "11"]),
+            ('branch_code = "JKT74"', True, []),
+            ('# branch_code = "JKT74"', False, None),
         )
         for source, (filters, empty, selected) in itertools.product(("csv", "sql"), cases):
             with self.subTest(source=source, filters=filters, empty=empty):
@@ -148,7 +262,9 @@ class InputFilterTests(unittest.TestCase):
                     context = MagicMock()
                     cursor = context.__enter__.return_value
                     cursor.description = [SimpleNamespace(name=name) for name in yard_headers]
-                    cursor.__iter__.return_value = iter([] if empty else yard_rows)
+                    selected_rows = [row for row in yard_rows
+                                     if selected is None or row[yard_headers.index("BRANCH_ID")] == "2"]
+                    cursor.__iter__.return_value = iter([] if empty else selected_rows)
                     contexts.append(context)
                 removed_context = MagicMock()
                 removed_cursor = removed_context.__enter__.return_value
@@ -194,21 +310,28 @@ class InputFilterTests(unittest.TestCase):
                     self.assertEqual(opened_csv.count(block_path), 1)
 
     @unittest.skipUnless(importlib.util.find_spec("psycopg"), "Query composition requires Psycopg")
-    def test_sql_branch_reference_uses_both_id_filters(self):
+    def test_sql_branch_reference_uses_normalized_branch_code_and_resolves_csv_scope(self):
         self.fixture.set_source("terminal_branches", "sql")
-        definition = self.settings()["sql_datasets"]["terminal_branches"]
-        loader = _sql_loader(None, "terminal_branches", definition)
-        self.assertEqual(loader.query.as_string(),
+        self.set_filters('branch_code = " jkt74 "')
+        settings = self.settings()
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        headers = ["BRANCH_ID", "TERMINAL_ID", "BRANCH_CODE", "BRANCH_NAME"]
+        cursor.description = [SimpleNamespace(name=name) for name in headers]
+        cursor.__iter__.return_value = iter([(2, 1, " jkt74 ", "CY 219 (Lini 2)")])
+        inputs = load_yard_inputs(settings, connection=connection, include_shifting=False)
+        query, parameters = cursor.execute.call_args.args
+        self.assertEqual(query.as_string(),
             'SELECT * FROM "TERMINAL_APP"."TRM_MST_TERMINAL_BRANCH" '
-            'WHERE "TERMINAL_ID" = %s AND "BRANCH_ID" = %s')
-        self.assertEqual(loader.parameters, (1, 2))
+            'WHERE UPPER(BTRIM("BRANCH_CODE"::text, %s)) = ANY(%s)')
+        self.assertEqual(parameters, (BRANCH_WHITESPACE, ["JKT74"]))
+        self.assertEqual({row["block_id"] for row in inputs["yard_blocks"]}, {"10", "11"})
 
     def test_zero_and_false_are_active_and_invalid_filter_types_fail(self):
         self.assertEqual(active_filters({"ZERO": 0, "FALSE": False, "EMPTY": " ", "NONE": None}),
                          {"ZERO": 0, "FALSE": False})
-        self.set_filters('terminal_id = 0\nbranch_id = 0')
-        self.assertEqual(self.settings()["filters"], {"terminal_id": 0, "branch_id": 0})
-        for text in ('terminal_id = []', 'terminal_id = true', 'branch_id = 2.5', 'unknown = 1', 'branch = 2'):
+        for text in ('branch_code = []', 'branch_code = true', 'branch_code = 2.5',
+                     'branch_code = 2', 'terminal_id = 1', 'branch_id = 2', 'unknown = 1', 'branch = 2'):
             with self.subTest(text=text), self.assertRaises(ConfigurationError):
                 self.set_filters(text)
                 self.settings()
@@ -230,51 +353,11 @@ class InputFilterTests(unittest.TestCase):
             read_filter_columns({"terminal_id": "BRANCH_ID", "branch_id": "BRANCH_ID"}, "test")
 
     def test_csv_yard_inputs_and_container_export_use_selected_blocks(self):
-        document = tomllib.loads(self.path.read_text(encoding="utf-8"))
-        files = document["csv"]["files"]
-        data = {}
-        headers = {}
-        for name in ("terminal_branches", "yard_blocks", "existing_containers", "yard_planning", "parameters", "removed_slots", "equipment_history"):
-            with Path(files[name]).open(encoding="utf-8-sig", newline="") as stream:
-                reader = csv.DictReader(stream)
-                data[name] = list(reader)
-                headers[name] = reader.fieldnames
-
-        data["terminal_branches"] += [
-            {"BRANCH_ID": "3", "TERMINAL_ID": "1", "BRANCH_CODE": "JKT75", "BRANCH_NAME": "CY 220"},
-            {"BRANCH_ID": "4", "TERMINAL_ID": "2", "BRANCH_CODE": "JKT76", "BRANCH_NAME": "CY 221"},
-        ]
-        data["yard_blocks"] += [
-            data["yard_blocks"][0] | {"BLOCK_ID": "12", "TERMINAL_ID": "1", "BRANCH_ID": "3"},
-            data["yard_blocks"][0] | {"BLOCK_ID": "13", "TERMINAL_ID": "2", "BRANCH_ID": "4", "BLOCK_CODE": "D"},
-        ]
-        data["existing_containers"] += [
-            data["existing_containers"][0] | {"CONTNO": "OTHER_BRANCH", "BRANCH": "JKT75", "BLOK": "2B"},
-            data["existing_containers"][0] | {"CONTNO": "OTHER_TERMINAL", "BRANCH": "JKT76", "BLOK": "D"},
-        ]
-        data["yard_planning"] += [
-            data["yard_planning"][0] | {"BLOCK_ID": "12", "TERMINAL_ID": "1", "BRANCH_ID": "3"},
-            data["yard_planning"][0] | {"BLOCK_ID": "13", "TERMINAL_ID": "2", "BRANCH_ID": "4"},
-        ]
-        data["removed_slots"] += [{"BLOCK_ID": "12", "ROW_NO": "11", "SLOT_NO": "11"}]
-        data["equipment_history"] += [
-            data["equipment_history"][0] | {"ALAT": "OTHER_BRANCH_EQUIPMENT", "BRANCH": "JKT75", "BLOK": "2B"},
-            data["equipment_history"][0] | {"ALAT": "OTHER_TERMINAL_EQUIPMENT", "BRANCH": "JKT76", "BLOK": "D"},
-        ]
-        for name, rows in data.items():
-            destination = self.root / (name + ".csv")
-            with destination.open("w", encoding="utf-8", newline="") as stream:
-                writer = csv.DictWriter(stream, fieldnames=headers[name])
-                writer.writeheader()
-                writer.writerows(rows)
-            source = self.path.read_text(encoding="utf-8")
-            self.path.write_text(source.replace(files[name], destination.as_posix()), encoding="utf-8")
-
         cases = (
-            ('terminal_id = 1\nbranch_id = 2', {"10", "11"}, 20),
-            ('terminal_id = 1\nbranch_id = 3', {"12"}, 1),
-            ('terminal_id = 2\nbranch_id = ""', {"13"}, 1),
-            ('# terminal_id = 1\n# branch_id = 2', {"10", "11", "12", "13"}, 22),
+            ('branch_code = "JKT74"', {"10", "11"}, 2),
+            ('branch_code = " jkt75 "', {"12"}, 1),
+            ('branch_code = "JKT76"', {"13"}, 1),
+            ('# branch_code = "JKT74"', {"10", "11", "12", "13"}, 4),
         )
         for filters, expected_blocks, expected_count in cases:
             with self.subTest(filters=filters):
@@ -296,9 +379,9 @@ class InputFilterTests(unittest.TestCase):
                 selected_coordinates = {(block.getBranch(), block.getCode()) for block in yard.blocks_by_id.values()}
                 self.assertTrue(all(location[:2] in selected_coordinates for location in inputs["equipment_history"].values()))
                 if expected_blocks == {"12"}:
-                    self.assertEqual(set(inputs["equipment_history"]), {"OTHER_BRANCH_EQUIPMENT"})
+                    self.assertEqual(set(inputs["equipment_history"]), {"EQ_JKT75"})
                 elif expected_blocks == {"13"}:
-                    self.assertEqual(set(inputs["equipment_history"]), {"OTHER_TERMINAL_EQUIPMENT"})
+                    self.assertEqual(set(inputs["equipment_history"]), {"EQ_JKT76"})
                 output = self.root / "result.csv"
                 ContainerFileWriter(output, branch_codes=BranchDirectory(inputs["terminal_branches"]).codes_by_id).writeCSV(yard)
                 with output.open(encoding="utf-8", newline="") as stream:

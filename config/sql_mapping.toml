@@ -5,13 +5,14 @@
 # Table/view names are inferred from the exports and must be verified.
 # Names are quoted exactly, including capitalization. Each dataset may override
 # schema and supply filters or order_by, referencing SQL source columns.
-# filter_columns maps the shared values in input.toml [input.filters] to this table.
+# filter_columns maps branch_code and its internally resolved IDs to source columns.
+# Only branch_code is configured in input.toml; terminal/branch IDs come from terminal_branches.
 # branch_kind = "code" resolves a container or equipment BRANCH through terminal_branches.
 
 [sql.terminal_branches]
 schema = "TERMINAL_APP"
 relation = "TRM_MST_TERMINAL_BRANCH"
-filter_columns = { terminal_id = "TERMINAL_ID", branch_id = "BRANCH_ID" }
+filter_columns = { branch_code = "BRANCH_CODE" }
 
 [sql.terminal_branches.columns]
 branch_id = "BRANCH_ID"

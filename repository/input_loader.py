@@ -94,33 +94,62 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None):
     def read_inputs(connection=None):
         directory = None
         selected_block_ids = None
+        branch_code = settings.get("filters", {}).get("branch_code")
+        branch_code = branch_code.strip().upper() if branch_code else None
+        scope_ids = {}
 
         def make_loader(name):
-            branch_column = None
-            if (directory is not None and settings.get("filters")
+            profile = profiles[name]
+            filters = mapped_filters(scope_ids, profile.filter_columns)
+            branch_column = profile.filter_columns.get("branch_code") if branch_code else None
+            branch_codes = (branch_code,) if branch_column else ()
+            if name == "terminal_branches" and branch_code:
+                branch_column = branch_column or profile.columns.get("branch_code", "branch_code")
+                branch_codes = (branch_code,)
+            elif (directory is not None and branch_code
                     and name == "existing_containers" and profiles[name].branch_kind == "code"):
                 branch_column = profiles[name].columns.get("branch_id", "branch_id")
+                branch_codes = tuple(directory.by_code)
             if sources[name] == "csv":
                 return CSVLoader(
                     settings["csv_files"][name],
-                    filters=mapped_filters(settings.get("filters", {}), profiles[name].filter_columns),
-                    branch_codes=tuple(directory.by_code) if branch_column else None,
+                    filters=filters,
+                    branch_codes=branch_codes,
                     branch_column=branch_column,
                 )
+            definition = settings["sql_datasets"][name]
+            sql_filters = dict(definition["filters"])
+            for column, value in filters.items():
+                if column in sql_filters and sql_filters[column] != value:
+                    raise ConfigurationError(f"Conflicting filter values for sql.{name}.{column}.")
+                sql_filters[column] = value
+            definition = {**definition, "filters": sql_filters}
             membership_filters = []
             if branch_column is not None:
-                membership_filters.append((branch_column, tuple(directory.by_code), "branch_code"))
+                membership_filters.append((branch_column, branch_codes, "branch_code"))
             if name == "removed_slots" and selected_block_ids is not None:
                 membership_filters.append((
                     profiles[name].columns.get("block_id", "block_id"), selected_block_ids, "id",
                 ))
-            return _sql_loader(connection, name, settings["sql_datasets"][name],
+            return _sql_loader(connection, name, definition,
                                membership_filters=membership_filters)
 
         reference = _read_datasets(make_loader, profiles, datasets=("terminal_branches",))
+        if branch_code:
+            reference["terminal_branches"] = [row for row in reference["terminal_branches"]
+                                               if row["branch_code"].strip().upper() == branch_code]
         directory = BranchDirectory(reference["terminal_branches"])
+        if branch_code:
+            # Only this resolved identity, never user-supplied numeric IDs, scopes
+            # datasets whose exports contain TERMINAL_ID / BRANCH_ID.
+            for field in ("terminal_id", "branch_id"):
+                value = directory.records[0][field]
+                try:
+                    scope_ids[field] = int(value)
+                except ValueError:
+                    scope_ids[field] = value
         inputs = dict(reference)
-        if settings.get("filters") and sources.get("removed_slots") == "sql":
+        if branch_code and sources.get("removed_slots") == "sql":
             if "yard_blocks" in sources:
                 inputs.update(_read_datasets(make_loader, profiles, datasets=("yard_blocks",)))
             # None disables scoping; an empty selection must still restrict SQL.
@@ -130,12 +159,12 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None):
         ))
         for name in ("existing_containers", "inbound_containers"):
             if name in inputs and profiles[name].branch_kind == "code":
-                inputs[name] = directory.normalize_containers(inputs[name], scoped=bool(settings.get("filters")))
+                inputs[name] = directory.normalize_containers(inputs[name], scoped=bool(branch_code))
         if "equipment_history" in inputs and profiles["equipment_history"].branch_kind == "code":
             inputs["equipment_history"] = directory.normalize_equipment_locations(
-                inputs["equipment_history"], scoped=bool(settings.get("filters")),
+                inputs["equipment_history"], scoped=bool(branch_code),
             )
-        if settings.get("filters"):
+        if branch_code:
             _scope_to_yard_blocks(inputs)
         if include_shifting and (settings.get("shifting_source") in ("csv", "sql")
                                  or settings.get("shifting_workbook_file") is not None):

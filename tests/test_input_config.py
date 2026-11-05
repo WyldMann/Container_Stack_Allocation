@@ -247,13 +247,14 @@ order_by = ["CONTNO"]''')
 
 class ConfiguredInputLoadingTests(unittest.TestCase):
     def setUp(self):
-        document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
-        document["input"]["sources"] = dict.fromkeys(DATASETS, "csv")
-        document["input"]["filters"] = {}
-        document["csv"]["files"]["existing_containers"] = "../data_CY219/containers.csv"
-        document["csv"].pop("shifting_workbook_file", None)
-        with patch("config.application.input_config._read_document", return_value=document):
-            self.csv_settings = load_input_config(DEFAULT_INPUT_CONFIG_FILE)
+        from tests import test_input_filters as filter_tests
+
+        fixture = filter_tests.InputFilterTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        self.csv_settings = load_input_config(fixture.path)
+        self.csv_settings["filters"] = {}
+        self.csv_settings.pop("shifting_workbook_file", None)
         # Supply the driver boundary without installing or contacting PostgreSQL.
         self.driver = ModuleType("psycopg")
         self.driver.connect = MagicMock()
