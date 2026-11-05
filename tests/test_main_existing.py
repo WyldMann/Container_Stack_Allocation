@@ -106,7 +106,7 @@ benchmark_period_start = 1857916800
             "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
         ])
         self.assertEqual(list(report["shifting_observations"][0]), [
-            "cy_name", "block_code", "shifting_code", "lifting_count", "shifting_count",
+            "cy_name", "branch_code", "block_code", "shifting_code", "lifting_count", "shifting_count",
             "shifting_percentage", "parameter_compliance",
         ])
 
@@ -487,7 +487,7 @@ class RecordedMetricsTests(unittest.TestCase):
                                      [100, 0, 100, None])
                     for row in report["shifting_observations"]:
                         self.assertEqual(list(row), [
-                            "cy_name", "block_code", "shifting_code", "lifting_count", "shifting_count",
+                            "cy_name", "branch_code", "block_code", "shifting_code", "lifting_count", "shifting_count",
                             "shifting_percentage", "parameter_compliance",
                         ])
                     json.dumps(report, allow_nan=False)

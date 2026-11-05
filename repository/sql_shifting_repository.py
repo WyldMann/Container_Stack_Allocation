@@ -51,7 +51,7 @@ def load_sql_shifting_summary(
     connection, definition, activities, cy_name, branch_code, mapping_path, blocks, *,
     period_granularity="daily", recorded_at=None,
 ):
-    mapping = resolve_shifting_blocks(load_shifting_block_mapping(mapping_path, cy_name), blocks)
+    mapping = resolve_shifting_blocks(load_shifting_block_mapping(mapping_path, cy_name, branch_code), blocks)
     active = {code: block for code, block in mapping.items() if block is not None}
     if not active:
         return []
@@ -63,7 +63,7 @@ def load_sql_shifting_summary(
         for kind in ("lifting", "shifting"):
             source = f"SQL {kind} operations for {cy_name!r}, equipment {code.upper()!r}, Unix period [{start}, {end})"
             parameters = {
-                "branch_code": branch_code,
+                "branch_code": branch_code.strip().upper(),
                 "equipment_code": code.upper(),
                 "whitespace": BRANCH_WHITESPACE,
                 "activities": [activity.upper() for activity in activities[kind]],
@@ -83,6 +83,7 @@ def load_sql_shifting_summary(
             counts[kind] = count
         result.append(ShiftingSummary(
             cy_name=cy_name, shifting_code=code.upper(), block_id=block_id,
+            branch_code=branch_code.strip().upper(),
             lifting_count=counts["lifting"], shifting_count=counts["shifting"],
             period_start=start, period_end=end,
         ))

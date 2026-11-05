@@ -24,6 +24,7 @@ class ShiftingSummary:
     period_start: int | None = None
     period_end: int | None = None
     report_date: str | None = None
+    branch_code: str | None = None
 
     @property
     def shifting_ratio(self) -> float | None:
@@ -215,9 +216,9 @@ def assign_shifting_periods(observations, period_settings):
 def load_shifting_summary(
     loader, cy_name, mapping_path, blocks, *, period_settings=None,
     latest_only=False,
-    today=None,
+    today=None, branch_code=None,
 ):
-    mapping = resolve_shifting_blocks(load_shifting_block_mapping(mapping_path, cy_name), blocks)
+    mapping = resolve_shifting_blocks(load_shifting_block_mapping(mapping_path, cy_name, branch_code), blocks)
     block_ids = {block for block in mapping.values() if block is not None}
     observations = ShiftingRepository(loader).read_summaries(
         cy_name, latest_only=latest_only, today=today,
@@ -233,7 +234,8 @@ def load_shifting_summary(
             raise InputError(
                 f"{loader.source}: unmapped shifting code {row.shifting_code!r} for {cy_name!r}."
             )
-        result.append(replace(row, block_id=mapping[key]))
+        result.append(replace(row, block_id=mapping[key],
+                              branch_code=branch_code.strip().upper() if branch_code else None))
     result = validate_shifting_blocks(result, block_ids)
     if any(row.report_date is not None for row in observations):
         return result

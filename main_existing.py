@@ -135,6 +135,7 @@ def _build_loaded_report(input_settings, inputs, connection):
         "shifting_observations": [
             {
                 "cy_name": cy_name,
+                "branch_code": row.branch_code,
                 "block_code": yard.blocks_by_id[row.block_id].getCode(),
                 "shifting_code": row.shifting_code,
                 "lifting_count": row.lifting_count,

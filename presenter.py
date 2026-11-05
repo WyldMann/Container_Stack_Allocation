@@ -62,7 +62,7 @@ class YardPresenter(Presenter):
         observations = report["shifting_observations"]
         if observations:
             table(observations, (
-                "cy_name", "block_code", "shifting_code", "lifting_count", "shifting_count",
+                "cy_name", "branch_code", "block_code", "shifting_code", "lifting_count", "shifting_count",
                 "shifting_percentage", "parameter_compliance",
             ))
         else:

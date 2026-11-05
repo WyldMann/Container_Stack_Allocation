@@ -4,12 +4,21 @@
 # Omit codes assigned to absent yard blocks before querying or calculating SQL counts.
 # Multiple codes may map to one block. Each code must identify exactly one block.
 # Match shifting codes ignoring case and surrounding whitespace.
-# Section names match the full BRANCH_NAME using uppercase comparison.
+# Section names match BRANCH_CODE, pairing each equipment code with its branch.
+# Legacy full BRANCH_NAME sections remain supported when no branch section exists.
 # Whitespace is significant; the original name is preserved in output.
 # Block codes use the yard's uppercase/leading-zero normalization.
 # Do not infer them from equipment location.
 # Fill in verified assignments before loading operations.
 
-["CY 219 (Lini 2)"]
+["JKT74"]
 "SL" = "C"
 "RS MDL" = "B"
+
+["JKT64"]
+"RTG02" = "1A"
+"RTG01" = "2A"
+"RTG06" = "1B"
+"RTG09" = "2B"
+"RTG08" = "1C"
+"RTG07" = "2C"

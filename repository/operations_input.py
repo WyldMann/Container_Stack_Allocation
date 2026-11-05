@@ -44,5 +44,5 @@ def load_operations(settings, branches, blocks, *, connection=None, latest_only=
         ), cy_name,
         settings["shifting_block_mapping_file"], blocks,
         period_settings=settings.get("shifting_period"), latest_only=latest_only,
-        today=today,
+        today=today, branch_code=branches.records[0]["branch_code"],
     )

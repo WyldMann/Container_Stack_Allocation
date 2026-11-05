@@ -145,6 +145,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         with self.fixture.mapping_path.open("a", encoding="utf-8") as stream:
             stream.write('"RS TPK" = "9"\n')
         rows = self.summaries()
+        self.assertEqual({row.branch_code for row in rows}, {"JKT74"})
         self.assertEqual([(row.shifting_code, row.block_id, row.lifting_count, row.shifting_count)
                           for row in rows], [("SL", "10", 200, 20), ("RS", "11", 100, 10)])
         self.assertEqual({(row.period_start, row.period_end, row.report_date) for row in rows},

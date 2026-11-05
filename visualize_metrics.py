@@ -73,12 +73,12 @@ def plot_metrics(records):
     times = [datetime.fromtimestamp(record["period_end"], WIB) for record in records]
     # Keep equipment series distinct while grouping charts by CY and block.
     observations = [
-        {(row.get("cy_name", ""), row.get("block_code", ""), row.get("shifting_code", "")): row
+        {(row.get("cy_name", ""), row.get("branch_code", ""), row.get("block_code", ""), row.get("shifting_code", "")): row
          for row in record.get("shifting_observations", [])}
         for record in records
     ]
     keys = sorted({key for rows in observations for key in rows}, key=str)
-    blocks = sorted({key[:2] for key in keys}, key=str)
+    blocks = sorted({key[:3] for key in keys}, key=str)
     chart_count = 1 + len(blocks)
     figure, axes = plt.subplots(
         chart_count, 1, figsize=(12, 3.3 * chart_count), sharex=True,
@@ -96,18 +96,19 @@ def plot_metrics(records):
     axes[0].set_title("Overall averages")
 
     for axis, block in zip(axes[1:], blocks):
-        block_keys = [key for key in keys if key[:2] == block]
+        block_keys = [key for key in keys if key[:3] == block]
         for index, key in enumerate(block_keys):
             for field, label, color in (
                 ("shifting_percentage", "Shifting", "tab:blue"),
                 ("parameter_compliance", "Parameter compliance", "tab:orange"),
             ):
                 values = [percentage(rows.get(key, {}).get(field)) for rows in observations]
-                equipment = f" ({key[2]})" if key[2] else ""
+                equipment = f" ({key[3]})" if key[3] else ""
                 axis.plot(times, values, marker="o", color=color,
                           linestyle=("-", "--", ":", "-.")[index % 4],
                           label=label + equipment)
-        axis.set_title(f"{block[0]} / Block {block[1]}")
+        branch = f" / {block[1]}" if block[1] else ""
+        axis.set_title(f"{block[0]}{branch} / Block {block[2]}")
 
     for axis in axes:
         axis.set_ylim(0, 100)

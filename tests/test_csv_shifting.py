@@ -56,6 +56,21 @@ class CSVOperationsTests(unittest.TestCase):
             **kwargs,
         )
 
+    def test_same_equipment_is_paired_with_branch_for_mapping_counts_and_window(self):
+        self.mapping.write_text('[JKT74]\nSL = "B"\n[OTHER]\nSL = "C"\n', encoding="utf-8")
+        write_csv(self.path, [
+            operation(),
+            operation(branch="OTHER", activity="Shifting Delivery", timestamp="31-10-2026 14:30"),
+        ])
+        blocks = [{"block_id": "10", "block_code": "B"}, {"block_id": "11", "block_code": "C"}]
+        results = [load_csv_shifting_summary(
+            self.path, ACTIVITIES, CY, branch, self.mapping, blocks,
+        )[0] for branch in (" jkt74 ", "OTHER")]
+        self.assertEqual([(r.branch_code, r.shifting_code, r.block_id, r.lifting_count, r.shifting_count)
+                          for r in results], [("JKT74", "SL", "10", 1, 0), ("OTHER", "SL", "11", 0, 1)])
+        self.assertEqual(results[0].period_end, LATEST)
+        self.assertEqual(results[1].period_end, LATEST + 2 * 86400)
+
     def test_scope_activity_classification_zero_counts_and_diagnostics(self):
         diagnostics = {}
         summaries = self.load([

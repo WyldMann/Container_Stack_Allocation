@@ -18,9 +18,11 @@ class OperationsRepository(Repository):
         "DTL_ID", "DOC_ID", "ACTIVITY", "ACTIVITY_DATE_TIME", "KODE_CABANG", "ALAT",
     )
 
-    def _iter_operations(self, active):
+    def _iter_operations(self, active, branch_code=None):
         """Read dated, countable operations for equipment in the loaded yard."""
         for location, row in self._iter_rows():
+            if branch_code is not None and row["KODE_CABANG"].strip().upper() != branch_code.strip().upper():
+                continue
             code = row["ALAT"].strip().casefold()
             if code not in active:
                 continue
@@ -42,14 +44,14 @@ class OperationsRepository(Repository):
             yield timestamp, code, row["ACTIVITY"]
 
     def read_summaries(self, cy_name, mapping, blocks, activities, *,
-                       period_granularity="daily", diagnostics=None):
+                       period_granularity="daily", diagnostics=None, branch_code=None):
         if period_granularity not in ("daily", "weekly"):
             raise ConfigurationError("shifting.period_granularity must be 'daily' or 'weekly'.")
         mapping = resolve_shifting_blocks(mapping, blocks)
         active = {code: block for code, block in mapping.items() if block is not None}
         # The export has no ordering guarantee. Find its latest timestamp before counting;
         # two streaming passes avoid retaining the full activity history in memory.
-        period_end = max((timestamp for timestamp, _, _ in self._iter_operations(active)), default=None)
+        period_end = max((timestamp for timestamp, _, _ in self._iter_operations(active, branch_code)), default=None)
         if diagnostics is not None:
             diagnostics["excluded_activities"] = {}
         if period_end is None:
@@ -59,7 +61,7 @@ class OperationsRepository(Repository):
         counts = {code: Counter() for code in active}
         categories = {activity.upper(): kind for kind, names in activities.items() for activity in names}
         excluded = Counter()
-        for timestamp, code, activity in self._iter_operations(active):
+        for timestamp, code, activity in self._iter_operations(active, branch_code):
             # Include the newest activity; exclude the exact trailing-window cutoff.
             if not period_start < timestamp <= period_end:
                 continue
@@ -74,6 +76,7 @@ class OperationsRepository(Repository):
         return [
             ShiftingSummary(
                 cy_name=cy_name, shifting_code=code.upper(), block_id=block,
+                branch_code=branch_code.strip().upper() if branch_code else None,
                 lifting_count=counts[code]["lifting"], shifting_count=counts[code]["shifting"],
                 period_start=period_start, period_end=period_end,
             )
@@ -83,9 +86,9 @@ class OperationsRepository(Repository):
 
 def load_csv_shifting_summary(path, activities, cy_name, branch_code, mapping_path, blocks, *,
                               period_granularity="daily", diagnostics=None):
-    mapping = load_shifting_block_mapping(mapping_path, cy_name)
+    mapping = load_shifting_block_mapping(mapping_path, cy_name, branch_code)
     loader = CSVLoader(path, branch_column="KODE_CABANG", branch_codes=(branch_code,))
     return OperationsRepository(loader).read_summaries(
         cy_name, mapping, blocks, activities,
-        period_granularity=period_granularity, diagnostics=diagnostics,
+        period_granularity=period_granularity, diagnostics=diagnostics, branch_code=branch_code,
     )

@@ -3,15 +3,20 @@
 from ..application.config_loader import ConfigurationError, _read_document
 
 
-def load_shifting_block_mapping(path, cy_name):
+def load_shifting_block_mapping(path, cy_name, branch_code=None):
     document = _read_document(path)
-    selected = [
+    branch_sections = [
+        value for name, value in document.items()
+        if branch_code is not None and name.strip().upper() == branch_code.strip().upper()
+    ]
+    selected = branch_sections or [
         value for name, value in document.items()
         if name.upper() == cy_name.upper()
     ]
     if len(selected) != 1:
         raise ConfigurationError(
-            f"{path}: expected exactly one mapping section for CY {cy_name!r}."
+            f"{path}: expected exactly one mapping section for CY {cy_name!r}"
+            f" (branch_code {branch_code!r})."
         )
     definitions = selected[0]
     if not isinstance(definitions, dict) or not definitions:
