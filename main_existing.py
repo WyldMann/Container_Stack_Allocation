@@ -4,11 +4,13 @@ from collections import Counter
 from datetime import datetime
 import json
 from time import time
+from urllib.parse import quote
 
 from config import (
-    DEFAULT_CONFIG_FILE, DEFAULT_INPUT_CONFIG_FILE,
+    ConfigurationError, DEFAULT_CONFIG_FILE, DEFAULT_INPUT_CONFIG_FILE,
     load_config, load_input_config,
 )
+from config.application.input_filters import branch_input_settings
 from entities import Yard
 from presenter import YardPresenter
 from repository import load_yard_inputs
@@ -44,14 +46,60 @@ def shifting_metrics(observations):
     }
 
 
-def _build_report_and_yard(input_path):
+def block_shifting_observations(observations, cy_name, yard, compliance_by_block):
+    """Combine the selected period's equipment counts into one row per branch/block."""
+    by_block = {}
+    for row in observations:
+        by_block.setdefault((row.branch_code, row.block_id), []).append(row)
+    result = []
+    for (branch_code, block_id), rows in by_block.items():
+        metrics = shifting_metrics(rows)
+        result.append({
+            "cy_name": cy_name,
+            "branch_code": branch_code,
+            "block_code": yard.blocks_by_id[block_id].getCode(),
+            "shifting_code": ", ".join(sorted({row.shifting_code for row in rows}, key=str.casefold)),
+            "lifting_count": metrics["lifting_count"],
+            "shifting_count": metrics["shifting_count"],
+            "shifting_percentage": metrics["shifting_percentage"],
+            "parameter_compliance": compliance_by_block[block_id],
+        })
+    return result
+
+
+def _build_report_and_yard(input_path, *, branch_code=None):
     input_settings = load_input_config(input_path, datasets=EXISTING_YARD_DATASETS)
+    selections = list(branch_input_settings(input_settings))
+    if branch_code is not None:
+        code = branch_code.strip().upper()
+        selections = [selection for selection in selections
+                      if selection.get("filters", {}).get("branch_code") in (None, code)]
+        selections = [{**selection, "filters": {**selection.get("filters", {}), "branch_code": code}}
+                      for selection in selections]
+    if len(selections) != 1:
+        raise ConfigurationError("Select one configured branch_code or use build_reports() for all branches.")
+    input_settings = selections[0]
     with input_connection(input_settings) as connection:
         inputs = load_yard_inputs(input_settings, include_shifting=False, connection=connection)
         return _build_loaded_report(input_settings, inputs, connection)
 
 
-def _build_loaded_report(input_settings, inputs, connection):
+def _build_reports_and_yards(input_path):
+    """Build every yard separately using one shared read-only SQL snapshot."""
+    settings = load_input_config(input_path, datasets=EXISTING_YARD_DATASETS)
+    results = {}
+    with input_connection(settings) as connection:
+        recorded_at = int(time())
+        for scoped in branch_input_settings(settings):
+            inputs = load_yard_inputs(scoped, include_shifting=False, connection=connection)
+            branches = BranchDirectory(inputs["terminal_branches"])
+            branches.cy_name()  # Require an unambiguous identity even without observations.
+            code = branches.records[0]["branch_code"].strip().upper()
+            results[code] = _build_loaded_report(scoped, inputs, connection, recorded_at=recorded_at)
+    return results
+
+
+def _build_loaded_report(input_settings, inputs, connection, *, recorded_at=None):
     period_settings = input_settings.get("shifting_period")
     operations_source = input_settings.get("shifting_source", "xlsx")
     sql_operations = operations_source == "sql"
@@ -72,7 +120,8 @@ def _build_loaded_report(input_settings, inputs, connection):
         heuristic_settings=settings.heuristic,
     )
 
-    recorded_at = int(time())
+    if recorded_at is None:
+        recorded_at = int(time())
     observations = load_operations(
         input_settings, branches,
         [{"block_id": block.getId(), "block_code": block.getCode()}
@@ -132,44 +181,42 @@ def _build_loaded_report(input_settings, inputs, connection):
             weighted_compliance / container_count * 100
             if container_count else None
         ),
-        "shifting_observations": [
-            {
-                "cy_name": cy_name,
-                "branch_code": row.branch_code,
-                "block_code": yard.blocks_by_id[row.block_id].getCode(),
-                "shifting_code": row.shifting_code,
-                "lifting_count": row.lifting_count,
-                "shifting_count": row.shifting_count,
-                "shifting_percentage": row.shifting_percentage,
-                "parameter_compliance": compliance_by_block[row.block_id],
-            }
-            for row in latest_observations
-        ],
+        "shifting_observations": block_shifting_observations(
+            latest_observations, cy_name, yard, compliance_by_block,
+        ),
     }
     return report, yard
 
 
-def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE):
-    report, _ = _build_report_and_yard(input_path)
+def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE, *, branch_code=None):
+    """Build one report; a multi-branch config requires an explicit branch code."""
+    report, _ = _build_report_and_yard(input_path, branch_code=branch_code)
     return report
 
 
-def main():
-    report, yard = _build_report_and_yard(DEFAULT_INPUT_CONFIG_FILE)
-    output = (
-        DEFAULT_INPUT_CONFIG_FILE.parent.parent
-        / "output" / "existing_yard_metrics.jsonl"
-    )
-    line = json.dumps(report, ensure_ascii=False, allow_nan=False, separators=(", ", ": "))
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("a", encoding="utf-8") as file:
-        file.write(line + "\n")
+def build_reports(input_path=DEFAULT_INPUT_CONFIG_FILE):
+    """Return reports keyed by branch code, including yards without operations."""
+    return {code: report for code, (report, _) in _build_reports_and_yards(input_path).items()}
 
+
+def main():
+    reports = _build_reports_and_yards(DEFAULT_INPUT_CONFIG_FILE)
+    # Validate every record before appending any of this run's reports.
+    lines = {code: json.dumps(report, ensure_ascii=False, allow_nan=False, separators=(", ", ": "))
+             for code, (report, _) in reports.items()}
     presenter = YardPresenter()
-    presenter.outRecordedMetrics(report)
-    print("Recorded to:", output)
-    print()
-    presenter.outYard(yard)
+    for code, (report, yard) in reports.items():
+        output = (DEFAULT_INPUT_CONFIG_FILE.parent.parent / "output"
+                  / f"existing_yard_metrics_{quote(code, safe='')}.jsonl")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("a", encoding="utf-8") as file:
+            file.write(lines[code] + "\n")
+
+        print("Branch:", code)
+        presenter.outRecordedMetrics(report)
+        print("Recorded to:", output)
+        print()
+        presenter.outYard(yard)
 
 
 if __name__ == "__main__":

@@ -78,6 +78,10 @@ def _sql_loader(connection, name, definition, *, membership_filters=()):
 
 def load_yard_inputs(settings, *, include_shifting=True, connection=None):
     """Load selected sources; SQL errors propagate without a CSV fallback."""
+    if isinstance(settings.get("filters", {}).get("branch_code"), list):
+        raise ConfigurationError(
+            "load_yard_inputs requires one branch; iterate branch_input_settings(settings) first."
+        )
     sources = settings["sources"]
     profiles_by_source = {
         source: load_mapping(path, source=source)

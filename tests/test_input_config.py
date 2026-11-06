@@ -23,6 +23,7 @@ class InputConfigTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name).resolve() / "input.toml"
         self.template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
+        self.template = self.template.replace('branch_code = ["JKT74", "JKT64"]', 'branch_code = "JKT74"')
         self.template = self.template.replace('shifting_summary = "csv"', 'shifting_summary = "xlsx"')
         configured_containers = tomllib.loads(self.template)["csv"]["files"]["existing_containers"]
         self.template = self.template.replace(configured_containers, "../data_CY219/containers.csv")

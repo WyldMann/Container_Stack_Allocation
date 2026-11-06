@@ -8,6 +8,38 @@ FILTER_NAMES = {"branch_code"}
 SOURCE_FILTER_NAMES = FILTER_NAMES | {"terminal_id", "branch_id"}
 
 
+def input_filters(filters):
+    """Normalize the branch selection; source-level filters remain scalar."""
+    result = {}
+    for name, value in filters.items():
+        if isinstance(value, list):
+            if not value or any(not isinstance(code, str) or not code.strip() for code in value):
+                raise ConfigurationError(f"input.filters.{name} must be a non-empty array of non-empty strings.")
+            codes = [code.strip().upper() for code in value]
+            if len(codes) != len(set(codes)):
+                raise ConfigurationError(f"input.filters.{name} must not contain duplicate branch codes.")
+            result[name] = codes
+        elif isinstance(value, str):
+            if value.strip():
+                result[name] = value.strip().upper()
+        else:
+            raise ConfigurationError(f"input.filters.{name} must be a string or an array of strings.")
+    return result
+
+
+def branch_input_settings(settings):
+    """Yield independent single-branch settings in configured order."""
+    filters = settings.get("filters", {})
+    codes = filters.get("branch_code")
+    if not isinstance(codes, list):
+        codes = [codes]
+    for code in codes:
+        scoped_filters = dict(filters)
+        if code is not None:
+            scoped_filters["branch_code"] = code
+        yield {**settings, "filters": scoped_filters}
+
+
 def active_filters(filters, label="filters"):
     """Blank and omitted values disable filters; zero and false remain active."""
     if not isinstance(filters, dict):

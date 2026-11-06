@@ -73,20 +73,21 @@ class BranchLoadingTests(unittest.TestCase):
     def test_equipment_fixture_joins_current_yard_blocks(self):
         inputs = load_yard_inputs(load_input_config(self.path), include_shifting=False)
         self.assertEqual(inputs["equipment_history"], {
-            "RS MDL 32": ("2", "2B", 0, 0), "SL 14": ("2", "2C", 0, 0),
+            "RS MDL 32": ("2", "B", 0, 0), "SL": ("2", "C", 0, 0),
         })
 
     def test_padded_lowercase_codes_load_for_containers_and_equipment(self):
         settings = load_input_config(self.path)
+        expected = load_yard_inputs(settings, include_shifting=False)
         for dataset in ("terminal_branches", "existing_containers", "equipment_history"):
             original = settings["csv_files"][dataset]
             destination = self.fixture.root / (dataset + ".csv")
             destination.write_text(original.read_text().replace("JKT74", "\t jkt74  "))
             settings["csv_files"][dataset] = destination
         inputs = load_yard_inputs(settings, include_shifting=False)
-        self.assertEqual(len(inputs["existing_containers"]), 20)
+        self.assertEqual(inputs["existing_containers"], expected["existing_containers"])
         self.assertEqual({row["branch_id"] for row in inputs["existing_containers"]}, {"2"})
-        self.assertEqual(inputs["equipment_history"]["RS MDL 32"], ("2", "2B", 0, 0))
+        self.assertEqual(inputs["equipment_history"], expected["equipment_history"])
 
     def test_latest_equipment_location_outside_scope_does_not_restore_old_location(self):
         settings = load_input_config(self.path)
@@ -144,7 +145,7 @@ class BranchLoadingTests(unittest.TestCase):
         reference_path = self.fixture.root / "branches.csv"
         reference_path.write_text(
             "BRANCH_ID,TERMINAL_ID,BRANCH_CODE,BRANCH_NAME\n"
-            "2,1,JKT74,CY 219 (Lini 2)\n3,1,JKT75,CY 220\n"
+            "2,1,JKT74,CY 219 (Lini 2)\n1,1,JKT64,CY 218 (Lini 2)\n"
         )
         settings["csv_files"]["terminal_branches"] = reference_path
         settings["filters"] = {}

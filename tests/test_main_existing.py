@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE
 from config.application.input_config import DATASETS
+from config.csv_import.mapping_loader import load_mapping
 from repository import CSVLoader
 from repository.csvloader import BRANCH_WHITESPACE
 from repository.shifting_dates import WIB
@@ -35,6 +36,10 @@ class ExistingYardMainTests(unittest.TestCase):
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "B"\nRS = "C"\n', encoding="utf-8")
         project = DEFAULT_INPUT_CONFIG_FILE.parent.parent
         template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
+        template = "\n".join(
+            'branch_code = "JKT74"' if line.startswith("branch_code =") else line
+            for line in template.splitlines()
+        ) + "\n"
         # Tests choose their own operations source, independent of the user's default.
         template = template.replace('shifting_summary = "csv"', 'shifting_summary = "xlsx"')
         template = template.replace('# shifting_workbook_file =', 'shifting_workbook_file =')
@@ -62,6 +67,13 @@ benchmark_period_start = 1857916800
         # Yard fixtures use CSV; operations use the real report workbook.
         for name in DATASETS:
             template = template.replace(f'{name} = "sql"', f'{name} = "csv"')
+        # Input-loader tests may also read inbound data; never depend on a local export.
+        inbound_path = self.root / "inbound.csv"
+        profile = load_mapping(DEFAULT_INPUT_CONFIG_FILE.with_name("csv_mapping.toml"), source="csv")["inbound_containers"]
+        with inbound_path.open("w", encoding="utf-8", newline="") as stream:
+            csv.writer(stream).writerow([profile.columns.get(field, field) for field in profile.schema.fields])
+        template = template.replace(tomllib.loads(template)["csv"]["files"]["inbound_containers"],
+                                    inbound_path.as_posix())
         template = "\n".join(
             'shifting_workbook_file = "' + self.shifting_path.as_posix() + '"'
             if line.startswith("shifting_workbook_file =") else line
@@ -100,7 +112,7 @@ benchmark_period_start = 1857916800
         self.assertGreater(len(yard.containers), 0)
         self.assertTrue(0 <= report["avg_parameter_compliance"] <= 100)
         self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 20)
-        self.assertEqual(len(report["shifting_observations"]), 2)
+        self.assertEqual(len(report["shifting_observations"]), 1)
         self.assertEqual(list(report), [
             "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
             "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
@@ -228,7 +240,8 @@ benchmark_period_start = 1857916800
     def test_available_shifts_are_summed_and_missing_observations_counted(self):
         self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),SL,,,,\n")
         report = main_existing.build_report(self.input_path)
-        self.assertEqual([row["shifting_count"] for row in report["shifting_observations"]], [10, None])
+        self.assertEqual([row["shifting_count"] for row in report["shifting_observations"]], [10])
+        self.assertIsNone(report["shifting_observations"][0]["shifting_percentage"])
         self.assertIsNone(report["avg_shifting_percentage"])
 
     def test_latest_week_uses_aggregate_operations_and_unix_recording_time(self):
@@ -384,6 +397,23 @@ benchmark_period_start = 1857916800
         self.assertAlmostEqual(rows[0]["parameter_compliance"], block.parameterCompliance() * 100)
         self.assertNotIn("equipment_group", report["shifting_observations"][0])
 
+    def test_equipment_mapped_to_the_same_block_is_combined(self):
+        self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "B"\nRS = "B"\n', encoding="utf-8")
+        self.write_shifting(
+            "CY 219 (Lini 2),SL,100,100,2026-10,44\n"
+            "CY 219 (Lini 2),RS,900,0,2026-10,44\n"
+            "CY 219 (Lini 2),SL,9999,9999,2026-10,43\n"
+        )
+        report, yard = main_existing._build_report_and_yard(self.input_path)
+        self.assertEqual(len(report["shifting_observations"]), 1)
+        row = report["shifting_observations"][0]
+        self.assertEqual((row["block_code"], row["shifting_code"]), ("B", "RS, SL"))
+        self.assertEqual((row["lifting_count"], row["shifting_count"]), (1000, 100))
+        self.assertAlmostEqual(row["shifting_percentage"], 100 * 100 / 1100)
+        self.assertEqual(row["shifting_percentage"], report["avg_shifting_percentage"])
+        block = next(block for block in yard.blocks_by_id.values() if block.getCode() == "B")
+        self.assertAlmostEqual(row["parameter_compliance"], block.parameterCompliance() * 100)
+
     def test_block_without_observations_is_not_reported_as_zero(self):
         report = main_existing.build_report(self.input_path)
         self.assertNotIn("C", [row["block_code"] for row in report["shifting_observations"]])
@@ -402,14 +432,14 @@ benchmark_period_start = 1857916800
         report = main_existing.build_report(self.input_path)
         captured = io.StringIO()
         with patch.object(
-            main_existing, "_build_report_and_yard", return_value=(report, Mock()),
+            main_existing, "_build_reports_and_yards", return_value={"JKT74": (report, Mock())},
         ), patch.object(main_existing.YardPresenter, "outYard"), patch.object(
             main_existing, "DEFAULT_INPUT_CONFIG_FILE",
             self.root / "config" / "input.toml",
         ), redirect_stdout(captured):
             main_existing.main()
             main_existing.main()
-        output = self.root / "output" / "existing_yard_metrics.jsonl"
+        output = self.root / "output" / "existing_yard_metrics_JKT74.jsonl"
         records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(records, [report, report])
         self.assertIn("parameter compliance use 0-100", captured.getvalue())
@@ -448,7 +478,7 @@ class RecordedMetricsTests(unittest.TestCase):
             containers[str(index)] = container
         self.yard = SimpleNamespace(containers=containers, blocks_by_id=blocks)
 
-    def report(self, source="csv", granularity="daily", empty=False):
+    def report(self, source="csv", granularity="daily", empty=False, observations=None):
         start = self.now - (86400 if granularity == "daily" else 7 * 86400)
         report_date = "2026-10-31" if source == "xlsx" and granularity == "daily" else None
         rows = [] if empty else [
@@ -460,6 +490,8 @@ class RecordedMetricsTests(unittest.TestCase):
                 ("EXTRA", "29", 0, 0), ("EMPTY", "31", 0, 0),
             )
         ]
+        if observations is not None:
+            rows = observations
         settings = {"shifting_source": source, "shifting_granularity": granularity,
                     "shifting_workbook_sheet": "Per Alat " + granularity.title(),
                     "shifting_period": {}}
@@ -468,6 +500,38 @@ class RecordedMetricsTests(unittest.TestCase):
         ), patch.object(main_existing, "time", return_value=self.now):
             report, _ = main_existing._build_loaded_report(settings, self.inputs, None)
         return report
+
+    def test_shared_block_totals_and_missing_counts_for_all_sources(self):
+        for source in ("csv", "sql", "xlsx"):
+            for missing in (False, True):
+                with self.subTest(source=source, missing=missing):
+                    rows = [
+                        ShiftingSummary("CY", code, lifting, shifting, block_id=block,
+                                        branch_code="JKT74", period_start=self.now - 86400,
+                                        period_end=self.now)
+                        for code, block, lifting, shifting in (
+                            ("RTG05", "29", 100, 100),
+                            ("RTG03", "29", None if missing else 900, None if missing else 0),
+                            ("OTHER", "30", 0, 0),
+                        )
+                    ]
+                    report = self.report(source, observations=rows)
+                    self.assertEqual(len(report["shifting_observations"]), 2)
+                    combined, other = report["shifting_observations"]
+                    self.assertEqual(combined["shifting_code"], "RTG03, RTG05")
+                    self.assertEqual(combined["lifting_count"], 100 if missing else 1000)
+                    self.assertEqual(combined["shifting_count"], 100)
+                    self.assertEqual(combined["parameter_compliance"], 100)
+                    self.assertEqual(report["avg_parameter_compliance"], 25)
+                    self.assertEqual(other["shifting_code"], "OTHER")
+                    self.assertEqual((other["lifting_count"], other["shifting_count"]), (0, 0))
+                    self.assertIsNone(other["shifting_percentage"])
+                    if missing:
+                        self.assertIsNone(combined["shifting_percentage"])
+                        self.assertIsNone(report["avg_shifting_percentage"])
+                    else:
+                        self.assertAlmostEqual(combined["shifting_percentage"], 100 * 100 / 1100)
+                        self.assertEqual(combined["shifting_percentage"], report["avg_shifting_percentage"])
 
     def test_all_sources_share_ordered_schema_and_weighted_percentages(self):
         for source in ("csv", "sql", "xlsx"):
@@ -484,7 +548,7 @@ class RecordedMetricsTests(unittest.TestCase):
                     self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * 100 / 1100)
                     self.assertEqual(report["avg_parameter_compliance"], 25)
                     self.assertEqual([row["parameter_compliance"] for row in report["shifting_observations"]],
-                                     [100, 0, 100, None])
+                                     [100, 0, None])
                     for row in report["shifting_observations"]:
                         self.assertEqual(list(row), [
                             "cy_name", "branch_code", "block_code", "shifting_code", "lifting_count", "shifting_count",

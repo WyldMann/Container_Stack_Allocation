@@ -1,4 +1,3 @@
-import ast
 import inspect
 import tempfile
 import unittest
@@ -382,32 +381,19 @@ class CSVReaderMappingTests(unittest.TestCase):
         ).read_records())
 
     def test_application_startup_loads_profiles_and_builds_yard(self):
-        main_path = Path(__file__).resolve().parents[1] / "main.py"
-        tree = ast.parse(main_path.read_text(encoding="utf-8"))
-        startup = []
-        for statement in tree.body:
-            startup.append(statement)
-            if any(
-                isinstance(node, ast.Assign) and any(
-                    isinstance(target, ast.Name) and target.id == "yard" for target in node.targets
-                ) for node in ast.walk(statement)
-            ):
-                break
-        else:
-            self.fail("The application must initialize a yard.")
-
-        # Exercise initialization without entering the interactive placement
-        # loop or writing the output CSV.
-        namespace = {"__file__": str(main_path), "__name__": "__main__"}
+        import main
+        from config import DEFAULT_CONFIG_FILE, load_config, load_input_config
         from unittest.mock import patch
         from tests import test_input_filters as filter_tests
         fixture = filter_tests.InputFilterTests()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
-        with patch("config.DEFAULT_INPUT_CONFIG_FILE", fixture.path):
-            exec(compile(ast.Module(body=startup, type_ignores=[]), str(main_path), "exec"), namespace)
-        self.assertTrue(namespace["yard"].blocks_by_id)
-        self.assertTrue(namespace["yard"].containers)
+        with patch.object(main, "YardPresenter"), patch.object(main, "BadDataPresenter"), patch.object(
+            main.ContainerFileWriter, "writeCSV",
+        ), patch("builtins.print"):
+            yard = main.run_yard(load_input_config(fixture.path), load_config(DEFAULT_CONFIG_FILE))
+        self.assertTrue(yard.blocks_by_id)
+        self.assertTrue(yard.containers)
 
 
 if __name__ == "__main__":

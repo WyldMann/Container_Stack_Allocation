@@ -3,11 +3,11 @@
 # CY name and container branch codes are resolved through terminal_branches.
 
 [input.filters]
-# Select the branch code, ignoring case and surrounding whitespace.
-# Blank or omitted values disable branch scoping.
-# terminal_branches resolves this code to the IDs used by yard inputs.
-# SQL, CSV, and container output use the same selected branch and yard blocks.
-branch_code = "JKT74"
+# Select branch codes, ignoring case and surrounding whitespace.
+# A single string is also accepted; blank or omitted strings disable scoping.
+# terminal_branches resolves each code to its IDs and its own BRANCH_NAME.
+# Each branch is analyzed separately and appended to its own metrics JSONL.
+branch_code = ["JKT64"]
 
 [input.sources]
 terminal_branches = "csv"

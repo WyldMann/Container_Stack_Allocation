@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from .config_loader import ConfigurationError, _read_document, _read_section
-from .input_filters import FILTER_NAMES, active_filters, read_filter_columns
+from .input_filters import FILTER_NAMES, active_filters, input_filters, read_filter_columns
 from .shifting_period import parse_shifting_period
 from .shifting_input import shifting_settings, sql_shifting_settings
 from ..csv_import.mapping_settings import SCHEMAS
@@ -43,11 +43,7 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
     if unknown:
         raise ConfigurationError(f"Unknown input configuration sections: {sorted(unknown)}")
     section = _read_section(document, "input", {"sources", "filters"})
-    filters = active_filters(_read_section(section, "filters", FILTER_NAMES), "input.filters")
-    for name, value in filters.items():
-        if not isinstance(value, str):
-            raise ConfigurationError(f"input.filters.{name} must be a string.")
-        filters[name] = value.strip().upper()
+    filters = input_filters(_read_section(section, "filters", FILTER_NAMES))
     sources = section.get("sources")
     _dataset_names(sources, "input.sources", required=datasets, optional=("shifting_summary",))
     shifting_source = sources.get("shifting_summary", "xlsx")

@@ -2,7 +2,7 @@
 
 Usage:
     python visualize_metrics.py
-    python visualize_metrics.py output/existing_yard_metrics.jsonl --show
+    python visualize_metrics.py output/existing_yard_metrics_JKT64.jsonl --show
     python visualize_metrics.py metrics.jsonl --output output/trends.png
 
 Install the plotting dependency with:
@@ -18,7 +18,7 @@ import warnings
 
 
 WIB = timezone(timedelta(hours=7), "WIB")
-DEFAULT_INPUT = Path(__file__).resolve().parent / "output" / "existing_yard_metrics.jsonl"
+DEFAULT_INPUT = Path(__file__).resolve().parent / "output" / "existing_yard_metrics_JKT74.jsonl"
 
 
 def load_records(path):

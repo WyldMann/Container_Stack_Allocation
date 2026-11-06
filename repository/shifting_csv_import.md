@@ -4,10 +4,10 @@ Select `shifting_summary = "csv"` in `[input.sources]` and configure:
 
 ```toml
 [input.filters]
-branch_code = "JKT74"
+branch_code = ["JKT74", "JKT64"]
 
 [csv.files]
-shifting_summary = "../data_CY219/shfiting_report.csv"
+shifting_summary = "../data_CY219/shifting_report.csv"
 ```
 
 Paths resolve from `input.toml`. The CSV window ends at the most recent activity
@@ -19,6 +19,10 @@ The report's `latest_date` (`YYYY-MM-DD`) is derived from the window end in WIB
 for both daily and weekly windows, and is `null` when no window is available.
 This label does not restrict the window to a calendar date or month.
 XLSX and SQL remain independently selectable.
+Each selected branch is loaded and analyzed separately. Its `cy_name` comes from
+its own `BRANCH_NAME` in `terminal_branches`, and equipment mappings use that
+branch's section in `shifting_block_mapping.toml`. Shared CSV files must contain
+the data for all selected branches. A scalar `branch_code = "JKT74"` remains supported.
 The CSV path is resolved with the other entries in `[csv.files]` and stored in
 `settings["csv_files"]["shifting_summary"]`. The former
 `csv.shifting_operations_file` setting is rejected. `csv.shifting_workbook_file`
@@ -104,21 +108,35 @@ not included in the shortened JSONL output.
 
 ## Recorded JSONL format
 
+`main_existing.py` appends one record per branch per run to
+`output/existing_yard_metrics_<BRANCH_CODE>.jsonl`, including single-branch runs.
+For the selection above, the files are `existing_yard_metrics_JKT74.jsonl` and
+`existing_yard_metrics_JKT64.jsonl`. Existing unsuffixed files are not migrated.
+Each branch's CSV window ends at its own latest scoped activity; all SQL reports
+in a run share a read-only snapshot. `build_reports()` returns a dictionary keyed
+by branch code; `build_report(branch_code="JKT74")` selects one configured branch.
+
 CSV, SQL, and XLSX reports use the same ordered fields:
 `recorded_at`, `period_start`, `period_end`, `latest_date`, `period_granularity`,
 `avg_shifting_percentage`, `avg_parameter_compliance`, `shifting_observations`.
 Each record occupies one line, with a space after commas and colons.
 
-Each observation contains, in order: `cy_name`, `block_code`, `shifting_code`,
+Each observation contains, in order: `cy_name`, `branch_code`, `block_code`, `shifting_code`,
 `lifting_count`, `shifting_count`, `shifting_percentage`, `parameter_compliance`.
-Observations come from the selected latest reporting period.
+Observations come from the selected latest reporting period. Equipment mapped to
+the same block within a branch is combined into one observation: counts are
+summed, and shifting percentage is calculated from the combined counts.
+`shifting_code` lists the contributing equipment codes in sorted order, separated
+by a comma and space (for example, `"RTG03, RTG05"`). A single code stays unchanged.
+Available counts are retained when another equipment has missing counts, but the
+block percentage is `null` until all contributing counts are available.
 
 `avg_shifting_percentage` is `100 * total shifting / total operations`, not the
 arithmetic mean of equipment percentages. It is `null` for zero operations or
 incomplete counts. `avg_parameter_compliance` is the container-weighted average
 across all loaded blocks, multiplied by 100. Each observation's compliance is
-its block's compliance multiplied by 100. Multiple equipment codes may repeat
-a block's compliance without giving that block additional weight in the average.
+its block's compliance multiplied by 100, recorded once per combined block.
+Multiple equipment codes do not give that block additional weight in the average.
 An empty yard or empty block has `null` compliance; zero compliance remains zero.
 The internal block compliance method continues to return a 0-1 ratio.
 

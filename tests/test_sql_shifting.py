@@ -254,11 +254,11 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         self.assertNotIn("period_selection", report)
         json.dumps(report, allow_nan=False)
         output = io.StringIO()
-        with patch.object(main_existing, "_build_report_and_yard", return_value=(report, yard)), patch.object(
+        with patch.object(main_existing, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
             main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
         ), patch.object(main_existing.YardPresenter, "outYard"), redirect_stdout(output):
             main_existing.main()
-        record = json.loads((self.fixture.root / "output" / "existing_yard_metrics.jsonl").read_text())
+        record = json.loads((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text())
         self.assertEqual(record, report)
         self.assertEqual(record["period_end"], record["recorded_at"])
         self.assertEqual(record["period_end"] - record["period_start"], 86400)

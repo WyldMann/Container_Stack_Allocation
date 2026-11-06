@@ -350,11 +350,11 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         ])
         json.dumps(report, allow_nan=False)
         output = io.StringIO()
-        with patch.object(main_existing, "_build_report_and_yard", return_value=(report, None)), patch.object(
+        with patch.object(main_existing, "_build_reports_and_yards", return_value={"JKT74": (report, None)}), patch.object(
             main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
         ), patch.object(main_existing.YardPresenter, "outYard"), redirect_stdout(output):
             main_existing.main()
-        saved = json.loads((self.fixture.root / "output" / "existing_yard_metrics.jsonl").read_text())
+        saved = json.loads((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text())
         self.assertEqual(saved, report)
         self.assertIn("latest_date is in WIB", output.getvalue())
         self.assertIn("parameter compliance use 0-100", output.getvalue())
@@ -461,7 +461,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         ), self.assertRaises(InputError):
             main_existing.main()
         workbook.assert_not_called()
-        self.assertFalse((self.fixture.root / "output" / "existing_yard_metrics.jsonl").exists())
+        self.assertFalse((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").exists())
 
 
 if __name__ == "__main__":

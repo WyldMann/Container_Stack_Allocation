@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from config import ConfigurationError, load_input_config
-from config.application.input_filters import active_filters, read_filter_columns
+from config.application.input_filters import active_filters, branch_input_settings, read_filter_columns
 from config.csv_import.mapping_loader import load_mapping
 from filewriter import ContainerFileWriter
 import main_existing
@@ -106,10 +106,23 @@ class InputFilterTests(unittest.TestCase):
 
     def test_branch_code_is_optional_and_normalized(self):
         for value, expected in (('"JKT74"', {"branch_code": "JKT74"}),
-                                ('"  jkt74  "', {"branch_code": "JKT74"}), ('"  "', {})):
+                                ('"  jkt74  "', {"branch_code": "JKT74"}), ('"  "', {}),
+                                ('[" jkt74 ", "jkt64"]', {"branch_code": ["JKT74", "JKT64"]})):
             with self.subTest(value=value):
                 self.set_filters("branch_code = " + value)
                 self.assertEqual(self.settings()["filters"], expected)
+
+    def test_array_is_expanded_without_changing_configured_selection(self):
+        self.set_filters('branch_code = ["JKT74", "JKT64"]')
+        settings = self.settings()
+        selections = list(branch_input_settings(settings))
+        self.assertEqual([selection["filters"] for selection in selections],
+                         [{"branch_code": "JKT74"}, {"branch_code": "JKT64"}])
+        selections[0]["filters"]["branch_code"] = "OTHER"
+        self.assertEqual(settings["filters"], {"branch_code": ["JKT74", "JKT64"]})
+        self.assertEqual(selections[1]["filters"], {"branch_code": "JKT64"})
+        with self.assertRaisesRegex(ConfigurationError, "one branch"):
+            load_yard_inputs(settings)
 
     def test_commented_filters_disable_scope_and_do_not_default_to_production_values(self):
         self.fixture.set_source("existing_containers", "sql")
@@ -330,7 +343,9 @@ class InputFilterTests(unittest.TestCase):
     def test_zero_and_false_are_active_and_invalid_filter_types_fail(self):
         self.assertEqual(active_filters({"ZERO": 0, "FALSE": False, "EMPTY": " ", "NONE": None}),
                          {"ZERO": 0, "FALSE": False})
-        for text in ('branch_code = []', 'branch_code = true', 'branch_code = 2.5',
+        for text in ('branch_code = []', 'branch_code = [" "]', 'branch_code = ["JKT74", 2]',
+                     'branch_code = ["JKT74", " jkt74 "]', 'branch_code = [["JKT74"]]',
+                     'branch_code = true', 'branch_code = 2.5',
                      'branch_code = 2', 'terminal_id = 1', 'branch_id = 2', 'unknown = 1', 'branch = 2'):
             with self.subTest(text=text), self.assertRaises(ConfigurationError):
                 self.set_filters(text)
