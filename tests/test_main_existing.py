@@ -418,6 +418,18 @@ benchmark_period_start = 1857916800
         report = main_existing.build_report(self.input_path)
         self.assertNotIn("C", [row["block_code"] for row in report["shifting_observations"]])
 
+    def test_workbook_equipment_can_merge_multiple_blocks(self):
+        self.mapping_path.write_text(
+            '["CY 219 (Lini 2)"]\nSL = ["B", "C"]\nRS = "C"\n', encoding="utf-8",
+        )
+        self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,200,20,,\n")
+        report = main_existing.build_report(self.input_path)
+        self.assertEqual(len(report["shifting_observations"]), 1)
+        row = report["shifting_observations"][0]
+        self.assertEqual(row["block_code"], "B, C")
+        self.assertEqual((row["lifting_count"], row["shifting_count"]), (300, 30))
+        self.assertAlmostEqual(row["parameter_compliance"], report["avg_parameter_compliance"])
+
     def test_shifting_path_is_required(self):
         text = self.input_path.read_text(encoding="utf-8")
         self.input_path.write_text(
@@ -532,6 +544,39 @@ class RecordedMetricsTests(unittest.TestCase):
                     else:
                         self.assertAlmostEqual(combined["shifting_percentage"], 100 * 100 / 1100)
                         self.assertEqual(combined["shifting_percentage"], report["avg_shifting_percentage"])
+
+    def test_connected_blocks_merge_transitively_with_weighted_compliance(self):
+        for source in ("csv", "sql", "xlsx"):
+            with self.subTest(source=source):
+                rows = [
+                    ShiftingSummary("CY", code, lifting, shifting, block_id=ids[0], block_ids=ids,
+                                    branch_code="JKT64", period_start=self.now - 86400,
+                                    period_end=self.now)
+                    for code, ids, lifting, shifting in (
+                        ("OTHER", ("31",), 20, 0),
+                        ("RTG04", ("29", "30"), 100, 100),
+                        ("RTG05", ("30", "31"), 900, 0),
+                    )
+                ]
+                report = self.report(source, observations=rows)
+                self.assertEqual(len(report["shifting_observations"]), 1)
+                row = report["shifting_observations"][0]
+                self.assertEqual(row["block_code"], "B, C, D")
+                self.assertEqual(row["shifting_code"], "OTHER, RTG04, RTG05")
+                self.assertEqual((row["lifting_count"], row["shifting_count"]), (1020, 100))
+                self.assertAlmostEqual(row["shifting_percentage"], 100 * 100 / 1120)
+                self.assertEqual(row["parameter_compliance"], 25)
+                self.assertEqual(row["shifting_percentage"], report["avg_shifting_percentage"])
+
+    def test_merge_keeps_branches_separate_and_empty_compliance_missing(self):
+        rows = [ShiftingSummary("CY", "RTG04", 10, 1, block_ids=("29", "30"), branch_code=branch)
+                for branch in ("JKT74", "JKT64")]
+        result = main_existing.block_shifting_observations(
+            rows, "CY", self.yard, {"29": None, "30": None}, {"29": 0, "30": 0},
+        )
+        self.assertEqual(len(result), 2)
+        self.assertEqual([row["branch_code"] for row in result], ["JKT74", "JKT64"])
+        self.assertTrue(all(row["parameter_compliance"] is None for row in result))
 
     def test_all_sources_share_ordered_schema_and_weighted_percentages(self):
         for source in ("csv", "sql", "xlsx"):

@@ -48,7 +48,7 @@ class OperationsRepository(Repository):
         if period_granularity not in ("daily", "weekly"):
             raise ConfigurationError("shifting.period_granularity must be 'daily' or 'weekly'.")
         mapping = resolve_shifting_blocks(mapping, blocks)
-        active = {code: block for code, block in mapping.items() if block is not None}
+        active = {code: ids for code, ids in mapping.items() if ids}
         # The export has no ordering guarantee. Find its latest timestamp before counting;
         # two streaming passes avoid retaining the full activity history in memory.
         period_end = max((timestamp for timestamp, _, _ in self._iter_operations(active, branch_code)), default=None)
@@ -75,12 +75,12 @@ class OperationsRepository(Repository):
             diagnostics["excluded_activities"] = dict(sorted(excluded.items()))
         return [
             ShiftingSummary(
-                cy_name=cy_name, shifting_code=code.upper(), block_id=block,
+                cy_name=cy_name, shifting_code=code.upper(), block_id=ids[0], block_ids=ids,
                 branch_code=branch_code.strip().upper() if branch_code else None,
                 lifting_count=counts[code]["lifting"], shifting_count=counts[code]["shifting"],
                 period_start=period_start, period_end=period_end,
             )
-            for code, block in active.items()
+            for code, ids in active.items()
         ]
 
 

@@ -65,7 +65,8 @@ a limited query result.
   longer supported. Blank or omitted branch codes disable yard scoping, and
   shifting reports still require exactly one resolved branch.
 - Match `ALAT` through `shifting.block_mapping_file`, ignoring case and surrounding
-  whitespace. Mapping values are yard `block_code` strings (for example, `SL = "2A"`),
+  whitespace. Mapping values are yard `block_code` strings (for example, `SL = "2A"`)
+  or non-empty arrays such as `RTG04 = ["1A", "2A"]`,
   resolved to the loaded yard's `block_id` internally. Recorded observations use
   `block_code`. Unmapped equipment
   and equipment assigned to absent yard block codes
@@ -87,7 +88,10 @@ a limited query result.
   latest timestamp and count the selected window without
   retaining the full export in memory.
 - Produce one existing `ShiftingSummary` per mapped equipment code assigned to a
-  loaded block, including zero counts when there are no matches. Multiple codes
+  loaded block, including zero counts when there are no matches. Equipment mapped
+  to multiple blocks still produces one summary with its counts included once.
+  Missing blocks are omitted; equipment is retained if any mapped block is loaded.
+  Repeated block codes resolve to a single block. Multiple codes
   may contribute to the same block. Shifting percentage remains
   `100 * shifting / (lifting + shifting)`; an empty denominator yields `None`.
   If there are no scoped, dated operations, return no observations and leave the
@@ -128,6 +132,12 @@ the same block within a branch is combined into one observation: counts are
 summed, and shifting percentage is calculated from the combined counts.
 `shifting_code` lists the contributing equipment codes in sorted order, separated
 by a comma and space (for example, `"RTG03, RTG05"`). A single code stays unchanged.
+Equipment mapped to multiple blocks merges those blocks into one observation.
+`block_code` lists the merged codes in sorted order, separated by a comma and
+space (for example, `"1A, 2A"`). Overlapping assignments merge transitively:
+equipment covering `1A, 2A` and equipment covering `2A, 3A` form one group.
+Each equipment summary contributes its counts once. Groups stay within a branch.
+These rules apply to CSV, SQL, and XLSX reports.
 Available counts are retained when another equipment has missing counts, but the
 block percentage is `null` until all contributing counts are available.
 
@@ -136,6 +146,9 @@ arithmetic mean of equipment percentages. It is `null` for zero operations or
 incomplete counts. `avg_parameter_compliance` is the container-weighted average
 across all loaded blocks, multiplied by 100. Each observation's compliance is
 its block's compliance multiplied by 100, recorded once per combined block.
+For merged blocks, compliance is the container-weighted average across their
+unique blocks; empty blocks contribute no weight. A group containing only empty
+blocks has `null` compliance.
 Multiple equipment codes do not give that block additional weight in the average.
 An empty yard or empty block has `null` compliance; zero compliance remains zero.
 The internal block compliance method continues to return a 0-1 ratio.

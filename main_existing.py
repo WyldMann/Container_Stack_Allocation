@@ -46,23 +46,46 @@ def shifting_metrics(observations):
     }
 
 
-def block_shifting_observations(observations, cy_name, yard, compliance_by_block):
-    """Combine the selected period's equipment counts into one row per branch/block."""
-    by_block = {}
+def block_shifting_observations(observations, cy_name, yard, compliance_by_block, container_counts):
+    """Merge connected equipment/block assignments, counting each observation once."""
+    parents = {}
+
+    def root(key):
+        parents.setdefault(key, key)
+        if parents[key] != key:
+            parents[key] = root(parents[key])
+        return parents[key]
+
     for row in observations:
-        by_block.setdefault((row.branch_code, row.block_id), []).append(row)
+        keys = [(row.branch_code, block) for block in row.mapped_block_ids]
+        for key in keys[1:]:
+            parents[root(key)] = root(keys[0])
+    by_group = {}
+    for row in observations:
+        if row.mapped_block_ids:
+            key = root((row.branch_code, row.mapped_block_ids[0]))
+            by_group.setdefault(key, []).append(row)
     result = []
-    for (branch_code, block_id), rows in by_block.items():
+    for (branch_code, _), rows in by_group.items():
+        block_ids = {block for row in rows for block in row.mapped_block_ids}
         metrics = shifting_metrics(rows)
+        weighted = [(compliance_by_block[block], container_counts[block])
+                    for block in block_ids if compliance_by_block[block] is not None]
+        count = sum(count for _, count in weighted)
+        compliance = (sum(score * count for score, count in weighted) / count if count else None)
+        if len(block_ids) == 1:
+            compliance = compliance_by_block[next(iter(block_ids))]
         result.append({
             "cy_name": cy_name,
             "branch_code": branch_code,
-            "block_code": yard.blocks_by_id[block_id].getCode(),
+            "block_code": ", ".join(sorted(
+                (yard.blocks_by_id[block].getCode() for block in block_ids), key=str.casefold,
+            )),
             "shifting_code": ", ".join(sorted({row.shifting_code for row in rows}, key=str.casefold)),
             "lifting_count": metrics["lifting_count"],
             "shifting_count": metrics["shifting_count"],
             "shifting_percentage": metrics["shifting_percentage"],
-            "parameter_compliance": compliance_by_block[block_id],
+            "parameter_compliance": compliance,
         })
     return result
 
@@ -160,10 +183,12 @@ def _build_loaded_report(input_settings, inputs, connection, *, recorded_at=None
         for container in yard.containers.values()
     )
     compliance_by_block = {}
+    container_counts = {}
     weighted_compliance = 0.0
     container_count = 0
     for block in yard.blocks_by_id.values():
         count = counts[(block.getBranch(), block.getCode())]
+        container_counts[block.getId()] = count
         compliance = block.parameterCompliance()
         compliance_by_block[block.getId()] = compliance * 100 if compliance is not None else None
         if compliance is not None:
@@ -182,7 +207,7 @@ def _build_loaded_report(input_settings, inputs, connection, *, recorded_at=None
             if container_count else None
         ),
         "shifting_observations": block_shifting_observations(
-            latest_observations, cy_name, yard, compliance_by_block,
+            latest_observations, cy_name, yard, compliance_by_block, container_counts,
         ),
     }
     return report, yard

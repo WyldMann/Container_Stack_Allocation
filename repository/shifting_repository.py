@@ -25,6 +25,11 @@ class ShiftingSummary:
     period_end: int | None = None
     report_date: str | None = None
     branch_code: str | None = None
+    block_ids: tuple[str, ...] = ()
+
+    @property
+    def mapped_block_ids(self):
+        return self.block_ids or ((self.block_id,) if self.block_id is not None else ())
 
     @property
     def shifting_ratio(self) -> float | None:
@@ -163,24 +168,34 @@ class ShiftingRepository(Repository):
 
 
 def resolve_shifting_blocks(mapping, blocks):
-    """Resolve equipment's configured block codes to loaded yard IDs; absent codes yield None."""
+    """Resolve each equipment to unique loaded block IDs, omitting absent codes."""
     by_code = {}
     for block in blocks:
         code = strGeneralize(block["block_code"])
         by_code.setdefault(code, set()).add(block["block_id"])
     result = {}
-    for equipment, code in mapping.items():
-        matches = by_code.get(strGeneralize(code), set())
-        if len(matches) > 1:
-            raise InputError(f"Shifting block_code {code!r} matches multiple loaded yard blocks.")
-        result[equipment] = next(iter(matches), None)
+    for equipment, codes in mapping.items():
+        ids = []
+        for code in ([codes] if isinstance(codes, str) else codes):
+            matches = by_code.get(strGeneralize(code), set())
+            if len(matches) > 1:
+                raise InputError(f"Shifting block_code {code!r} matches multiple loaded yard blocks.")
+            for block_id in matches:
+                if block_id not in ids:
+                    ids.append(block_id)
+        result[equipment] = tuple(ids)
     return result
 
 
 def validate_shifting_blocks(observations, block_ids):
     """Silently omit observations for blocks absent from the loaded yard."""
     block_ids = set(block_ids)
-    return [row for row in observations if row.block_id in block_ids]
+    result = []
+    for row in observations:
+        retained = tuple(block for block in row.mapped_block_ids if block in block_ids)
+        if retained:
+            result.append(replace(row, block_id=retained[0], block_ids=retained))
+    return result
 
 
 def validate_report_years(report_months):
@@ -219,11 +234,11 @@ def load_shifting_summary(
     today=None, branch_code=None,
 ):
     mapping = resolve_shifting_blocks(load_shifting_block_mapping(mapping_path, cy_name, branch_code), blocks)
-    block_ids = {block for block in mapping.values() if block is not None}
+    block_ids = {block for ids in mapping.values() for block in ids}
     observations = ShiftingRepository(loader).read_summaries(
         cy_name, latest_only=latest_only, today=today,
-        required_codes={code for code, block in mapping.items() if block in block_ids},
-        omitted_codes={code for code, block in mapping.items() if block not in block_ids},
+        required_codes={code for code, ids in mapping.items() if ids},
+        omitted_codes={code for code, ids in mapping.items() if not ids},
     )
     if not observations:
         return []
@@ -234,7 +249,8 @@ def load_shifting_summary(
             raise InputError(
                 f"{loader.source}: unmapped shifting code {row.shifting_code!r} for {cy_name!r}."
             )
-        result.append(replace(row, block_id=mapping[key],
+        ids = mapping[key]
+        result.append(replace(row, block_id=ids[0] if ids else None, block_ids=ids,
                               branch_code=branch_code.strip().upper() if branch_code else None))
     result = validate_shifting_blocks(result, block_ids)
     if any(row.report_date is not None for row in observations):

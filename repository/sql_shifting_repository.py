@@ -52,13 +52,13 @@ def load_sql_shifting_summary(
     period_granularity="daily", recorded_at=None,
 ):
     mapping = resolve_shifting_blocks(load_shifting_block_mapping(mapping_path, cy_name, branch_code), blocks)
-    active = {code: block for code, block in mapping.items() if block is not None}
+    active = {code: ids for code, ids in mapping.items() if ids}
     if not active:
         return []
     start, end = sql_period_boundaries(period_granularity, recorded_at)
     query = operations_count_query(definition)
     result = []
-    for code, block_id in active.items():
+    for code, ids in active.items():
         counts = {}
         for kind in ("lifting", "shifting"):
             source = f"SQL {kind} operations for {cy_name!r}, equipment {code.upper()!r}, Unix period [{start}, {end})"
@@ -82,7 +82,7 @@ def load_sql_shifting_summary(
                 raise InputError(f"{source}: operation_count must be a non-negative integer.")
             counts[kind] = count
         result.append(ShiftingSummary(
-            cy_name=cy_name, shifting_code=code.upper(), block_id=block_id,
+            cy_name=cy_name, shifting_code=code.upper(), block_id=ids[0], block_ids=ids,
             branch_code=branch_code.strip().upper(),
             lifting_count=counts["lifting"], shifting_count=counts["shifting"],
             period_start=start, period_end=end,

@@ -47,10 +47,10 @@ class ShiftingBlockMappingTests(unittest.TestCase):
         self.assertEqual(resolve_shifting_blocks(mapping, [
             {"block_code": "B", "block_id": "10"},
             {"block_code": "2A", "block_id": "34"},
-        ]), {"sl": "10", "rs": None, "other": "34"})
+        ]), {"sl": ("10",), "rs": (), "other": ("34",)})
         self.assertEqual(resolve_shifting_blocks({"sl": "B"}, [
             {"block_code": "B", "block_id": "29"},
-        ]), {"sl": "29"})
+        ]), {"sl": ("29",)})
 
     def test_ambiguous_mapped_block_code_is_rejected(self):
         with self.assertRaisesRegex(InputError, "block_code.*B.*multiple"):
@@ -58,6 +58,39 @@ class ShiftingBlockMappingTests(unittest.TestCase):
                 {"block_code": "B", "block_id": "10"},
                 {"block_code": "B", "block_id": "29"},
             ])
+
+    def test_multiple_blocks_are_resolved_once_and_missing_blocks_are_omitted(self):
+        self.write_mapping('[CY219]\nSL = [" B ", "C", "b", "99"]\n')
+        self.write_csv("CY219,SL,100,10\n")
+        rows = self.load()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].mapped_block_ids, ("10", "11"))
+        self.assertEqual((rows[0].lifting_count, rows[0].shifting_count), (100, 10))
+        retained = validate_shifting_blocks(rows, {"11"})
+        self.assertEqual(retained[0].block_id, "11")
+        self.assertEqual(retained[0].mapped_block_ids, ("11",))
+
+    def test_sql_counts_equipment_once_when_it_maps_to_multiple_blocks(self):
+        from repository.sql_shifting_repository import load_sql_shifting_summary
+
+        self.write_mapping('[CY219]\nRTG04 = ["1A", "2A"]\n')
+        loader = MagicMock()
+        loader.open.return_value.__enter__.return_value = (
+            ["operation_count"], [("SQL", {"operation_count": 5})],
+        )
+        with patch("repository.sql_shifting_repository.operations_count_query"), patch(
+            "repository.sql_shifting_repository.SQLLoader", return_value=loader,
+        ) as loader_class:
+            rows = load_sql_shifting_summary(
+                MagicMock(), {"datetime_format": "DD-MM-YYYY HH24:MI"},
+                {"lifting": ["Lift"], "shifting": ["Shift"]},
+                "CY219", "JKT64", self.mapping,
+                [{"block_code": "1A", "block_id": "10"},
+                 {"block_code": "2A", "block_id": "11"}], recorded_at=1000000,
+            )
+        self.assertEqual(loader_class.call_count, 2)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].mapped_block_ids, ("10", "11"))
 
     def test_sql_uses_resolved_ids_and_does_not_query_absent_codes(self):
         from repository.sql_shifting_repository import load_sql_shifting_summary
@@ -128,7 +161,9 @@ class ShiftingBlockMappingTests(unittest.TestCase):
             '[CY218]\nSL = "B"\n',
             '[CY219]\n',
             '[CY219]\nSL = 10\n',
-            '[CY219]\nSL = ["10", "11"]\n',
+            '[CY219]\nSL = []\n',
+            '[CY219]\nSL = ["B", ""]\n',
+            '[CY219]\nSL = ["B", 11]\n',
             '[CY219]\nSL = ""\n',
             '[CY219]\n" " = "B"\n',
             '[CY219]\nSL = "B"\n" sl " = "C"\n',

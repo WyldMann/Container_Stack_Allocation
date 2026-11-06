@@ -29,9 +29,10 @@ def load_shifting_block_mapping(path, cy_name, branch_code=None):
         key = code.strip().casefold()
         if not key or key in mapping:
             raise ConfigurationError(f"{path}: blank or ambiguous shifting code {code!r}.")
-        if not isinstance(block_code, str) or not block_code.strip():
+        codes = block_code if isinstance(block_code, list) else [block_code]
+        if not codes or any(not isinstance(value, str) or not value.strip() for value in codes):
             raise ConfigurationError(
-                f"{path}: {code!r} must map to one non-empty block_code string."
+                f"{path}: {code!r} must map to a non-empty block_code string or array of strings."
             )
-        mapping[key] = block_code.strip()
+        mapping[key] = [value.strip() for value in codes] if isinstance(block_code, list) else block_code.strip()
     return mapping

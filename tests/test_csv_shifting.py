@@ -90,6 +90,13 @@ class CSVOperationsTests(unittest.TestCase):
         self.assertIsNone(summaries[1].shifting_percentage)
         self.assertEqual(diagnostics, {"excluded_activities": {"Lift On Delivery": 1}})
 
+    def test_multiple_mapped_blocks_do_not_duplicate_equipment_counts(self):
+        self.mapping.write_text('[JKT74]\nSL = ["B", "C", "B", "99"]\n', encoding="utf-8")
+        rows = self.load([operation(), operation(activity="Shifting Delivery")])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].mapped_block_ids, ("10", "11"))
+        self.assertEqual((rows[0].lifting_count, rows[0].shifting_count), (1, 1))
+
     def test_all_eight_requested_activity_names_are_counted_with_default_configuration(self):
         document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
         _, activities = shifting_settings(document, activities_required=True)
