@@ -81,8 +81,8 @@ class MultipleBranchTests(unittest.TestCase):
                 self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * shifting / (lifting + shifting))
                 self.assertEqual(len(report["shifting_observations"]), 1)
                 row = report["shifting_observations"][0]
-                self.assertEqual((report["branch_code"], report["cy_name"], row["block_code"], row["shifting_code"]),
-                                 (code, name, "B", "SL"))
+                self.assertEqual((report["branch_code"], report["cy_name"], row["block_code"], row["assigned_equipment"]),
+                                 (code, name, "B", ["SL"]))
                 self.assertNotIn("cy_name", row)
                 self.assertNotIn("branch_code", row)
                 self.assertEqual((row["lifting_count"], row["shifting_count"]), (lifting, shifting))

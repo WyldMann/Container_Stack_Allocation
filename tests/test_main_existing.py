@@ -118,7 +118,7 @@ benchmark_period_start = 1857916800
             "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
         ])
         self.assertEqual(list(report["shifting_observations"][0]), [
-            "block_code", "shifting_code", "lifting_count", "shifting_count",
+            "block_code", "assigned_equipment", "lifting_count", "shifting_count",
             "shifting_percentage", "parameter_compliance",
         ])
 
@@ -392,7 +392,7 @@ benchmark_period_start = 1857916800
         self.assertEqual(sum(row["shifting_count"] for row in rows if row["block_code"] == "B"), 30)
         self.assertEqual(sum(row["shifting_count"] for row in rows
                              if row["block_code"] == "C" and row["shifting_count"] is not None), 30)
-        self.assertEqual(report["shifting_observations"][0]["shifting_code"], "SL")
+        self.assertEqual(report["shifting_observations"][0]["assigned_equipment"], ["SL"])
         block = next(block for block in yard.blocks_by_id.values() if block.getCode() == "B")
         self.assertAlmostEqual(rows[0]["parameter_compliance"], block.parameterCompliance() * 100)
         self.assertNotIn("equipment_group", report["shifting_observations"][0])
@@ -407,7 +407,7 @@ benchmark_period_start = 1857916800
         report, yard = main_existing._build_report_and_yard(self.input_path)
         self.assertEqual(len(report["shifting_observations"]), 1)
         row = report["shifting_observations"][0]
-        self.assertEqual((row["block_code"], row["shifting_code"]), ("B", "RS, SL"))
+        self.assertEqual((row["block_code"], row["assigned_equipment"]), ("B", ["RS", "SL"]))
         self.assertEqual((row["lifting_count"], row["shifting_count"]), (1000, 100))
         self.assertAlmostEqual(row["shifting_percentage"], 100 * 100 / 1100)
         self.assertEqual(row["shifting_percentage"], report["avg_shifting_percentage"])
@@ -532,12 +532,12 @@ class RecordedMetricsTests(unittest.TestCase):
                     report = self.report(source, observations=rows)
                     self.assertEqual(len(report["shifting_observations"]), 2)
                     combined, other = report["shifting_observations"]
-                    self.assertEqual(combined["shifting_code"], "RTG03, RTG05")
+                    self.assertEqual(combined["assigned_equipment"], ["RTG03", "RTG05"])
                     self.assertEqual(combined["lifting_count"], 100 if missing else 1000)
                     self.assertEqual(combined["shifting_count"], 100)
                     self.assertEqual(combined["parameter_compliance"], 100)
                     self.assertEqual(report["avg_parameter_compliance"], 25)
-                    self.assertEqual(other["shifting_code"], "OTHER")
+                    self.assertEqual(other["assigned_equipment"], ["OTHER"])
                     self.assertEqual((other["lifting_count"], other["shifting_count"]), (0, 0))
                     self.assertIsNone(other["shifting_percentage"])
                     if missing:
@@ -546,6 +546,20 @@ class RecordedMetricsTests(unittest.TestCase):
                     else:
                         self.assertAlmostEqual(combined["shifting_percentage"], 100 * 100 / 1100)
                         self.assertEqual(combined["shifting_percentage"], report["avg_shifting_percentage"])
+
+    def test_assigned_equipment_keeps_unique_names_with_spaces(self):
+        rows = [
+            ShiftingSummary("CY", code, 100, 10, block_id="29", branch_code="JKT74",
+                            period_start=self.now - 86400, period_end=self.now)
+            for code in ("RTG05", "RS MDL", "RS MDL")
+        ]
+        for source in ("csv", "sql", "xlsx"):
+            with self.subTest(source=source):
+                report = self.report(source, observations=rows)
+                row = report["shifting_observations"][0]
+                self.assertEqual(row["assigned_equipment"], ["RS MDL", "RTG05"])
+                self.assertNotIn("shifting_code", row)
+                self.assertEqual((row["lifting_count"], row["shifting_count"]), (300, 30))
 
     def test_connected_blocks_merge_transitively_with_weighted_compliance(self):
         for source in ("csv", "sql", "xlsx"):
@@ -564,7 +578,7 @@ class RecordedMetricsTests(unittest.TestCase):
                 self.assertEqual(len(report["shifting_observations"]), 1)
                 row = report["shifting_observations"][0]
                 self.assertEqual(row["block_code"], "B, C, D")
-                self.assertEqual(row["shifting_code"], "OTHER, RTG04, RTG05")
+                self.assertEqual(row["assigned_equipment"], ["OTHER", "RTG04", "RTG05"])
                 self.assertEqual((row["lifting_count"], row["shifting_count"]), (1020, 100))
                 self.assertAlmostEqual(row["shifting_percentage"], 100 * 100 / 1120)
                 self.assertEqual(row["parameter_compliance"], 25)
@@ -600,7 +614,7 @@ class RecordedMetricsTests(unittest.TestCase):
                                      [100, 0, None])
                     for row in report["shifting_observations"]:
                         self.assertEqual(list(row), [
-                            "block_code", "shifting_code", "lifting_count", "shifting_count",
+                            "block_code", "assigned_equipment", "lifting_count", "shifting_count",
                             "shifting_percentage", "parameter_compliance",
                         ])
                     json.dumps(report, allow_nan=False)

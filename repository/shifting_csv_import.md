@@ -130,13 +130,15 @@ observations. `cy_name` preserves the branch display name; `branch_code` is trim
 and uppercased. Existing JSONL history is not rewritten; the plotter also accepts
 older records with identity inside observations.
 
-Each observation contains, in order: `block_code`, `shifting_code`,
+Each observation contains, in order: `block_code`, `assigned_equipment`,
 `lifting_count`, `shifting_count`, `shifting_percentage`, `parameter_compliance`.
 Observations come from the selected latest reporting period. Equipment mapped to
 the same block within a branch is combined into one observation: counts are
 summed, and shifting percentage is calculated from the combined counts.
-`shifting_code` lists the contributing equipment codes in sorted order, separated
-by a comma and space (for example, `"RTG03, RTG05"`). A single code stays unchanged.
+`assigned_equipment` is an array of unique contributing equipment codes in sorted
+order (for example, `["RTG03", "RTG05"]`). A single code is also an array, such as
+`["SL"]`; equipment names containing spaces remain one element, such as `["RS MDL"]`.
+The plotter also accepts the older comma-separated `shifting_code` field.
 Equipment mapped to multiple blocks merges those blocks into one observation.
 `block_code` lists the merged codes in sorted order, separated by a comma and
 space (for example, `"1A, 2A"`). Overlapping assignments merge transitively:

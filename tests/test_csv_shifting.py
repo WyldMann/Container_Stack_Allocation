@@ -366,7 +366,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         self.assertIn("latest_date is in WIB", output.getvalue())
         self.assertIn("parameter compliance use 0-100", output.getvalue())
         self.assertNotIn("Lift On Delivery", output.getvalue())
-        self.assertIn("block_code shifting_code", output.getvalue())
+        self.assertIn("block_code assigned_equipment", output.getvalue())
         lines = output.getvalue().splitlines()
         index = lines.index("JSONL metrics row:")
         fields = lines[index + 1].split()

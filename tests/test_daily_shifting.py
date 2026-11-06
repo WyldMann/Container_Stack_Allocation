@@ -307,7 +307,7 @@ class DailyMainTests(unittest.TestCase):
                 else:
                     observation_index = lines.index("Included JSONL shifting_observations:")
                     self.assertEqual(lines[observation_index + 1].split(),
-                                     ["block_code", "shifting_code", "lifting_count", "shifting_count",
+                                     ["block_code", "assigned_equipment", "lifting_count", "shifting_count",
                                       "shifting_percentage", "parameter_compliance"])
                     for row in report["shifting_observations"]:
                         self.assertIn(report["cy_name"], output.getvalue())

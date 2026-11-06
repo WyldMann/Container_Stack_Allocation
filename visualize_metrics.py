@@ -64,6 +64,17 @@ def percentage(value):
     return value
 
 
+def equipment_codes(row):
+    """Use equipment arrays, retaining support for legacy comma-separated codes."""
+    if "assigned_equipment" in row:
+        codes = row["assigned_equipment"]
+        if not isinstance(codes, list) or any(not isinstance(code, str) or not code.strip() for code in codes):
+            raise ValueError("assigned_equipment must be a list of nonempty strings")
+    else:
+        codes = [code.strip() for code in row.get("shifting_code", "").split(",") if code.strip()]
+    return tuple(sorted(set(codes), key=str.casefold))
+
+
 def plot_metrics(records):
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
@@ -75,7 +86,7 @@ def plot_metrics(records):
     observations = [
         {(record.get("cy_name", row.get("cy_name", "")),
           record.get("branch_code", row.get("branch_code", "")),
-          row.get("block_code", ""), row.get("shifting_code", "")): row
+          row.get("block_code", ""), equipment_codes(row)): row
          for row in record.get("shifting_observations", [])}
         for record in records
     ]
@@ -105,7 +116,7 @@ def plot_metrics(records):
                 ("parameter_compliance", "Parameter compliance", "tab:orange"),
             ):
                 values = [percentage(rows.get(key, {}).get(field)) for rows in observations]
-                equipment = f" ({key[3]})" if key[3] else ""
+                equipment = f" ({', '.join(key[3])})" if key[3] else ""
                 axis.plot(times, values, marker="o", color=color,
                           linestyle=("-", "--", ":", "-.")[index % 4],
                           label=label + equipment)

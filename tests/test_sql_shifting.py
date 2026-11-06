@@ -263,7 +263,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         self.assertEqual(record["period_end"], record["recorded_at"])
         self.assertEqual(record["period_end"] - record["period_start"], 86400)
         self.assertIn("daily", output.getvalue())
-        self.assertIn("block_code shifting_code", output.getvalue())
+        self.assertIn("block_code assigned_equipment", output.getvalue())
         self.assertNotIn("Latest complete operations date", output.getvalue())
 
     def test_shared_input_loader_dispatches_sql_operations_in_its_snapshot(self):

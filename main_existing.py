@@ -79,7 +79,7 @@ def block_shifting_observations(observations, yard, compliance_by_block, contain
             "block_code": ", ".join(sorted(
                 (yard.blocks_by_id[block].getCode() for block in block_ids), key=str.casefold,
             )),
-            "shifting_code": ", ".join(sorted({row.shifting_code for row in rows}, key=str.casefold)),
+            "assigned_equipment": sorted({row.shifting_code for row in rows}, key=str.casefold),
             "lifting_count": metrics["lifting_count"],
             "shifting_count": metrics["shifting_count"],
             "shifting_percentage": metrics["shifting_percentage"],
