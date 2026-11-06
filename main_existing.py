@@ -46,7 +46,7 @@ def shifting_metrics(observations):
     }
 
 
-def block_shifting_observations(observations, cy_name, yard, compliance_by_block, container_counts):
+def block_shifting_observations(observations, yard, compliance_by_block, container_counts):
     """Merge connected equipment/block assignments, counting each observation once."""
     parents = {}
 
@@ -66,7 +66,7 @@ def block_shifting_observations(observations, cy_name, yard, compliance_by_block
             key = root((row.branch_code, row.mapped_block_ids[0]))
             by_group.setdefault(key, []).append(row)
     result = []
-    for (branch_code, _), rows in by_group.items():
+    for rows in by_group.values():
         block_ids = {block for row in rows for block in row.mapped_block_ids}
         metrics = shifting_metrics(rows)
         weighted = [(compliance_by_block[block], container_counts[block])
@@ -76,8 +76,6 @@ def block_shifting_observations(observations, cy_name, yard, compliance_by_block
         if len(block_ids) == 1:
             compliance = compliance_by_block[next(iter(block_ids))]
         result.append({
-            "cy_name": cy_name,
-            "branch_code": branch_code,
             "block_code": ", ".join(sorted(
                 (yard.blocks_by_id[block].getCode() for block in block_ids), key=str.casefold,
             )),
@@ -196,6 +194,8 @@ def _build_loaded_report(input_settings, inputs, connection, *, recorded_at=None
             container_count += count
 
     report = {
+        "cy_name": cy_name,
+        "branch_code": branches.records[0]["branch_code"].strip().upper(),
         "recorded_at": recorded_at,
         "period_start": period_start,
         "period_end": period_end,
@@ -207,7 +207,7 @@ def _build_loaded_report(input_settings, inputs, connection, *, recorded_at=None
             if container_count else None
         ),
         "shifting_observations": block_shifting_observations(
-            latest_observations, cy_name, yard, compliance_by_block, container_counts,
+            latest_observations, yard, compliance_by_block, container_counts,
         ),
     }
     return report, yard

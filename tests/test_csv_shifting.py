@@ -352,7 +352,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         self.assertAlmostEqual(report["avg_shifting_percentage"], 100 / 3)
         self.assertEqual(report["latest_date"], "2026-10-29")
         self.assertEqual(list(report), [
-            "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
+            "cy_name", "branch_code", "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
             "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
         ])
         json.dumps(report, allow_nan=False)
@@ -369,7 +369,9 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         self.assertIn("block_code shifting_code", output.getvalue())
         lines = output.getvalue().splitlines()
         index = lines.index("JSONL metrics row:")
-        displayed = dict(zip(lines[index + 1].split(), lines[index + 2].split(), strict=True))
+        fields = lines[index + 1].split()
+        values = lines[index + 2].rsplit(maxsplit=len(fields) - 1)
+        displayed = dict(zip(fields, values, strict=True))
         self.assertEqual(displayed["latest_date"], saved["latest_date"])
         self.assertEqual(float(displayed["avg_parameter_compliance"]), saved["avg_parameter_compliance"])
 

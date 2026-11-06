@@ -114,11 +114,11 @@ benchmark_period_start = 1857916800
         self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 20)
         self.assertEqual(len(report["shifting_observations"]), 1)
         self.assertEqual(list(report), [
-            "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
+            "cy_name", "branch_code", "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
             "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
         ])
         self.assertEqual(list(report["shifting_observations"][0]), [
-            "cy_name", "branch_code", "block_code", "shifting_code", "lifting_count", "shifting_count",
+            "block_code", "shifting_code", "lifting_count", "shifting_count",
             "shifting_percentage", "parameter_compliance",
         ])
 
@@ -459,7 +459,9 @@ benchmark_period_start = 1857916800
         self.assertIn(', "period_start": ', output.read_text(encoding="utf-8"))
         lines = captured.getvalue().splitlines()
         index = lines.index("JSONL metrics row:")
-        displayed = dict(zip(lines[index + 1].split(), lines[index + 2].split(), strict=True))
+        fields = lines[index + 1].split()
+        values = lines[index + 2].rsplit(maxsplit=len(fields) - 1)
+        displayed = dict(zip(fields, values, strict=True))
         for field, value in displayed.items():
             self.assertEqual(value, "null" if records[0][field] is None else str(records[0][field]))
         self.assertEqual(displayed["avg_shifting_percentage"], "null")
@@ -569,13 +571,13 @@ class RecordedMetricsTests(unittest.TestCase):
                 self.assertEqual(row["shifting_percentage"], report["avg_shifting_percentage"])
 
     def test_merge_keeps_branches_separate_and_empty_compliance_missing(self):
-        rows = [ShiftingSummary("CY", "RTG04", 10, 1, block_ids=("29", "30"), branch_code=branch)
-                for branch in ("JKT74", "JKT64")]
+        rows = [ShiftingSummary("CY", "RTG04", lifting, 1, block_ids=("29", "30"), branch_code=branch)
+                for branch, lifting in (("JKT74", 10), ("JKT64", 20))]
         result = main_existing.block_shifting_observations(
-            rows, "CY", self.yard, {"29": None, "30": None}, {"29": 0, "30": 0},
+            rows, self.yard, {"29": None, "30": None}, {"29": 0, "30": 0},
         )
         self.assertEqual(len(result), 2)
-        self.assertEqual([row["branch_code"] for row in result], ["JKT74", "JKT64"])
+        self.assertEqual([row["lifting_count"] for row in result], [10, 20])
         self.assertTrue(all(row["parameter_compliance"] is None for row in result))
 
     def test_all_sources_share_ordered_schema_and_weighted_percentages(self):
@@ -583,8 +585,10 @@ class RecordedMetricsTests(unittest.TestCase):
             for granularity in ("daily", "weekly"):
                 with self.subTest(source=source, granularity=granularity):
                     report = self.report(source, granularity)
+                    self.assertEqual(report["cy_name"], "CY 219 (Lini 2)")
+                    self.assertEqual(report["branch_code"], "JKT74")
                     self.assertEqual(list(report), [
-                        "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
+                        "cy_name", "branch_code", "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
                         "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
                     ])
                     self.assertEqual(report["period_granularity"], granularity)
@@ -596,7 +600,7 @@ class RecordedMetricsTests(unittest.TestCase):
                                      [100, 0, None])
                     for row in report["shifting_observations"]:
                         self.assertEqual(list(row), [
-                            "cy_name", "branch_code", "block_code", "shifting_code", "lifting_count", "shifting_count",
+                            "block_code", "shifting_code", "lifting_count", "shifting_count",
                             "shifting_percentage", "parameter_compliance",
                         ])
                     json.dumps(report, allow_nan=False)
@@ -605,6 +609,8 @@ class RecordedMetricsTests(unittest.TestCase):
         for source in ("csv", "sql", "xlsx"):
             with self.subTest(source=source):
                 report = self.report(source, empty=True)
+                self.assertEqual(report["cy_name"], "CY 219 (Lini 2)")
+                self.assertEqual(report["branch_code"], "JKT74")
                 self.assertEqual(report["shifting_observations"], [])
                 self.assertEqual(report["avg_parameter_compliance"], 25)
                 self.assertIsNone(report["avg_shifting_percentage"])

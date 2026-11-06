@@ -53,6 +53,7 @@ class YardPresenter(Presenter):
 
         self.out("JSONL metrics row:")
         table([report], (
+            "cy_name", "branch_code",
             "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
             "avg_shifting_percentage", "avg_parameter_compliance",
         ))
@@ -62,7 +63,7 @@ class YardPresenter(Presenter):
         observations = report["shifting_observations"]
         if observations:
             table(observations, (
-                "cy_name", "branch_code", "block_code", "shifting_code", "lifting_count", "shifting_count",
+                "block_code", "shifting_code", "lifting_count", "shifting_count",
                 "shifting_percentage", "parameter_compliance",
             ))
         else:

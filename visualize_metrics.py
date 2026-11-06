@@ -73,7 +73,9 @@ def plot_metrics(records):
     times = [datetime.fromtimestamp(record["period_end"], WIB) for record in records]
     # Keep equipment series distinct while grouping charts by CY and block.
     observations = [
-        {(row.get("cy_name", ""), row.get("branch_code", ""), row.get("block_code", ""), row.get("shifting_code", "")): row
+        {(record.get("cy_name", row.get("cy_name", "")),
+          record.get("branch_code", row.get("branch_code", "")),
+          row.get("block_code", ""), row.get("shifting_code", "")): row
          for row in record.get("shifting_observations", [])}
         for record in records
     ]

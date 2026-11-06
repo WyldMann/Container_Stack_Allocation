@@ -121,11 +121,16 @@ in a run share a read-only snapshot. `build_reports()` returns a dictionary keye
 by branch code; `build_report(branch_code="JKT74")` selects one configured branch.
 
 CSV, SQL, and XLSX reports use the same ordered fields:
-`recorded_at`, `period_start`, `period_end`, `latest_date`, `period_granularity`,
+`cy_name`, `branch_code`, `recorded_at`, `period_start`, `period_end`, `latest_date`, `period_granularity`,
 `avg_shifting_percentage`, `avg_parameter_compliance`, `shifting_observations`.
 Each record occupies one line, with a space after commas and colons.
 
-Each observation contains, in order: `cy_name`, `branch_code`, `block_code`, `shifting_code`,
+Yard identity is recorded once at the top level, including when there are no
+observations. `cy_name` preserves the branch display name; `branch_code` is trimmed
+and uppercased. Existing JSONL history is not rewritten; the plotter also accepts
+older records with identity inside observations.
+
+Each observation contains, in order: `block_code`, `shifting_code`,
 `lifting_count`, `shifting_count`, `shifting_percentage`, `parameter_compliance`.
 Observations come from the selected latest reporting period. Equipment mapped to
 the same block within a branch is combined into one observation: counts are

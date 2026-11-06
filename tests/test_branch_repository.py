@@ -66,7 +66,8 @@ class BranchLoadingTests(unittest.TestCase):
 
     def test_current_csv_fixture_derives_cy_and_loads_twenty_containers(self):
         report, yard = main_existing._build_report_and_yard(self.path)
-        self.assertEqual({row["cy_name"] for row in report["shifting_observations"]}, {"CY 219 (Lini 2)"})
+        self.assertEqual(report["cy_name"], "CY 219 (Lini 2)")
+        self.assertEqual(report["branch_code"], "JKT74")
         self.assertGreater(len(yard.containers), 0)
         self.assertNotIn("cy_name", load_input_config(self.path))
 

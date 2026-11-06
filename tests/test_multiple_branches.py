@@ -81,8 +81,10 @@ class MultipleBranchTests(unittest.TestCase):
                 self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * shifting / (lifting + shifting))
                 self.assertEqual(len(report["shifting_observations"]), 1)
                 row = report["shifting_observations"][0]
-                self.assertEqual((row["branch_code"], row["cy_name"], row["block_code"], row["shifting_code"]),
+                self.assertEqual((report["branch_code"], report["cy_name"], row["block_code"], row["shifting_code"]),
                                  (code, name, "B", "SL"))
+                self.assertNotIn("cy_name", row)
+                self.assertNotIn("branch_code", row)
                 self.assertEqual((row["lifting_count"], row["shifting_count"]), (lifting, shifting))
                 self.assertEqual(row["parameter_compliance"], compliance)
 
@@ -128,8 +130,10 @@ class MultipleBranchTests(unittest.TestCase):
         self.activities.write_text(self.activities.read_text().splitlines()[0] + "\n", encoding="utf-8")
         results = main_existing._build_reports_and_yards(self.path)
         self.assertEqual(list(results), ["JKT74", "JKT64"])
-        for report, _ in results.values():
+        for code, (report, _) in results.items():
             self.assertEqual(report["shifting_observations"], [])
+            self.assertEqual(report["branch_code"], code)
+            self.assertEqual(report["cy_name"], "CY 219 (Lini 2)" if code == "JKT74" else "CY 218 (Lini 2)")
         with patch.object(main_existing, "_build_reports_and_yards", return_value=results), patch.object(
             main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.root / "config" / "input.toml",
         ), patch.object(main_existing, "YardPresenter"), redirect_stdout(io.StringIO()):
@@ -146,7 +150,7 @@ class MultipleBranchTests(unittest.TestCase):
         self.fixture.data["terminal_branches"][1]["branch_name"] = "  New yard name\t"
         self.fixture.write_records("terminal_branches", self.fixture.data["terminal_branches"])
         reports = main_existing.build_reports(self.path)
-        self.assertEqual(reports["JKT64"]["shifting_observations"][0]["cy_name"], "  New yard name\t")
+        self.assertEqual(reports["JKT64"]["cy_name"], "  New yard name\t")
 
     def test_xlsx_selects_the_corresponding_branch_name(self):
         self.fixture.fixture.set_source("shifting_summary", "xlsx")

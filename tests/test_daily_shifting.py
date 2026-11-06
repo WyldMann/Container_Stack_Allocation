@@ -293,7 +293,9 @@ class DailyMainTests(unittest.TestCase):
                 self.assertNotIn(": None", output.getvalue())
                 lines = output.getvalue().splitlines()
                 index = lines.index("JSONL metrics row:")
-                displayed = dict(zip(lines[index + 1].split(), lines[index + 2].split(), strict=True))
+                fields = lines[index + 1].split()
+                values = lines[index + 2].rsplit(maxsplit=len(fields) - 1)
+                displayed = dict(zip(fields, values, strict=True))
                 for field, value in displayed.items():
                     self.assertEqual(value, "null" if report[field] is None else str(report[field]))
                 self.assertIn("Included JSONL shifting_observations:", output.getvalue())
@@ -305,10 +307,10 @@ class DailyMainTests(unittest.TestCase):
                 else:
                     observation_index = lines.index("Included JSONL shifting_observations:")
                     self.assertEqual(lines[observation_index + 1].split(),
-                                     ["cy_name", "branch_code", "block_code", "shifting_code", "lifting_count", "shifting_count",
+                                     ["block_code", "shifting_code", "lifting_count", "shifting_count",
                                       "shifting_percentage", "parameter_compliance"])
                     for row in report["shifting_observations"]:
-                        self.assertIn(row["cy_name"], output.getvalue())
+                        self.assertIn(report["cy_name"], output.getvalue())
                         self.assertTrue(0 <= row["parameter_compliance"] <= 100)
                 out_yard.assert_called_once_with(yard)
 
