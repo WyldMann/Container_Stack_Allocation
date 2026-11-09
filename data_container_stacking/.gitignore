@@ -1,0 +1,2 @@
+# Keep local yard and inbound exports out of version control.
+/*.csv

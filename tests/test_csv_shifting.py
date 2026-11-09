@@ -358,7 +358,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         json.dumps(report, allow_nan=False)
         output = io.StringIO()
         with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, None)}), patch.object(
-            shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+            shifting_report_calculation, "OUTPUT_DIR", self.fixture.root / "output",
         ), patch.object(shifting_report_calculation.YardPresenter, "outYard"), redirect_stdout(output):
             shifting_report_calculation.main()
         saved = json.loads((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text())
@@ -467,6 +467,8 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         self.csv_path.write_text("invalid CSV", encoding="utf-8")
         with patch("repository.operations_input.load_shifting_summary") as workbook, patch.object(
             shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.path,
+        ), patch.object(
+            shifting_report_calculation, "OUTPUT_DIR", self.fixture.root / "output",
         ), self.assertRaises(InputError):
             shifting_report_calculation.main()
         workbook.assert_not_called()

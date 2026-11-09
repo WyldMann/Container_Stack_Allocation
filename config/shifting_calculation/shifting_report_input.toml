@@ -52,20 +52,20 @@ mapping_file = "csv_mapping.toml"
 # Observations mapped to absent blocks are omitted before count validation.
 # Select the latest complete day before today in WIB; blank counts are not zero.
 # Incomplete recent dates fall back to the preceding complete date.
-# shifting_workbook_file = "../data_CY219/Shifting_Report_Summary_2026-10_Daily_20261030091831.xlsx"
+# shifting_workbook_file = "../../data_shifting_calculation/Shifting_Report_Summary_2026-10_Daily_20261030091831.xlsx"
 # shifting_workbook_sheet = "Per Alat Daily"
 
 [csv.files]
-terminal_branches = "../data_CY219/terminal_branch.csv"
-yard_blocks = "../data_CY219/yard_block.csv"
-yard_planning = "../data_CY219/yard_planning.csv"
-removed_slots = "../data_CY219/removed_slots.csv"
-parameters = "../data_CY219/parameters.csv"
-existing_containers = "../data_CY219/containers.csv"
-master_equipment = "../data_CY219/master_equipment.csv"
-equipment_history = "../data_CY219/equipment_history.csv"
+terminal_branches = "../../data_shifting_calculation/terminal_branch.csv"
+yard_blocks = "../../data_shifting_calculation/yard_block.csv"
+yard_planning = "../../data_shifting_calculation/yard_planning.csv"
+removed_slots = "../../data_shifting_calculation/removed_slots.csv"
+parameters = "../../data_shifting_calculation/parameters.csv"
+existing_containers = "../../data_shifting_calculation/containers.csv"
+master_equipment = "../../data_shifting_calculation/master_equipment.csv"
+equipment_history = "../../data_shifting_calculation/equipment_history.csv"
 # Raw activities with unique headers; see repository/shifting_csv_import.md.
-shifting_summary = "../data_CY219/shifting_report.csv"
+shifting_summary = "../../data_shifting_calculation/shifting_report.csv"
 
 # Required when any input.sources entry is "sql".
 # Set the named connection environment variables before running.

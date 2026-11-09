@@ -1,3 +1,4 @@
+# Placement settings for main.py.
 [feasibility]
 # Enforce the existing pyramid stacking safety rule.
 stacking_safety = true

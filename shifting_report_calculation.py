@@ -3,12 +3,12 @@
 from collections import Counter
 from datetime import datetime
 import json
+from pathlib import Path
 from time import time
 from urllib.parse import quote
 
 from config import (
-    ConfigurationError, DEFAULT_CONFIG_FILE, DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE,
-    load_config, load_input_config,
+    ConfigurationError, DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE, load_input_config,
 )
 from config.application.input_filters import branch_input_settings
 from entities import Yard
@@ -24,6 +24,7 @@ EXISTING_YARD_DATASETS = (
     "terminal_branches", "yard_blocks", "removed_slots", "parameters", "yard_planning",
     "existing_containers", "master_equipment", "equipment_history",
 )
+OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
 
 def shifting_metrics(observations):
@@ -128,7 +129,6 @@ def _build_loaded_report(input_settings, inputs, connection, *, generated_at=Non
 
     branches = BranchDirectory(inputs["terminal_branches"])
     cy_name = branches.cy_name()
-    settings = load_config(DEFAULT_CONFIG_FILE)
     yard = Yard(
         yard_blocks_input=inputs["yard_blocks"],
         removed_slots_input=inputs["removed_slots"],
@@ -137,8 +137,6 @@ def _build_loaded_report(input_settings, inputs, connection, *, generated_at=Non
         containers_input=inputs["existing_containers"],
         equipment_input=inputs["master_equipment"],
         equipment_locations_input=inputs["equipment_history"],
-        feasibility_settings=settings.feasibility,
-        heuristic_settings=settings.heuristic,
     )
 
     if generated_at is None:
@@ -231,8 +229,7 @@ def main():
              for code, (report, _) in reports.items()}
     presenter = YardPresenter()
     for code, (report, yard) in reports.items():
-        output = (DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parent.parent / "output"
-                  / f"existing_yard_metrics_{quote(code, safe='')}.jsonl")
+        output = OUTPUT_DIR / f"existing_yard_metrics_{quote(code, safe='')}.jsonl"
         output.parent.mkdir(parents=True, exist_ok=True)
         with output.open("a", encoding="utf-8") as file:
             file.write(lines[code] + "\n")

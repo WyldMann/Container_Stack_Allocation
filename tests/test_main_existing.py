@@ -13,7 +13,7 @@ from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
-from config import ConfigurationError, DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE
+from config import ConfigurationError, DEFAULT_CSV_MAPPING_FILE, DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE
 from config.application.input_config import DATASETS
 from config.csv_import.mapping_loader import load_mapping
 from repository import CSVLoader
@@ -34,7 +34,7 @@ class ExistingYardMainTests(unittest.TestCase):
         self.mapping_path = self.root / "shifting_block_mapping.toml"
         # Test-only assignments, not actual operational assignments.
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "B"\nRS = "C"\n', encoding="utf-8")
-        project = DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parent.parent
+        project = DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parents[2]
         template = DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
         template = "\n".join(
             'branch_code = "JKT74"' if line.startswith("branch_code =") else line
@@ -45,7 +45,7 @@ class ExistingYardMainTests(unittest.TestCase):
         template = template.replace('# shifting_workbook_file =', 'shifting_workbook_file =')
         template = template.replace('# shifting_workbook_sheet =', 'shifting_workbook_sheet =')
         configured_containers = tomllib.loads(template)["csv"]["files"]["existing_containers"]
-        template = template.replace(configured_containers, "../data_CY219/containers.csv")
+        template = template.replace(configured_containers, "../../data_shifting_calculation/containers.csv")
         # Legacy weekly fixtures supply their own benchmark; production uses daily dates.
         template = template.replace('[input.sources]', '''[shifting_period]
 benchmark_week = 40
@@ -54,11 +54,11 @@ benchmark_period_start = 1857916800
 [input.sources]''').replace('shifting_workbook_sheet = "Per Alat Daily"',
                            'shifting_workbook_sheet = "Per Alat Weekly"')
         template = template.replace(
-            "../data_CY219/", (project / "data_CY219").as_posix() + "/"
+            "../../data_shifting_calculation/", (project / "data_shifting_calculation").as_posix() + "/"
         ).replace(
             'mapping_file = "csv_mapping.toml"',
             'mapping_file = "' +
-            DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.with_name("csv_mapping.toml").as_posix() + '"',
+            DEFAULT_CSV_MAPPING_FILE.as_posix() + '"',
         ).replace(
             'mapping_file = "sql_mapping.toml"',
             'mapping_file = "' +
@@ -69,7 +69,7 @@ benchmark_period_start = 1857916800
             template = template.replace(f'{name} = "sql"', f'{name} = "csv"')
         # Input-loader tests may also read inbound data; never depend on a local export.
         inbound_path = self.root / "inbound.csv"
-        profile = load_mapping(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.with_name("csv_mapping.toml"), source="csv")["inbound_containers"]
+        profile = load_mapping(DEFAULT_CSV_MAPPING_FILE, source="csv")["inbound_containers"]
         with inbound_path.open("w", encoding="utf-8", newline="") as stream:
             csv.writer(stream).writerow([profile.columns.get(field, field) for field in profile.schema.fields])
         template = template.replace('[input.sources]', '[input.sources]\ninbound_containers = "csv"')
@@ -447,8 +447,7 @@ benchmark_period_start = 1857916800
         with patch.object(
             shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, Mock())},
         ), patch.object(shifting_report_calculation.YardPresenter, "outYard"), patch.object(
-            shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE",
-            self.root / "config" / "input.toml",
+            shifting_report_calculation, "OUTPUT_DIR", self.root / "output",
         ), redirect_stdout(captured):
             shifting_report_calculation.main()
             shifting_report_calculation.main()

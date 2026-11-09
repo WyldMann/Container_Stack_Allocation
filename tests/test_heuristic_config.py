@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from config import (
-    ApplicationSettings, ConfigurationError, FeasibilitySettings,
+    ApplicationSettings, ConfigurationError, DEFAULT_CONFIG_FILE, FeasibilitySettings,
     HeuristicSettings, load_config, load_feasibility_settings,
     load_heuristic_settings,
 )
@@ -38,8 +38,7 @@ class HeuristicConfigTests(unittest.TestCase):
         self.assertEqual(result.heuristic.hl_delta_container_mass, 5000)
 
     def test_default_file_matches_default_settings(self):
-        path = Path(__file__).resolve().parents[1] / 'config' / 'config.toml'
-        self.assertEqual(load_config(path), ApplicationSettings())
+        self.assertEqual(load_config(DEFAULT_CONFIG_FILE), ApplicationSettings())
 
     def test_unknown_options_and_wrong_section_type_are_rejected(self):
         for text in ('[heuristic]\nunknown = 1\n', 'heuristic = false\n'):

@@ -1,6 +1,6 @@
 # Raw shifting and lifting CSV import
 
-In `config/shifting_report_input.toml`, select `shifting_summary = "csv"` in
+In `config/shifting_calculation/shifting_report_input.toml`, select `shifting_summary = "csv"` in
 `[input.sources]` and set the branch codes and CSV path.
 
 ```toml
@@ -8,7 +8,7 @@ In `config/shifting_report_input.toml`, select `shifting_summary = "csv"` in
 branch_code = ["JKT74", "JKT64"]
 
 [csv.files]
-shifting_summary = "../data_CY219/shifting_report.csv"
+shifting_summary = "../../data_shifting_calculation/shifting_report.csv"
 ```
 
 Paths resolve from the input file's directory. The CSV window ends at the most recent activity

@@ -255,7 +255,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         json.dumps(report, allow_nan=False)
         output = io.StringIO()
         with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
-            shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+            shifting_report_calculation, "OUTPUT_DIR", self.fixture.root / "output",
         ), patch.object(shifting_report_calculation.YardPresenter, "outYard"), redirect_stdout(output):
             shifting_report_calculation.main()
         record = json.loads((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text())

@@ -19,15 +19,16 @@ equipment_history = "csv"
 mapping_file = "csv_mapping.toml"
 
 [csv.files]
-terminal_branches = "../data_CY219/terminal_branch.csv"
-yard_blocks = "../data_CY219/yard_block.csv"
-yard_planning = "../data_CY219/yard_planning.csv"
-removed_slots = "../data_CY219/removed_slots.csv"
-parameters = "../data_CY219/parameters.csv"
-existing_containers = "../data_CY219/containers.csv"
-inbound_containers = "../data_CY219/inbound.csv"
-master_equipment = "../data_CY219/master_equipment.csv"
-equipment_history = "../data_CY219/equipment_history.csv"
+terminal_branches = "../../data_container_stacking/terminal_branch.csv"
+yard_blocks = "../../data_container_stacking/yard_block.csv"
+yard_planning = "../../data_container_stacking/yard_planning.csv"
+removed_slots = "../../data_container_stacking/removed_slots.csv"
+parameters = "../../data_container_stacking/parameters.csv"
+existing_containers = "../../data_container_stacking/containers.csv"
+# Supply the current inbound export at this path.
+inbound_containers = "../../data_container_stacking/inbound.csv"
+master_equipment = "../../data_container_stacking/master_equipment.csv"
+equipment_history = "../../data_container_stacking/equipment_history.csv"
 
 # Required when any input.sources entry is "sql".
 # Set the named environment variables and install requirements-sql.txt.
@@ -45,4 +46,4 @@ consistent_snapshot = true
 
 [output]
 # A run with multiple branches appends each branch code to the file stem.
-containers_file = "../output/result.csv"
+containers_file = "../../output/result.csv"

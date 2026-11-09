@@ -114,34 +114,6 @@ pot = "POT"
 vessel_operator = "VESSEL_OPERATOR"
 
 
-[sql.inbound_containers]
-branch_kind = "code"
-relation = "inbound"
-order_by = ["MOVE_TIME", "CONTNO"]
-
-[sql.inbound_containers.columns]
-container_id = "CONTNO"
-principal = "PRINCIPAL"
-container_condition = "DMG_FLAG"
-container_fill = "FULLMT"
-container_size = "CONTSIZE"
-container_grade = "CONT_GRADE"
-pol = "POL"
-pod = "POD"
-vessel = "VESSEL"
-voyage = "VOYAGE"
-weight = "WEIGHT"
-move_time = "MOVE_TIME"
-branch_id = "BRANCH"
-block_code = "BLOK"
-row_no = "ROW"
-slot_no = "SLOT"
-tier_no = "TIER"
-operation_type = "OPERATION_TYPE"
-pot = "POT"
-vessel_operator = "VESSEL_OPERATOR"
-
-
 [sql.master_equipment]
 relation = "master_equipment"
 

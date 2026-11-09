@@ -104,16 +104,14 @@ class MultipleBranchTests(unittest.TestCase):
             shifting_report_calculation.build_report(self.path, branch_code="MISSING")
 
     def test_each_run_appends_only_to_the_matching_branch_file(self):
-        # Place the config where main's output-directory convention expects it.
-        config_path = self.root / "config" / "input.toml"
-        config_path.parent.mkdir()
-        config_path.write_text(self.path.read_text(encoding="utf-8"), encoding="utf-8")
-        with patch.object(shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", config_path), patch.object(
+        output = self.root / "output"
+        with patch.object(shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.path), patch.object(
+            shifting_report_calculation, "OUTPUT_DIR", output,
+        ), patch.object(
             shifting_report_calculation.YardPresenter, "outYard",
         ), redirect_stdout(io.StringIO()):
             shifting_report_calculation.main()
             shifting_report_calculation.main()
-        output = self.root / "output"
         self.assertEqual({path.name for path in output.glob("*.jsonl")}, {
             "existing_yard_metrics_JKT74.jsonl", "existing_yard_metrics_JKT64.jsonl",
         })
@@ -135,14 +133,16 @@ class MultipleBranchTests(unittest.TestCase):
             self.assertEqual(report["branch_code"], code)
             self.assertEqual(report["cy_name"], "CY 219 (Lini 2)" if code == "JKT74" else "CY 218 (Lini 2)")
         with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value=results), patch.object(
-            shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.root / "config" / "input.toml",
+            shifting_report_calculation, "OUTPUT_DIR", self.root / "output",
         ), patch.object(shifting_report_calculation, "YardPresenter"), redirect_stdout(io.StringIO()):
             shifting_report_calculation.main()
         self.assertEqual(len(list((self.root / "output").glob("*.jsonl"))), 2)
 
     def test_missing_second_branch_does_not_append_partial_batch(self):
         self.fixture.set_filters('branch_code = ["JKT74", "MISSING"]')
-        with patch.object(shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.path), self.assertRaises(InputError):
+        with patch.object(shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.path), patch.object(
+            shifting_report_calculation, "OUTPUT_DIR", self.root / "output",
+        ), self.assertRaises(InputError):
             shifting_report_calculation.main()
         self.assertFalse(list(self.root.rglob("*.jsonl")))
 

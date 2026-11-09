@@ -24,7 +24,7 @@ class InputConfigTests(unittest.TestCase):
         self.path = Path(self.directory.name).resolve() / "input.toml"
         self.template = DEFAULT_STACKING_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
         configured_containers = tomllib.loads(self.template)["csv"]["files"]["existing_containers"]
-        self.template = self.template.replace(configured_containers, "../data_CY219/containers.csv")
+        self.template = self.template.replace(configured_containers, "../../data_container_stacking/containers.csv")
         for name in DATASETS:
             self.template = self.template.replace(f'{name} = "sql"', f'{name} = "csv"')
         self.mapping_path = self.path.with_name("sql_mapping.toml")
@@ -57,13 +57,13 @@ class InputConfigTests(unittest.TestCase):
         base = self.path.parent
         self.assertEqual(settings["mapping_files"]["csv"], base / "csv_mapping.toml")
         self.assertEqual(settings["csv_files"]["existing_containers"],
-                         (base / "../data_CY219/containers.csv").resolve())
+                         (base / "../../data_container_stacking/containers.csv").resolve())
         self.assertEqual(settings["output_file"],
-                         (base / "../output/result.csv").resolve())
+                         (base / "../../output/result.csv").resolve())
 
     def test_absolute_csv_paths_are_preserved(self):
         absolute = (self.path.parent / "containers.csv").as_posix()
-        settings = self.load_text(self.template.replace("../data_CY219/containers.csv", absolute))
+        settings = self.load_text(self.template.replace("../../data_container_stacking/containers.csv", absolute))
         self.assertEqual(settings["csv_files"]["existing_containers"], Path(absolute))
 
     def test_source_specific_mapping_defaults(self):
@@ -92,10 +92,10 @@ class InputConfigTests(unittest.TestCase):
             self.template.replace('yard_blocks = "csv"', ''),
             self.template.replace('yard_blocks = "csv"', 'unknown = "csv"'),
             self.template.replace('[input.sources]', '[input]'),
-            self.template.replace('existing_containers = "../data_CY219/containers.csv"', ''),
-            self.template.replace('existing_containers = "../data_CY219/containers.csv"',
-                                  'typo = "../data_CY219/containers.csv"'),
-            self.template.replace('existing_containers = "../data_CY219/containers.csv"',
+            self.template.replace('existing_containers = "../../data_container_stacking/containers.csv"', ''),
+            self.template.replace('existing_containers = "../../data_container_stacking/containers.csv"',
+                                  'typo = "../../data_container_stacking/containers.csv"'),
+            self.template.replace('existing_containers = "../../data_container_stacking/containers.csv"',
                                   'existing_containers = 123'),
             self.template + '\n[unknown]\nvalue = true\n',
         ):
@@ -225,8 +225,8 @@ order_by = ["CONTNO"]''')
 
     def test_mixed_sources_require_only_selected_paths_and_relations(self):
         text = self.sql_text("existing_containers", "equipment_history")
-        text = text.replace('existing_containers = "../data_CY219/containers.csv"', '')
-        text = text.replace('equipment_history = "../data_CY219/equipment_history.csv"', '')
+        text = text.replace('existing_containers = "../../data_container_stacking/containers.csv"', '')
+        text = text.replace('equipment_history = "../../data_container_stacking/equipment_history.csv"', '')
         self.mapping_path.write_text(
             '[sql.existing_containers]\nrelation = "containers"\n'
             '[sql.equipment_history]\nrelation = "equipment_moves"\n',

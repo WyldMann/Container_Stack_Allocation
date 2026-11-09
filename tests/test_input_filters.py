@@ -4,13 +4,12 @@ import csv
 import importlib.util
 import itertools
 import os
-from pathlib import Path
 import tomllib
 from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, patch
 
-from config import ConfigurationError, load_input_config
+from config import ConfigurationError, DEFAULT_CONFIG_FILE, DEFAULT_CSV_MAPPING_FILE, load_config, load_input_config
 from config.application.input_filters import active_filters, branch_input_settings, read_filter_columns
 from config.csv_import.mapping_loader import load_mapping
 from filewriter import ContainerFileWriter
@@ -19,7 +18,6 @@ from repository import CSVLoader, InputError, load_yard_inputs
 from repository.input_loader import _sql_loader
 from repository.csvloader import BRANCH_WHITESPACE
 from repository.branch_repository import BranchDirectory
-from config import DEFAULT_CONFIG_FILE, load_config
 from entities import Yard
 from tests import test_main_existing as main_tests
 
@@ -31,9 +29,7 @@ class InputFilterTests(unittest.TestCase):
         self.addCleanup(self.fixture.doCleanups)
         self.path = self.fixture.input_path
         self.root = self.fixture.root
-        self.profiles = load_mapping(
-            Path(__file__).resolve().parents[1] / "config" / "csv_mapping.toml", source="csv",
-        )
+        self.profiles = load_mapping(DEFAULT_CSV_MAPPING_FILE, source="csv")
         self.data = {
             "terminal_branches": [
                 dict(branch_id="2", terminal_id="1", branch_code="JKT74", branch_name="CY 219 (Lini 2)"),
