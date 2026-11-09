@@ -7,7 +7,7 @@
 # A single string is also accepted; blank or omitted strings disable scoping.
 # terminal_branches resolves each code to its IDs and its own BRANCH_NAME.
 # Each branch is analyzed separately and appended to its own metrics JSONL.
-branch_code = ["JKT64"]
+branch_code = ["JKT64","JKT74"]
 
 [input.sources]
 terminal_branches = "csv"
