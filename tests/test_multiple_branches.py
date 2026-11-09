@@ -94,7 +94,7 @@ class MultipleBranchTests(unittest.TestCase):
         self.assertEqual(reports["JKT74"]["latest_date"], "2026-10-30")
         self.assertEqual(reports["JKT64"]["latest_date"], "2026-10-29")
         self.assertNotEqual(reports["JKT74"]["period_end"], reports["JKT64"]["period_end"])
-        self.assertEqual(reports["JKT74"]["recorded_at"], reports["JKT64"]["recorded_at"])
+        self.assertEqual(reports["JKT74"]["generated_at"], reports["JKT64"]["generated_at"])
         for code in reports:
             selected = main_existing.build_report(self.path, branch_code=code.lower())
             self.assertEqual(selected["shifting_observations"], reports[code]["shifting_observations"])

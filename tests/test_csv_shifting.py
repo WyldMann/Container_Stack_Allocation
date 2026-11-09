@@ -347,12 +347,12 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
     def test_latest_activity_window_report_jsonl_and_presenter(self):
         with patch.object(main_existing, "time", return_value=NOW + 10 * 86400):
             report = main_existing.build_report(self.path)
-        self.assertEqual(report["recorded_at"], NOW + 10 * 86400)
+        self.assertEqual(report["generated_at"], NOW + 10 * 86400)
         self.assertEqual((report["period_start"], report["period_end"]), (LATEST - 86400, LATEST))
         self.assertAlmostEqual(report["avg_shifting_percentage"], 100 / 3)
         self.assertEqual(report["latest_date"], "2026-10-29")
         self.assertEqual(list(report), [
-            "cy_name", "branch_code", "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
+            "cy_name", "branch_code", "generated_at", "period_start", "period_end", "latest_date", "period_granularity",
             "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
         ])
         json.dumps(report, allow_nan=False)

@@ -110,17 +110,17 @@ def _build_reports_and_yards(input_path):
     settings = load_input_config(input_path, datasets=EXISTING_YARD_DATASETS)
     results = {}
     with input_connection(settings) as connection:
-        recorded_at = int(time())
+        generated_at = int(time())
         for scoped in branch_input_settings(settings):
             inputs = load_yard_inputs(scoped, include_shifting=False, connection=connection)
             branches = BranchDirectory(inputs["terminal_branches"])
             branches.cy_name()  # Require an unambiguous identity even without observations.
             code = branches.records[0]["branch_code"].strip().upper()
-            results[code] = _build_loaded_report(scoped, inputs, connection, recorded_at=recorded_at)
+            results[code] = _build_loaded_report(scoped, inputs, connection, generated_at=generated_at)
     return results
 
 
-def _build_loaded_report(input_settings, inputs, connection, *, recorded_at=None):
+def _build_loaded_report(input_settings, inputs, connection, *, generated_at=None):
     period_settings = input_settings.get("shifting_period")
     operations_source = input_settings.get("shifting_source", "xlsx")
     sql_operations = operations_source == "sql"
@@ -141,22 +141,22 @@ def _build_loaded_report(input_settings, inputs, connection, *, recorded_at=None
         heuristic_settings=settings.heuristic,
     )
 
-    if recorded_at is None:
-        recorded_at = int(time())
+    if generated_at is None:
+        generated_at = int(time())
     observations = load_operations(
         input_settings, branches,
         [{"block_id": block.getId(), "block_code": block.getCode()}
          for block in yard.blocks_by_id.values()],
         connection=connection, latest_only=True,
-        today=datetime.fromtimestamp(recorded_at, WIB).date(),
-        recorded_at=recorded_at,
+        today=datetime.fromtimestamp(generated_at, WIB).date(),
+        recorded_at=generated_at,
     )
     latest_start = max((row.period_start for row in observations), default=None)
     latest_observations = [row for row in observations if row.period_start == latest_start]
     latest = latest_observations[0] if latest_observations else None
     if sql_operations:
         granularity = input_settings.get("shifting_granularity", "daily")
-        period_start, period_end = operations_period_boundaries(granularity, recorded_at)
+        period_start, period_end = operations_period_boundaries(granularity, generated_at)
     elif operations_source == "csv":
         granularity = input_settings.get("shifting_granularity", "daily")
         period_start = latest_start
@@ -196,7 +196,7 @@ def _build_loaded_report(input_settings, inputs, connection, *, recorded_at=None
     report = {
         "cy_name": cy_name,
         "branch_code": branches.records[0]["branch_code"].strip().upper(),
-        "recorded_at": recorded_at,
+        "generated_at": generated_at,
         "period_start": period_start,
         "period_end": period_end,
         "latest_date": latest_date,

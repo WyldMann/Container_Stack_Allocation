@@ -236,7 +236,7 @@ class DailyMainTests(unittest.TestCase):
     def test_main_needs_no_benchmark_and_uses_wib_day_at_utc_evening(self):
         with patch.object(main_existing, "time", return_value=NOW):
             report = main_existing.build_report(self.path)
-        self.assertEqual(report["recorded_at"], NOW)
+        self.assertEqual(report["generated_at"], NOW)
         self.assertEqual(report["latest_date"], "2026-10-27")
         self.assertEqual(report["period_granularity"], "daily")
         self.assertNotIn("latest_week", report)

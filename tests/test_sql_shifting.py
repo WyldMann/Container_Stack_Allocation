@@ -244,7 +244,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         import psycopg
         self.assertEqual(self.connection.isolation_level, psycopg.IsolationLevel.REPEATABLE_READ)
         self.assertEqual(report["period_start"], NOW - 86400)
-        self.assertEqual(report["period_end"], report["recorded_at"])
+        self.assertEqual(report["period_end"], report["generated_at"])
         self.assertEqual(report["period_granularity"], "daily")
         self.assertEqual(report["latest_date"], datetime.fromtimestamp(NOW, WIB).date().isoformat())
         self.assertNotIn("latest_week", report)
@@ -260,7 +260,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
             main_existing.main()
         record = json.loads((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text())
         self.assertEqual(record, report)
-        self.assertEqual(record["period_end"], record["recorded_at"])
+        self.assertEqual(record["period_end"], record["generated_at"])
         self.assertEqual(record["period_end"] - record["period_start"], 86400)
         self.assertIn("daily", output.getvalue())
         self.assertIn("block_code assigned_equipment", output.getvalue())
@@ -281,7 +281,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
             report = main_existing.build_report(self.path)
         self.assertEqual(report["period_granularity"], "weekly")
         self.assertEqual(report["period_start"], NOW - 604800)
-        self.assertEqual(report["period_end"], report["recorded_at"])
+        self.assertEqual(report["period_end"], report["generated_at"])
         self.assertNotIn("latest_week", report)
         self.assertEqual(report["latest_date"], datetime.fromtimestamp(NOW, WIB).date().isoformat())
         self.assertTrue(all(item["period_start"] == report["period_start"]

@@ -54,10 +54,11 @@ class YardPresenter(Presenter):
         self.out("JSONL metrics row:")
         table([report], (
             "cy_name", "branch_code",
-            "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
+            "generated_at", "period_start", "period_end", "latest_date", "period_granularity",
             "avg_shifting_percentage", "avg_parameter_compliance",
         ))
         self.out("Timestamps are Unix seconds; latest_date is in WIB.")
+        self.out("generated_at is the program run time.")
         self.out("Shifting percentages and parameter compliance use 0-100; null means unavailable.")
         self.out("Included JSONL shifting_observations:")
         observations = report["shifting_observations"]

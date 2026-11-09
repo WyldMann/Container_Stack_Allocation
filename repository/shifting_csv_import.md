@@ -14,7 +14,8 @@ Paths resolve from `input.toml`. The CSV window ends at the most recent activity
 timestamp for the selected branch and equipment mapped to loaded yard blocks,
 among rows with a nonempty `DTL_ID`. Activities outside the configured categories
 also participate in finding that latest timestamp. Row order does not affect it.
-`recorded_at` records when the yard metrics were produced, not the window end.
+`generated_at` is the program run time in Unix seconds, rather than a source
+snapshot timestamp. It does not determine the CSV window end.
 The report's `latest_date` (`YYYY-MM-DD`) is derived from the window end in WIB
 for both daily and weekly windows, and is `null` when no window is available.
 This label does not restrict the window to a calendar date or month.
@@ -121,7 +122,7 @@ in a run share a read-only snapshot. `build_reports()` returns a dictionary keye
 by branch code; `build_report(branch_code="JKT74")` selects one configured branch.
 
 CSV, SQL, and XLSX reports use the same ordered fields:
-`cy_name`, `branch_code`, `recorded_at`, `period_start`, `period_end`, `latest_date`, `period_granularity`,
+`cy_name`, `branch_code`, `generated_at`, `period_start`, `period_end`, `latest_date`, `period_granularity`,
 `avg_shifting_percentage`, `avg_parameter_compliance`, `shifting_observations`.
 Each record occupies one line, with a space after commas and colons.
 

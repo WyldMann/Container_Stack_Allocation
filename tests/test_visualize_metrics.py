@@ -3,7 +3,7 @@
 import math
 import unittest
 
-from visualize_metrics import equipment_codes, plot_metrics
+from output.visualize_metrics import equipment_codes, plot_metrics
 
 
 class EquipmentCodesTests(unittest.TestCase):

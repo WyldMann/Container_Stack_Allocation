@@ -114,7 +114,7 @@ benchmark_period_start = 1857916800
         self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 20)
         self.assertEqual(len(report["shifting_observations"]), 1)
         self.assertEqual(list(report), [
-            "cy_name", "branch_code", "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
+            "cy_name", "branch_code", "generated_at", "period_start", "period_end", "latest_date", "period_granularity",
             "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
         ])
         self.assertEqual(list(report["shifting_observations"][0]), [
@@ -244,7 +244,7 @@ benchmark_period_start = 1857916800
         self.assertIsNone(report["shifting_observations"][0]["shifting_percentage"])
         self.assertIsNone(report["avg_shifting_percentage"])
 
-    def test_latest_week_uses_aggregate_operations_and_unix_recording_time(self):
+    def test_latest_week_uses_aggregate_operations_and_unix_generation_time(self):
         self.write_shifting(
             "CY 219 (Lini 2),SL,9000,9000,2026-10,43\n"
             "CY 219 (Lini 2),SL,100,100,2026-10,44\n"
@@ -252,7 +252,8 @@ benchmark_period_start = 1857916800
         )
         with patch.object(main_existing, "time", return_value=1234567890.7):
             report = main_existing.build_report(self.input_path)
-        self.assertEqual(report["recorded_at"], 1234567890)
+        self.assertEqual(report["generated_at"], 1234567890)
+        self.assertNotIn("recorded_at", report)
         self.assertNotIn("recorded_at_utc", report)
         self.assertEqual(report["period_granularity"], "weekly")
         self.assertIsNotNone(report["latest_date"])
@@ -455,7 +456,7 @@ benchmark_period_start = 1857916800
         records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(records, [report, report])
         self.assertIn("parameter compliance use 0-100", captured.getvalue())
-        self.assertIn('"recorded_at": ', output.read_text(encoding="utf-8"))
+        self.assertIn('"generated_at": ', output.read_text(encoding="utf-8"))
         self.assertIn(', "period_start": ', output.read_text(encoding="utf-8"))
         lines = captured.getvalue().splitlines()
         index = lines.index("JSONL metrics row:")
@@ -602,7 +603,7 @@ class RecordedMetricsTests(unittest.TestCase):
                     self.assertEqual(report["cy_name"], "CY 219 (Lini 2)")
                     self.assertEqual(report["branch_code"], "JKT74")
                     self.assertEqual(list(report), [
-                        "cy_name", "branch_code", "recorded_at", "period_start", "period_end", "latest_date", "period_granularity",
+                        "cy_name", "branch_code", "generated_at", "period_start", "period_end", "latest_date", "period_granularity",
                         "avg_shifting_percentage", "avg_parameter_compliance", "shifting_observations",
                     ])
                     self.assertEqual(report["period_granularity"], granularity)
