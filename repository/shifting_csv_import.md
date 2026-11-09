@@ -113,7 +113,7 @@ not included in the shortened JSONL output.
 
 ## Recorded JSONL format
 
-`main_existing.py` appends one record per branch per run to
+`shifting_report_calculation.py` appends one record per branch per run to
 `output/existing_yard_metrics_<BRANCH_CODE>.jsonl`, including single-branch runs.
 For the selection above, the files are `existing_yard_metrics_JKT74.jsonl` and
 `existing_yard_metrics_JKT64.jsonl`. Existing unsuffixed files are not migrated.

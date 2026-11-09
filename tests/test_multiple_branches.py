@@ -13,7 +13,7 @@ from config import ConfigurationError, load_input_config
 from repository import InputError
 from tests import test_input_filters as filter_tests
 import main
-import main_existing
+import shifting_report_calculation
 
 
 class MultipleBranchTests(unittest.TestCase):
@@ -89,30 +89,30 @@ class MultipleBranchTests(unittest.TestCase):
                 self.assertEqual(row["parameter_compliance"], compliance)
 
     def test_shared_csv_keeps_names_counts_compliance_and_latest_dates_separate(self):
-        reports = main_existing.build_reports(self.path)
+        reports = shifting_report_calculation.build_reports(self.path)
         self.assert_reports(reports)
         self.assertEqual(reports["JKT74"]["latest_date"], "2026-10-30")
         self.assertEqual(reports["JKT64"]["latest_date"], "2026-10-29")
         self.assertNotEqual(reports["JKT74"]["period_end"], reports["JKT64"]["period_end"])
         self.assertEqual(reports["JKT74"]["generated_at"], reports["JKT64"]["generated_at"])
         for code in reports:
-            selected = main_existing.build_report(self.path, branch_code=code.lower())
+            selected = shifting_report_calculation.build_report(self.path, branch_code=code.lower())
             self.assertEqual(selected["shifting_observations"], reports[code]["shifting_observations"])
         with self.assertRaisesRegex(ConfigurationError, "build_reports"):
-            main_existing.build_report(self.path)
+            shifting_report_calculation.build_report(self.path)
         with self.assertRaises(ConfigurationError):
-            main_existing.build_report(self.path, branch_code="MISSING")
+            shifting_report_calculation.build_report(self.path, branch_code="MISSING")
 
     def test_each_run_appends_only_to_the_matching_branch_file(self):
         # Place the config where main's output-directory convention expects it.
         config_path = self.root / "config" / "input.toml"
         config_path.parent.mkdir()
         config_path.write_text(self.path.read_text(encoding="utf-8"), encoding="utf-8")
-        with patch.object(main_existing, "DEFAULT_INPUT_CONFIG_FILE", config_path), patch.object(
-            main_existing.YardPresenter, "outYard",
+        with patch.object(shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", config_path), patch.object(
+            shifting_report_calculation.YardPresenter, "outYard",
         ), redirect_stdout(io.StringIO()):
-            main_existing.main()
-            main_existing.main()
+            shifting_report_calculation.main()
+            shifting_report_calculation.main()
         output = self.root / "output"
         self.assertEqual({path.name for path in output.glob("*.jsonl")}, {
             "existing_yard_metrics_JKT74.jsonl", "existing_yard_metrics_JKT64.jsonl",
@@ -128,28 +128,28 @@ class MultipleBranchTests(unittest.TestCase):
 
     def test_empty_operations_still_get_their_own_branch_file(self):
         self.activities.write_text(self.activities.read_text().splitlines()[0] + "\n", encoding="utf-8")
-        results = main_existing._build_reports_and_yards(self.path)
+        results = shifting_report_calculation._build_reports_and_yards(self.path)
         self.assertEqual(list(results), ["JKT74", "JKT64"])
         for code, (report, _) in results.items():
             self.assertEqual(report["shifting_observations"], [])
             self.assertEqual(report["branch_code"], code)
             self.assertEqual(report["cy_name"], "CY 219 (Lini 2)" if code == "JKT74" else "CY 218 (Lini 2)")
-        with patch.object(main_existing, "_build_reports_and_yards", return_value=results), patch.object(
-            main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.root / "config" / "input.toml",
-        ), patch.object(main_existing, "YardPresenter"), redirect_stdout(io.StringIO()):
-            main_existing.main()
+        with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value=results), patch.object(
+            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.root / "config" / "input.toml",
+        ), patch.object(shifting_report_calculation, "YardPresenter"), redirect_stdout(io.StringIO()):
+            shifting_report_calculation.main()
         self.assertEqual(len(list((self.root / "output").glob("*.jsonl"))), 2)
 
     def test_missing_second_branch_does_not_append_partial_batch(self):
         self.fixture.set_filters('branch_code = ["JKT74", "MISSING"]')
-        with patch.object(main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.path), self.assertRaises(InputError):
-            main_existing.main()
+        with patch.object(shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.path), self.assertRaises(InputError):
+            shifting_report_calculation.main()
         self.assertFalse(list(self.root.rglob("*.jsonl")))
 
     def test_display_names_are_taken_verbatim_from_each_branch_record(self):
         self.fixture.data["terminal_branches"][1]["branch_name"] = "  New yard name\t"
         self.fixture.write_records("terminal_branches", self.fixture.data["terminal_branches"])
-        reports = main_existing.build_reports(self.path)
+        reports = shifting_report_calculation.build_reports(self.path)
         self.assertEqual(reports["JKT64"]["cy_name"], "  New yard name\t")
 
     def test_xlsx_selects_the_corresponding_branch_name(self):
@@ -158,7 +158,7 @@ class MultipleBranchTests(unittest.TestCase):
             "CY 219 (Lini 2),SL,2,1,2026-10,40\n"
             "CY 218 (Lini 2),SL,1,3,2026-10,40\n"
         )
-        self.assert_reports(main_existing.build_reports(self.path))
+        self.assert_reports(shifting_report_calculation.build_reports(self.path))
 
     @unittest.skipUnless(importlib.util.find_spec("psycopg"), "SQL tests require requirements-sql.txt")
     def test_sql_operations_bind_each_branch_in_one_shared_snapshot(self):
@@ -179,9 +179,9 @@ class MultipleBranchTests(unittest.TestCase):
         with patch.dict(os.environ, {
             "YARD_DB_HOST": "db.test", "YARD_DB_NAME": "yard", "YARD_DB_USER": "reader",
             "YARD_DB_PASSWORD": "test-password",
-        }), patch("psycopg.connect") as connect, patch.object(main_existing, "time", return_value=1793300000):
+        }), patch("psycopg.connect") as connect, patch.object(shifting_report_calculation, "time", return_value=1793300000):
             connect.return_value.__enter__.return_value = connection
-            reports = main_existing.build_reports(self.path)
+            reports = shifting_report_calculation.build_reports(self.path)
         connect.assert_called_once()
         self.assertTrue(connection.read_only)
         self.assert_reports(reports)

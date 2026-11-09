@@ -21,7 +21,7 @@ from repository.csvloader import BRANCH_WHITESPACE
 from repository.shifting_dates import WIB
 from repository.shifting_repository import ShiftingSummary
 from tests.shifting_fixtures import write_report
-import main_existing
+import shifting_report_calculation
 
 
 class ExistingYardMainTests(unittest.TestCase):
@@ -103,10 +103,10 @@ benchmark_period_start = 1857916800
             return original_open(loader)
 
         with patch.object(CSVLoader, "open", guarded_open), patch.object(
-            main_existing.Yard, "assign_and_place",
+            shifting_report_calculation.Yard, "assign_and_place",
             side_effect=AssertionError("Inbound placement called"),
         ), patch.dict("sys.modules", {"psycopg": None}):
-            report, yard = main_existing._build_report_and_yard(self.input_path)
+            report, yard = shifting_report_calculation._build_report_and_yard(self.input_path)
 
         self.assertEqual(len(opened), 8)
         self.assertGreater(len(yard.containers), 0)
@@ -168,8 +168,8 @@ benchmark_period_start = 1857916800
             'existing_containers = "' + backup + '"',
             'existing_containers = "missing-backup.csv"',
         ), encoding="utf-8")
-        with patch.object(main_existing.Yard, "assign_and_place", side_effect=AssertionError("Inbound")):
-            report, yard = main_existing._build_report_and_yard(self.input_path)
+        with patch.object(shifting_report_calculation.Yard, "assign_and_place", side_effect=AssertionError("Inbound")):
+            report, yard = shifting_report_calculation._build_report_and_yard(self.input_path)
         self.assertEqual(set(yard.containers), {"SQL_ONLY_CONTAINER"})
         driver.connect.assert_called_once()
         driver.sql.Identifier.assert_any_call("TERMINAL_APP", "TRM_TRS_TARGET_CONTAINER")
@@ -195,13 +195,13 @@ benchmark_period_start = 1857916800
                 driver.connect.side_effect = RuntimeError(failure) if failure.startswith("connection") else None
                 cursor.execute.side_effect = RuntimeError(failure)
                 with patch.object(CSVLoader, "open", guarded_open), self.assertRaisesRegex(RuntimeError, failure):
-                    main_existing.build_report(self.input_path)
+                    shifting_report_calculation.build_report(self.input_path)
         self.assertNotIn("containers.csv", opened)
 
     def test_empty_sql_result_stays_empty(self):
         _, _, cursor = self.sql_existing()
         cursor.__iter__.side_effect = lambda: iter(())
-        report, yard = main_existing._build_report_and_yard(self.input_path)
+        report, yard = shifting_report_calculation._build_report_and_yard(self.input_path)
         self.assertEqual(len(yard.containers), 0)
         self.assertIsNone(report["avg_parameter_compliance"])
         self.assertTrue(all(row["parameter_compliance"] is None for row in report["shifting_observations"]))
@@ -220,13 +220,13 @@ benchmark_period_start = 1857916800
             with self.subTest(missing=missing), patch.dict(os.environ, environment, clear=True), patch.dict(
                 "sys.modules", {"psycopg": None if missing == "driver" else driver},
             ), self.assertRaisesRegex(ConfigurationError, expected):
-                main_existing.build_report(self.input_path)
+                shifting_report_calculation.build_report(self.input_path)
             driver.connect.assert_not_called()
 
     def test_unused_inbound_sql_source_needs_no_database_settings(self):
         self.set_source("inbound_containers", "sql")
         with patch.dict(os.environ, {}, clear=True), patch.dict("sys.modules", {"psycopg": None}):
-            report, yard = main_existing._build_report_and_yard(self.input_path)
+            report, yard = shifting_report_calculation._build_report_and_yard(self.input_path)
         self.assertGreater(len(yard.containers), 0)
 
     def test_inbound_source_and_file_can_be_omitted(self):
@@ -234,12 +234,12 @@ benchmark_period_start = 1857916800
         self.input_path.write_text("\n".join(
             line for line in text.splitlines() if not line.startswith("inbound_containers =")
         ), encoding="utf-8")
-        report, yard = main_existing._build_report_and_yard(self.input_path)
+        report, yard = shifting_report_calculation._build_report_and_yard(self.input_path)
         self.assertGreater(len(yard.containers), 0)
 
     def test_available_shifts_are_summed_and_missing_observations_counted(self):
         self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),SL,,,,\n")
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual([row["shifting_count"] for row in report["shifting_observations"]], [10])
         self.assertIsNone(report["shifting_observations"][0]["shifting_percentage"])
         self.assertIsNone(report["avg_shifting_percentage"])
@@ -250,8 +250,8 @@ benchmark_period_start = 1857916800
             "CY 219 (Lini 2),SL,100,100,2026-10,44\n"
             "CY 219 (Lini 2),RS,900,0,2026-10,44\n"
         )
-        with patch.object(main_existing, "time", return_value=1234567890.7):
-            report = main_existing.build_report(self.input_path)
+        with patch.object(shifting_report_calculation, "time", return_value=1234567890.7):
+            report = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual(report["generated_at"], 1234567890)
         self.assertNotIn("recorded_at", report)
         self.assertNotIn("recorded_at_utc", report)
@@ -274,7 +274,7 @@ benchmark_period_start = 1857916800
             "CY 219 (Lini 2),SL,200,20,2026-10,44\n"
             "CY 219 (Lini 2),RS,100,10,2026-10,44\n"
         )
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 300)
         self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 30)
         self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * 30 / 330)
@@ -285,7 +285,7 @@ benchmark_period_start = 1857916800
         self.write_shifting(
             "CY 219 (Lini 2),SL,200,20,2026-10,43\nCY 219 (Lini 2),RS,bad,-1,2026-10,43\n"
         )
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual(report["shifting_observations"][0]["shifting_count"], 20)
         self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * 20 / 220)
         self.assertNotIn("skipped_shifting_data_points", report)
@@ -296,7 +296,7 @@ benchmark_period_start = 1857916800
             "CY 219 (Lini 2),SL,50,10,2026-10,44\n"
             "CY 219 (Lini 2),RS,,,2026-10,44\n"
         )
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual(report["shifting_observations"][0]["lifting_count"], 50)
         self.assertEqual(report["shifting_observations"][0]["shifting_count"], 10)
         self.assertIsNone(report["avg_shifting_percentage"])
@@ -305,7 +305,7 @@ benchmark_period_start = 1857916800
 
     def test_zero_total_operations_has_no_percentage(self):
         self.write_shifting("CY 219 (Lini 2),SL,0,0,2026-10,44\n")
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual(report["shifting_observations"][0]["lifting_count"], 0)
         self.assertEqual(report["shifting_observations"][0]["shifting_count"], 0)
         self.assertIsNone(report["avg_shifting_percentage"])
@@ -315,20 +315,20 @@ benchmark_period_start = 1857916800
         self.write_shifting(
             "CY 219 (Lini 2),SL,50,10,2026-10,44\nCY 219 (Lini 2),RS,100,30,2026-10,43\n"
         )
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         rows = report["shifting_observations"]
         self.assertEqual(rows[0]["block_code"], "B")
         self.assertTrue(all(row["shifting_count"] is None for row in rows if row["block_code"] == "C"))
 
     def test_all_missing_observations_do_not_become_zero(self):
         self.write_shifting("CY 219 (Lini 2),SL,,,,\n")
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         self.assertIsNone(report["shifting_observations"][0]["shifting_count"])
         self.assertIsNone(report["avg_shifting_percentage"])
 
     def test_explicit_zero_remains_zero(self):
         self.write_shifting("CY 219 (Lini 2),SL,100,0,,\n")
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual(report["shifting_observations"][0]["shifting_count"], 0)
         self.assertEqual(report["avg_shifting_percentage"], 0)
 
@@ -353,8 +353,8 @@ benchmark_period_start = 1857916800
             blocks_by_id={"10": first, "11": second},
             bad_data=SimpleNamespace(anyBadData=lambda: True),
         )
-        with patch.object(main_existing, "Yard", return_value=yard):
-            report = main_existing.build_report(self.input_path)
+        with patch.object(shifting_report_calculation, "Yard", return_value=yard):
+            report = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual(report["avg_parameter_compliance"], 25)
         self.assertEqual(report["shifting_observations"][0]["parameter_compliance"], 100)
 
@@ -363,8 +363,8 @@ benchmark_period_start = 1857916800
             containers={}, blocks_by_id={},
             bad_data=SimpleNamespace(anyBadData=lambda: False),
         )
-        with patch.object(main_existing, "Yard", return_value=yard):
-            report = main_existing.build_report(self.input_path)
+        with patch.object(shifting_report_calculation, "Yard", return_value=yard):
+            report = shifting_report_calculation.build_report(self.input_path)
         self.assertIsNone(report["avg_parameter_compliance"])
         self.assertEqual(report["shifting_observations"], [])
         self.assertIsNone(report["period_start"])
@@ -375,7 +375,7 @@ benchmark_period_start = 1857916800
     def test_absent_block_counts_are_excluded_from_yard_and_block_totals(self):
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "B"\nRS = "99"\n', encoding="utf-8")
         self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,100,30,,\n")
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual(report["shifting_observations"][0]["shifting_count"], 10)
         self.assertEqual(len(report["shifting_observations"]), 1)
         self.assertNotIn("skipped_shifting_data_points", report)
@@ -388,7 +388,7 @@ benchmark_period_start = 1857916800
         self.write_shifting(
             "CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,100,30,,\nCY 219 (Lini 2),SL,100,20,,\n"
         )
-        report, yard = main_existing._build_report_and_yard(self.input_path)
+        report, yard = shifting_report_calculation._build_report_and_yard(self.input_path)
         rows = report["shifting_observations"]
         self.assertEqual(sum(row["shifting_count"] for row in rows if row["block_code"] == "B"), 30)
         self.assertEqual(sum(row["shifting_count"] for row in rows
@@ -405,7 +405,7 @@ benchmark_period_start = 1857916800
             "CY 219 (Lini 2),RS,900,0,2026-10,44\n"
             "CY 219 (Lini 2),SL,9999,9999,2026-10,43\n"
         )
-        report, yard = main_existing._build_report_and_yard(self.input_path)
+        report, yard = shifting_report_calculation._build_report_and_yard(self.input_path)
         self.assertEqual(len(report["shifting_observations"]), 1)
         row = report["shifting_observations"][0]
         self.assertEqual((row["block_code"], row["assigned_equipment"]), ("B", ["RS", "SL"]))
@@ -416,7 +416,7 @@ benchmark_period_start = 1857916800
         self.assertAlmostEqual(row["parameter_compliance"], block.parameterCompliance() * 100)
 
     def test_block_without_observations_is_not_reported_as_zero(self):
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         self.assertNotIn("C", [row["block_code"] for row in report["shifting_observations"]])
 
     def test_workbook_equipment_can_merge_multiple_blocks(self):
@@ -424,7 +424,7 @@ benchmark_period_start = 1857916800
             '["CY 219 (Lini 2)"]\nSL = ["B", "C"]\nRS = "C"\n', encoding="utf-8",
         )
         self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),RS,200,20,,\n")
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual(len(report["shifting_observations"]), 1)
         row = report["shifting_observations"][0]
         self.assertEqual(row["block_code"], "B, C")
@@ -438,20 +438,20 @@ benchmark_period_start = 1857916800
             encoding="utf-8",
         )
         with self.assertRaisesRegex(ConfigurationError, "shifting_workbook_file"):
-            main_existing.build_report(self.input_path)
+            shifting_report_calculation.build_report(self.input_path)
 
     def test_main_appends_one_json_record_per_run(self):
         self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),SL,,,,\n")
-        report = main_existing.build_report(self.input_path)
+        report = shifting_report_calculation.build_report(self.input_path)
         captured = io.StringIO()
         with patch.object(
-            main_existing, "_build_reports_and_yards", return_value={"JKT74": (report, Mock())},
-        ), patch.object(main_existing.YardPresenter, "outYard"), patch.object(
-            main_existing, "DEFAULT_INPUT_CONFIG_FILE",
+            shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, Mock())},
+        ), patch.object(shifting_report_calculation.YardPresenter, "outYard"), patch.object(
+            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE",
             self.root / "config" / "input.toml",
         ), redirect_stdout(captured):
-            main_existing.main()
-            main_existing.main()
+            shifting_report_calculation.main()
+            shifting_report_calculation.main()
         output = self.root / "output" / "existing_yard_metrics_JKT74.jsonl"
         records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(records, [report, report])
@@ -473,7 +473,7 @@ benchmark_period_start = 1857916800
 class RecordedMetricsTests(unittest.TestCase):
     def setUp(self):
         self.now = int(datetime(2026, 11, 1, 0, 15, tzinfo=WIB).timestamp())
-        self.inputs = {name: [] for name in main_existing.EXISTING_YARD_DATASETS}
+        self.inputs = {name: [] for name in shifting_report_calculation.EXISTING_YARD_DATASETS}
         self.inputs["terminal_branches"] = [{
             "branch_id": "2", "terminal_id": "1", "branch_code": "JKT74",
             "branch_name": "CY 219 (Lini 2)",
@@ -510,10 +510,10 @@ class RecordedMetricsTests(unittest.TestCase):
         settings = {"shifting_source": source, "shifting_granularity": granularity,
                     "shifting_workbook_sheet": "Per Alat " + granularity.title(),
                     "shifting_period": {}}
-        with patch.object(main_existing, "Yard", return_value=self.yard), patch.object(
-            main_existing, "load_operations", return_value=rows,
-        ), patch.object(main_existing, "time", return_value=self.now):
-            report, _ = main_existing._build_loaded_report(settings, self.inputs, None)
+        with patch.object(shifting_report_calculation, "Yard", return_value=self.yard), patch.object(
+            shifting_report_calculation, "load_operations", return_value=rows,
+        ), patch.object(shifting_report_calculation, "time", return_value=self.now):
+            report, _ = shifting_report_calculation._build_loaded_report(settings, self.inputs, None)
         return report
 
     def test_shared_block_totals_and_missing_counts_for_all_sources(self):
@@ -588,7 +588,7 @@ class RecordedMetricsTests(unittest.TestCase):
     def test_merge_keeps_branches_separate_and_empty_compliance_missing(self):
         rows = [ShiftingSummary("CY", "RTG04", lifting, 1, block_ids=("29", "30"), branch_code=branch)
                 for branch, lifting in (("JKT74", 10), ("JKT64", 20))]
-        result = main_existing.block_shifting_observations(
+        result = shifting_report_calculation.block_shifting_observations(
             rows, self.yard, {"29": None, "30": None}, {"29": 0, "30": 0},
         )
         self.assertEqual(len(result), 2)

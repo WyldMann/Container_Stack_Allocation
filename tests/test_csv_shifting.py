@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE, load_input_config
 from config.application.shifting_input import shifting_settings
-import main_existing
+import shifting_report_calculation
 from repository import InputError, load_yard_inputs
 from repository.operations_repository import load_csv_shifting_summary
 from repository.shifting_dates import WIB
@@ -158,7 +158,7 @@ class CSVOperationsTests(unittest.TestCase):
         self.mapping.write_text(f'["{CY}"]\nSL = "B"\nRS = "B"\n', encoding="utf-8")
         rows = self.load([operation(), operation(equipment="RS", activity="Shifting Delivery")])
         self.assertEqual({r.block_id for r in rows}, {"10"})
-        self.assertEqual(main_existing.shifting_metrics(rows)["shifting_percentage"], 50)
+        self.assertEqual(shifting_report_calculation.shifting_metrics(rows)["shifting_percentage"], 50)
 
     def test_no_scoped_rows_produces_no_window_or_observations(self):
         for records in ([], [operation(branch="OTHER")], [operation(identifier="")]):
@@ -326,7 +326,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         )
 
     def settings(self):
-        return load_input_config(self.path, datasets=main_existing.EXISTING_YARD_DATASETS)
+        return load_input_config(self.path, datasets=shifting_report_calculation.EXISTING_YARD_DATASETS)
 
     def test_csv_config_and_shared_loader_need_no_sql_or_workbook(self):
         self.fixture.shifting_path.unlink()
@@ -345,8 +345,8 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         self.assertEqual(sum(r.lifting_count for r in updated), 2)
 
     def test_latest_activity_window_report_jsonl_and_presenter(self):
-        with patch.object(main_existing, "time", return_value=NOW + 10 * 86400):
-            report = main_existing.build_report(self.path)
+        with patch.object(shifting_report_calculation, "time", return_value=NOW + 10 * 86400):
+            report = shifting_report_calculation.build_report(self.path)
         self.assertEqual(report["generated_at"], NOW + 10 * 86400)
         self.assertEqual((report["period_start"], report["period_end"]), (LATEST - 86400, LATEST))
         self.assertAlmostEqual(report["avg_shifting_percentage"], 100 / 3)
@@ -357,10 +357,10 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         ])
         json.dumps(report, allow_nan=False)
         output = io.StringIO()
-        with patch.object(main_existing, "_build_reports_and_yards", return_value={"JKT74": (report, None)}), patch.object(
-            main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
-        ), patch.object(main_existing.YardPresenter, "outYard"), redirect_stdout(output):
-            main_existing.main()
+        with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, None)}), patch.object(
+            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+        ), patch.object(shifting_report_calculation.YardPresenter, "outYard"), redirect_stdout(output):
+            shifting_report_calculation.main()
         saved = json.loads((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text())
         self.assertEqual(saved, report)
         self.assertIn("latest_date is in WIB", output.getvalue())
@@ -383,8 +383,8 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
                 self.path.write_text(original.replace(
                     'period_granularity = "daily"', f'period_granularity = "{granularity}"',
                 ), encoding="utf-8")
-                with patch.object(main_existing, "time", return_value=NOW):
-                    report = main_existing.build_report(self.path)
+                with patch.object(shifting_report_calculation, "time", return_value=NOW):
+                    report = shifting_report_calculation.build_report(self.path)
                 self.assertEqual(report["latest_date"], "2026-11-01")
                 self.assertNotIn("report_month", report)
 
@@ -392,12 +392,12 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         text = self.path.read_text(encoding="utf-8")
         self.path.write_text(text.replace('period_granularity = "daily"', 'period_granularity = "weekly"'),
                              encoding="utf-8")
-        with patch.object(main_existing, "time", return_value=NOW):
-            report = main_existing.build_report(self.path)
+        with patch.object(shifting_report_calculation, "time", return_value=NOW):
+            report = shifting_report_calculation.build_report(self.path)
         self.assertEqual((report["period_start"], report["period_end"]), (LATEST - 7 * 86400, LATEST))
         output = io.StringIO()
         with redirect_stdout(output):
-            main_existing.YardPresenter().outRecordedMetrics(report)
+            shifting_report_calculation.YardPresenter().outRecordedMetrics(report)
         self.assertIn("weekly", output.getvalue())
 
     def test_old_cutoff_setting_is_rejected_instead_of_silently_overriding_latest_window(self):
@@ -427,14 +427,14 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
     def test_shared_activity_configuration_matches_different_capitalization(self):
         text = self.path.read_text(encoding="utf-8")
         self.path.write_text(text.replace('"Lift On Delivery"', '"lift on delivery"'), encoding="utf-8")
-        report = main_existing.build_report(self.path)
+        report = shifting_report_calculation.build_report(self.path)
         self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 2)
         self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 1)
         self.assertAlmostEqual(report["avg_shifting_percentage"], 100 / 3)
 
     def test_csv_operations_can_accompany_sql_yard_data(self):
         driver, connection, cursor = self.fixture.sql_existing()
-        report = main_existing.build_report(self.path)
+        report = shifting_report_calculation.build_report(self.path)
         self.assertEqual(sum(row["lifting_count"] for row in report["shifting_observations"]), 2)
         self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 1)
         driver.connect.assert_called_once()
@@ -446,8 +446,8 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
 
         yard = SimpleNamespace(containers={}, blocks_by_id={},
                                bad_data=SimpleNamespace(anyBadData=lambda: False))
-        with patch.object(main_existing, "Yard", return_value=yard):
-            report = main_existing.build_report(self.path)
+        with patch.object(shifting_report_calculation, "Yard", return_value=yard):
+            report = shifting_report_calculation.build_report(self.path)
         self.assertEqual(report["shifting_observations"], [])
         self.assertEqual((report["period_start"], report["period_end"]), (None, None))
         self.assertIsNone(report["avg_shifting_percentage"])
@@ -456,7 +456,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
 
     def test_empty_csv_report_does_not_invent_a_window(self):
         write_csv(self.csv_path, [])
-        report = main_existing.build_report(self.path)
+        report = shifting_report_calculation.build_report(self.path)
         self.assertEqual(report["shifting_observations"], [])
         self.assertEqual((report["period_start"], report["period_end"]), (None, None))
         self.assertIsNone(report["avg_shifting_percentage"])
@@ -466,9 +466,9 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
     def test_invalid_csv_does_not_fall_back_or_write_jsonl(self):
         self.csv_path.write_text("invalid CSV", encoding="utf-8")
         with patch("repository.operations_input.load_shifting_summary") as workbook, patch.object(
-            main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.path,
+            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.path,
         ), self.assertRaises(InputError):
-            main_existing.main()
+            shifting_report_calculation.main()
         workbook.assert_not_called()
         self.assertFalse((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").exists())
 

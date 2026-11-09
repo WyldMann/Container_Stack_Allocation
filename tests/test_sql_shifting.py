@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 from config import ConfigurationError, load_input_config
 from config.application.shifting_input import sql_shifting_settings
-import main_existing
+import shifting_report_calculation
 from repository import InputError, load_yard_inputs
 from repository.sql_shifting_repository import load_sql_shifting_summary, operations_count_query, sql_period_boundaries
 from repository.shifting_dates import WIB, daily_boundaries
@@ -43,7 +43,7 @@ class SQLShiftingFixture:
         self.addCleanup(environment.stop)
 
     def settings(self):
-        return load_input_config(self.path, datasets=main_existing.EXISTING_YARD_DATASETS)
+        return load_input_config(self.path, datasets=shifting_report_calculation.EXISTING_YARD_DATASETS)
 
 
 class SQLShiftingConfigTests(SQLShiftingFixture, unittest.TestCase):
@@ -235,10 +235,10 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         # Report CSV is deliberately invalid; SQL must be the only operations source.
         self.fixture.shifting_path.write_text("invalid CSV backup", encoding="utf-8")
         now = NOW
-        with patch.object(main_existing, "time", return_value=now), patch(
+        with patch.object(shifting_report_calculation, "time", return_value=now), patch(
             "repository.operations_input.load_shifting_summary", side_effect=AssertionError("CSV fallback"),
         ):
-            report, yard = main_existing._build_report_and_yard(self.path)
+            report, yard = shifting_report_calculation._build_report_and_yard(self.path)
         self.connect.assert_called_once()
         self.assertTrue(self.connection.read_only)
         import psycopg
@@ -254,10 +254,10 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         self.assertNotIn("period_selection", report)
         json.dumps(report, allow_nan=False)
         output = io.StringIO()
-        with patch.object(main_existing, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
-            main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
-        ), patch.object(main_existing.YardPresenter, "outYard"), redirect_stdout(output):
-            main_existing.main()
+        with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
+            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+        ), patch.object(shifting_report_calculation.YardPresenter, "outYard"), redirect_stdout(output):
+            shifting_report_calculation.main()
         record = json.loads((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text())
         self.assertEqual(record, report)
         self.assertEqual(record["period_end"], record["generated_at"])
@@ -277,8 +277,8 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         source = self.path.read_text(encoding="utf-8")
         self.path.write_text(source.replace('period_granularity = "daily"',
                                            'period_granularity = "weekly"'), encoding="utf-8")
-        with patch.object(main_existing, "time", return_value=NOW):
-            report = main_existing.build_report(self.path)
+        with patch.object(shifting_report_calculation, "time", return_value=NOW):
+            report = shifting_report_calculation.build_report(self.path)
         self.assertEqual(report["period_granularity"], "weekly")
         self.assertEqual(report["period_start"], NOW - 604800)
         self.assertEqual(report["period_end"], report["generated_at"])
@@ -289,7 +289,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
                             for item in self.parameters()))
         output = io.StringIO()
         with redirect_stdout(output):
-            main_existing.YardPresenter().outRecordedMetrics(report)
+            shifting_report_calculation.YardPresenter().outRecordedMetrics(report)
         self.assertIn("weekly", output.getvalue())
         self.assertNotIn("operations week", output.getvalue())
         record = json.loads(json.dumps(report, allow_nan=False))
@@ -297,10 +297,10 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
 
     def test_sql_window_remains_defined_when_no_blocks_are_loaded(self):
         yard = SimpleNamespace(containers={}, blocks_by_id={}, bad_data=SimpleNamespace(anyBadData=lambda: False))
-        with patch.object(main_existing, "Yard", return_value=yard), patch.object(
-            main_existing, "time", return_value=NOW,
+        with patch.object(shifting_report_calculation, "Yard", return_value=yard), patch.object(
+            shifting_report_calculation, "time", return_value=NOW,
         ):
-            report = main_existing.build_report(self.path)
+            report = shifting_report_calculation.build_report(self.path)
         self.assertEqual(report["shifting_observations"], [])
         self.assertEqual((report["period_start"], report["period_end"]), (START, END))
         self.assertIsNone(report["avg_shifting_percentage"])
@@ -330,8 +330,8 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
             return operations_cursor(**kwargs)
 
         self.connection.cursor.side_effect = next_cursor
-        with patch.object(main_existing, "time", return_value=NOW):
-            report, yard = main_existing._build_report_and_yard(self.path)
+        with patch.object(shifting_report_calculation, "time", return_value=NOW):
+            report, yard = shifting_report_calculation._build_report_and_yard(self.path)
         self.assertIn("SQL_ONLY_CONTAINER", yard.containers)
         self.assertEqual(sum(row["shifting_count"] for row in report["shifting_observations"]), 30)
         self.assertEqual(self.connection.cursor.call_count, 5)
@@ -352,9 +352,9 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
             with self.subTest(connection_fails=connection_fails):
                 self.connect.side_effect = failure if connection_fails else None
                 with patch("repository.operations_input.load_shifting_summary") as workbook_loader, patch.object(
-                    main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.path,
+                    shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.path,
                 ), patch.object(Path, "open", checked_open), self.assertRaisesRegex(RuntimeError, "report query failed"):
-                    main_existing.main()
+                    shifting_report_calculation.main()
                 workbook_loader.assert_not_called()
 
 

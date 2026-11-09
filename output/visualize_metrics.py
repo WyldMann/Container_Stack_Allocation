@@ -17,7 +17,7 @@ from pathlib import Path
 import warnings
 
 
-branch = "JKT74"
+branch = "JKT64"
 
 WIB = timezone(timedelta(hours=7), "WIB")
 DEFAULT_INPUT = Path(__file__).resolve().parent / ("existing_yard_metrics_" + branch + ".jsonl")
@@ -131,10 +131,15 @@ def plot_metrics(records):
         axis.grid(alpha=0.25)
         if axis.get_legend_handles_labels()[0]:
             axis.legend(loc="upper left", bbox_to_anchor=(1.01, 1), fontsize=9)
-    locator = mdates.AutoDateLocator(tz=WIB)
+    locator = mdates.DayLocator(interval=1, tz=WIB)
     axes[-1].xaxis.set_major_locator(locator)
-    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d\n%H:%M", tz=WIB))
-    axes[-1].set_xlabel("WIB (UTC+7)")
+    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%d %b\n%Y", tz=WIB))
+    axes[-1].tick_params(axis="x", labelsize=8, pad=6)
+    for label in axes[-1].get_xticklabels():
+        label.set_rotation(45)
+        label.set_horizontalalignment("right")
+        label.set_rotation_mode("anchor")
+    axes[-1].set_xlabel("Daily ticks at 00:00 WIB (UTC+7)", labelpad=10)
     return figure
 
 

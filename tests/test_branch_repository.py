@@ -8,7 +8,7 @@ from config import ConfigurationError, load_input_config
 from repository import InputError, load_yard_inputs
 from repository.branch_repository import BranchDirectory
 from tests import test_main_existing as main_tests
-import main_existing
+import shifting_report_calculation
 
 
 def branch(branch_id="2", terminal_id="1", code="JKT74", name="CY 219 (Lini 2)"):
@@ -65,7 +65,7 @@ class BranchLoadingTests(unittest.TestCase):
         self.path = self.fixture.input_path
 
     def test_current_csv_fixture_derives_cy_and_loads_twenty_containers(self):
-        report, yard = main_existing._build_report_and_yard(self.path)
+        report, yard = shifting_report_calculation._build_report_and_yard(self.path)
         self.assertEqual(report["cy_name"], "CY 219 (Lini 2)")
         self.assertEqual(report["branch_code"], "JKT74")
         self.assertGreater(len(yard.containers), 0)
@@ -154,9 +154,9 @@ class BranchLoadingTests(unittest.TestCase):
         self.assertEqual(len(inputs["terminal_branches"]), 2)
         with self.assertRaisesRegex(ConfigurationError, "exactly one branch"):
             load_yard_inputs(settings)
-        with patch.object(main_existing, "load_input_config", return_value=settings):
+        with patch.object(shifting_report_calculation, "load_input_config", return_value=settings):
             with self.assertRaisesRegex(ConfigurationError, "exactly one branch"):
-                main_existing.build_report(self.path)
+                shifting_report_calculation.build_report(self.path)
 
 
 if __name__ == "__main__":

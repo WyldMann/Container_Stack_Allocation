@@ -11,7 +11,7 @@ from repository import InputError, load_yard_inputs
 from repository.shifting_xlsx_loader import ShiftingXLSXLoader
 from tests import test_main_existing as main_tests
 from tests import test_shifting_repository as shifting_tests
-import main_existing
+import shifting_report_calculation
 
 
 _NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -120,11 +120,11 @@ class WorkbookMainIntegrationTests(unittest.TestCase):
         stale_csv = workbook.with_suffix(".csv")
         stale_csv.write_text("invalid stale CSV", encoding="utf-8")
         write_workbook(workbook, lifting=200, shifting=20, old_shifting=None)
-        first = main_existing.build_report(self.input_path)
+        first = shifting_report_calculation.build_report(self.input_path)
         self.assertEqual(first["shifting_observations"][0]["lifting_count"], 200)
         self.assertEqual(first["shifting_observations"][0]["shifting_count"], 20)
         write_workbook(workbook, lifting=500, shifting=100, week=45)
-        second = main_existing.build_report(self.input_path)
+        second = shifting_report_calculation.build_report(self.input_path)
         self.assertGreater(second["period_start"], first["period_start"])
         self.assertEqual(second["shifting_observations"][0]["lifting_count"], 500)
         self.assertEqual(second["shifting_observations"][0]["shifting_count"], 100)
@@ -132,7 +132,7 @@ class WorkbookMainIntegrationTests(unittest.TestCase):
         self.assertEqual(stale_csv.read_text(encoding="utf-8"), "invalid stale CSV")
         workbook.unlink()
         with self.assertRaises(InputError):
-            main_existing.build_report(self.input_path)
+            shifting_report_calculation.build_report(self.input_path)
 
 
 class WorkbookSharedInputTests(unittest.TestCase):

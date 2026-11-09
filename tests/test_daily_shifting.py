@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 from zipfile import ZipFile
 
 from config import DEFAULT_INPUT_CONFIG_FILE
-import main_existing
+import shifting_report_calculation
 from repository import CSVLoader, InputError, load_yard_inputs
 from tests.shifting_fixtures import write_report
 from repository.shifting_dates import daily_boundaries, report_date
@@ -117,7 +117,7 @@ class DailyShiftingTests(unittest.TestCase):
     def test_zero_counts_are_complete_and_no_complete_day_is_an_error(self):
         rows = self.load(f"{CY},SL,0,0,2026-10-27\n{CY},RS,0,0,2026-10-27\n")
         self.assertEqual(rows[0].lifting_count, 0)
-        self.assertIsNone(main_existing.shifting_metrics(rows)["shifting_percentage"])
+        self.assertIsNone(shifting_report_calculation.shifting_metrics(rows)["shifting_percentage"])
         for text in (
             f"{CY},SL,100,,2026-10-27\n{CY},RS,,,2026-10-27\n",
             f"{CY},SL,100,10,2026-10-28\n{CY},RS,100,10,2026-10-28\n",
@@ -234,8 +234,8 @@ class DailyMainTests(unittest.TestCase):
                      sheet_name="Per Alat Weekly")
 
     def test_main_needs_no_benchmark_and_uses_wib_day_at_utc_evening(self):
-        with patch.object(main_existing, "time", return_value=NOW):
-            report = main_existing.build_report(self.path)
+        with patch.object(shifting_report_calculation, "time", return_value=NOW):
+            report = shifting_report_calculation.build_report(self.path)
         self.assertEqual(report["generated_at"], NOW)
         self.assertEqual(report["latest_date"], "2026-10-27")
         self.assertEqual(report["period_granularity"], "daily")
@@ -245,28 +245,28 @@ class DailyMainTests(unittest.TestCase):
         self.assertAlmostEqual(report["avg_shifting_percentage"], 100 * 30 / 330)
 
     def test_shared_input_loader_also_selects_one_complete_day(self):
-        settings = main_existing.load_input_config(self.path)
+        settings = shifting_report_calculation.load_input_config(self.path)
         with patch("repository.shifting_repository.today_wib", return_value=TODAY):
             inputs = load_yard_inputs(settings)
         self.assertEqual({row.report_date for row in inputs["shifting_summary"]}, {"2026-10-27"})
 
     def test_absent_block_observations_never_change_or_appear_in_recorded_report(self):
-        with patch.object(main_existing, "time", return_value=NOW):
-            expected = main_existing.build_report(self.path)
+        with patch.object(shifting_report_calculation, "time", return_value=NOW):
+            expected = shifting_report_calculation.build_report(self.path)
         with self.fixture.mapping_path.open("a", encoding="utf-8") as stream:
             stream.write('ABSENT = "9"\n')
         write_report(self.fixture.shifting_path, self.daily_records + [
             (CY, "ABSENT", "bad", -1, "2026-10", "2026-10-27"),
         ], daily=True, sheet_name="Per Alat Weekly")
-        with patch.object(main_existing, "time", return_value=NOW), warnings.catch_warnings(record=True) as messages:
-            report, yard = main_existing._build_report_and_yard(self.path)
+        with patch.object(shifting_report_calculation, "time", return_value=NOW), warnings.catch_warnings(record=True) as messages:
+            report, yard = shifting_report_calculation._build_report_and_yard(self.path)
         self.assertEqual(report, expected)
         self.assertEqual(messages, [])
         captured = io.StringIO()
-        with patch.object(main_existing, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
-            main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
-        ), patch.object(main_existing, "YardPresenter"), redirect_stdout(captured):
-            main_existing.main()
+        with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
+            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+        ), patch.object(shifting_report_calculation, "YardPresenter"), redirect_stdout(captured):
+            shifting_report_calculation.main()
         recorded = (self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text(encoding="utf-8")
         self.assertEqual(json.loads(recorded), expected)
         self.assertNotIn("ABSENT", recorded)
@@ -278,15 +278,15 @@ class DailyMainTests(unittest.TestCase):
             with self.subTest(omit_all=omit_all):
                 if omit_all:
                     self.fixture.mapping_path.write_text('["' + CY + '"]\nSL = "99"\nRS = "99"\n', encoding="utf-8")
-                with patch.object(main_existing, "time", return_value=NOW):
-                    report, yard = main_existing._build_report_and_yard(self.path)
+                with patch.object(shifting_report_calculation, "time", return_value=NOW):
+                    report, yard = shifting_report_calculation._build_report_and_yard(self.path)
                 self.assertEqual(report["period_granularity"], "daily")
                 self.assertNotIn("latest_week", report)
                 output = io.StringIO()
-                with patch.object(main_existing, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
-                    main_existing, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
-                ), patch.object(main_existing.YardPresenter, "outYard") as out_yard, redirect_stdout(output):
-                    main_existing.main()
+                with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
+                    shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+                ), patch.object(shifting_report_calculation.YardPresenter, "outYard") as out_yard, redirect_stdout(output):
+                    shifting_report_calculation.main()
                 self.assertIn("latest_date is in WIB", output.getvalue())
                 self.assertNotIn("operations week", output.getvalue())
                 self.assertNotIn("Skipped shifting", output.getvalue())

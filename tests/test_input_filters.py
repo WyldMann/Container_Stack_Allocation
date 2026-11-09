@@ -14,7 +14,7 @@ from config import ConfigurationError, load_input_config
 from config.application.input_filters import active_filters, branch_input_settings, read_filter_columns
 from config.csv_import.mapping_loader import load_mapping
 from filewriter import ContainerFileWriter
-import main_existing
+import shifting_report_calculation
 from repository import CSVLoader, InputError, load_yard_inputs
 from repository.input_loader import _sql_loader
 from repository.csvloader import BRANCH_WHITESPACE
@@ -102,7 +102,7 @@ class InputFilterTests(unittest.TestCase):
         with patch.dict(os.environ, {
             "YARD_DB_HOST": "db.example.test", "YARD_DB_NAME": "yard_test", "YARD_DB_USER": "reader",
         }):
-            return load_input_config(self.path, datasets=main_existing.EXISTING_YARD_DATASETS)
+            return load_input_config(self.path, datasets=shifting_report_calculation.EXISTING_YARD_DATASETS)
 
     def test_branch_code_is_optional_and_normalized(self):
         for value, expected in (('"JKT74"', {"branch_code": "JKT74"}),
