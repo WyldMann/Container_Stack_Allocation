@@ -13,7 +13,7 @@ from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
-from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE
+from config import ConfigurationError, DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE
 from config.application.input_config import DATASETS
 from config.csv_import.mapping_loader import load_mapping
 from repository import CSVLoader
@@ -34,8 +34,8 @@ class ExistingYardMainTests(unittest.TestCase):
         self.mapping_path = self.root / "shifting_block_mapping.toml"
         # Test-only assignments, not actual operational assignments.
         self.mapping_path.write_text('["CY 219 (Lini 2)"]\nSL = "B"\nRS = "C"\n', encoding="utf-8")
-        project = DEFAULT_INPUT_CONFIG_FILE.parent.parent
-        template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
+        project = DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parent.parent
+        template = DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
         template = "\n".join(
             'branch_code = "JKT74"' if line.startswith("branch_code =") else line
             for line in template.splitlines()
@@ -58,22 +58,22 @@ benchmark_period_start = 1857916800
         ).replace(
             'mapping_file = "csv_mapping.toml"',
             'mapping_file = "' +
-            DEFAULT_INPUT_CONFIG_FILE.with_name("csv_mapping.toml").as_posix() + '"',
+            DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.with_name("csv_mapping.toml").as_posix() + '"',
         ).replace(
             'mapping_file = "sql_mapping.toml"',
             'mapping_file = "' +
-            DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml").as_posix() + '"',
+            DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml").as_posix() + '"',
         )
         # Yard fixtures use CSV; operations use the real report workbook.
         for name in DATASETS:
             template = template.replace(f'{name} = "sql"', f'{name} = "csv"')
         # Input-loader tests may also read inbound data; never depend on a local export.
         inbound_path = self.root / "inbound.csv"
-        profile = load_mapping(DEFAULT_INPUT_CONFIG_FILE.with_name("csv_mapping.toml"), source="csv")["inbound_containers"]
+        profile = load_mapping(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.with_name("csv_mapping.toml"), source="csv")["inbound_containers"]
         with inbound_path.open("w", encoding="utf-8", newline="") as stream:
             csv.writer(stream).writerow([profile.columns.get(field, field) for field in profile.schema.fields])
-        template = template.replace(tomllib.loads(template)["csv"]["files"]["inbound_containers"],
-                                    inbound_path.as_posix())
+        template = template.replace('[input.sources]', '[input.sources]\ninbound_containers = "csv"')
+        template = template.replace('[csv.files]', f'[csv.files]\ninbound_containers = "{inbound_path.as_posix()}"')
         template = "\n".join(
             'shifting_workbook_file = "' + self.shifting_path.as_posix() + '"'
             if line.startswith("shifting_workbook_file =") else line
@@ -447,7 +447,7 @@ benchmark_period_start = 1857916800
         with patch.object(
             shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, Mock())},
         ), patch.object(shifting_report_calculation.YardPresenter, "outYard"), patch.object(
-            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE",
+            shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE",
             self.root / "config" / "input.toml",
         ), redirect_stdout(captured):
             shifting_report_calculation.main()

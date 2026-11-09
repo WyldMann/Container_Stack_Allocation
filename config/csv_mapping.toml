@@ -4,7 +4,7 @@
 # Required and optional fields are determined by the reader's schema,
 # not by whether a field appears in this mapping.
 # filter_columns maps branch_code and its internally resolved IDs to source columns.
-# Only branch_code is configured in input.toml; terminal/branch IDs come from terminal_branches.
+# The input files configure branch_code. Terminal/branch IDs come from terminal_branches.
 # branch_kind = "code" resolves a container or equipment BRANCH through terminal_branches.
 # Container/slot/equipment files without scope IDs inherit the selected yard blocks.
 # Container and equipment-history BRANCH contain BRANCH_CODE.

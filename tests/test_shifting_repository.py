@@ -8,8 +8,8 @@ import tomllib
 import unittest
 from unittest.mock import patch
 
-from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE, load_input_config
-from config.application.input_config import DATASETS
+from config import ConfigurationError, DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE, load_input_config
+from shifting_report_calculation import EXISTING_YARD_DATASETS
 from repository import CSVLoader, InputError, load_yard_inputs
 from repository.shifting_repository import ShiftingRepository
 from tests.shifting_fixtures import write_report
@@ -103,20 +103,21 @@ class ShiftingRepositoryTests(unittest.TestCase):
 
 class ShiftingInputTests(unittest.TestCase):
     def setUp(self):
-        self.document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
-        self.document["input"]["sources"] = dict.fromkeys(DATASETS, "csv")
+        self.document = tomllib.loads(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
+        self.document["input"]["sources"] = dict.fromkeys(EXISTING_YARD_DATASETS, "csv")
+        self.document["input"]["filters"] = {"branch_code": "JKT74"}
         self.document["csv"].pop("shifting_workbook_file", None)
         self.document.pop("shifting_period", None)
 
     def settings(self, document):
         with patch("config.application.input_config._read_document", return_value=document):
-            return load_input_config(DEFAULT_INPUT_CONFIG_FILE)
+            return load_input_config(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE, datasets=EXISTING_YARD_DATASETS)
 
     def test_optional_report_does_not_change_existing_dataset_set(self):
         self.document["input"].pop("cy_name", None)
         settings = self.settings(self.document)
         self.assertNotIn("shifting_workbook_file", settings)
-        self.assertEqual(set(load_yard_inputs(settings)), set(DATASETS))
+        self.assertEqual(set(load_yard_inputs(settings)), set(EXISTING_YARD_DATASETS))
 
     def test_report_path_is_relative_and_cy_is_resolved_at_load(self):
         self.document["csv"]["shifting_workbook_file"] = "../reports/shifting.xlsx"
@@ -124,11 +125,11 @@ class ShiftingInputTests(unittest.TestCase):
         self.assertNotIn("cy_name", settings)
         self.assertEqual(
             settings["shifting_block_mapping_file"],
-            DEFAULT_INPUT_CONFIG_FILE.with_name("shifting_block_mapping.toml"),
+            DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.with_name("shifting_block_mapping.toml"),
         )
         self.assertEqual(
             settings["shifting_workbook_file"],
-            (DEFAULT_INPUT_CONFIG_FILE.parent / "../reports/shifting.xlsx").resolve(),
+            (DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parent / "../reports/shifting.xlsx").resolve(),
         )
 
     def test_report_requires_valid_path_and_rejects_obsolete_cy_setting(self):
@@ -146,7 +147,7 @@ class ShiftingInputTests(unittest.TestCase):
         self.document["csv"]["shifting_block_mapping_file"] = "mappings/blocks.toml"
         self.assertEqual(
             self.settings(self.document)["shifting_block_mapping_file"],
-            DEFAULT_INPUT_CONFIG_FILE.parent / "mappings" / "blocks.toml",
+            DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parent / "mappings" / "blocks.toml",
         )
         for value in ("", 123):
             self.document["csv"]["shifting_block_mapping_file"] = value
@@ -167,7 +168,7 @@ class ShiftingInputTests(unittest.TestCase):
             self.document["csv"]["shifting_workbook_file"] = path.as_posix()
             self.document["csv"]["shifting_workbook_sheet"] = "Per Alat Weekly"
             inputs = load_yard_inputs(self.settings(self.document))
-        self.assertEqual(set(inputs), set(DATASETS) | {"shifting_summary"})
+        self.assertEqual(set(inputs), set(EXISTING_YARD_DATASETS) | {"shifting_summary"})
         self.assertEqual(len(inputs["shifting_summary"]), 2)
         self.assertEqual(inputs["shifting_summary"][0].lifting_count, 100)
         self.assertEqual(inputs["shifting_summary"][0].block_id,

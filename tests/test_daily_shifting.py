@@ -13,7 +13,6 @@ from unittest.mock import patch
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile
 
-from config import DEFAULT_INPUT_CONFIG_FILE
 import shifting_report_calculation
 from repository import CSVLoader, InputError, load_yard_inputs
 from tests.shifting_fixtures import write_report
@@ -264,7 +263,7 @@ class DailyMainTests(unittest.TestCase):
         self.assertEqual(messages, [])
         captured = io.StringIO()
         with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
-            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+            shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
         ), patch.object(shifting_report_calculation, "YardPresenter"), redirect_stdout(captured):
             shifting_report_calculation.main()
         recorded = (self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text(encoding="utf-8")
@@ -284,7 +283,7 @@ class DailyMainTests(unittest.TestCase):
                 self.assertNotIn("latest_week", report)
                 output = io.StringIO()
                 with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
-                    shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+                    shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
                 ), patch.object(shifting_report_calculation.YardPresenter, "outYard") as out_yard, redirect_stdout(output):
                     shifting_report_calculation.main()
                 self.assertIn("latest_date is in WIB", output.getvalue())

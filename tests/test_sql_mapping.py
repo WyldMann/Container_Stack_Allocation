@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from config import (
-    ConfigurationError, DEFAULT_CSV_MAPPING_FILE, DEFAULT_INPUT_CONFIG_FILE,
+    ConfigurationError, DEFAULT_CSV_MAPPING_FILE,
     load_csv_mapping,
 )
 from config.csv_import.mapping_loader import load_mapping
@@ -21,7 +21,7 @@ class SQLMappingLoaderTests(unittest.TestCase):
 
     def test_source_columns_and_scope_mappings_match_their_exports(self):
         sql_profiles = load_mapping(
-            DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml"), source="sql"
+            DEFAULT_CSV_MAPPING_FILE.with_name("sql_mapping.toml"), source="sql"
         )
         csv_profiles = load_csv_mapping(DEFAULT_CSV_MAPPING_FILE)
         for name, sql_profile in sql_profiles.items():

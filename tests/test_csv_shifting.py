@@ -11,7 +11,7 @@ import tomllib
 import unittest
 from unittest.mock import patch
 
-from config import ConfigurationError, DEFAULT_INPUT_CONFIG_FILE, load_input_config
+from config import ConfigurationError, DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE, load_input_config
 from config.application.shifting_input import shifting_settings
 import shifting_report_calculation
 from repository import InputError, load_yard_inputs
@@ -98,7 +98,7 @@ class CSVOperationsTests(unittest.TestCase):
         self.assertEqual((rows[0].lifting_count, rows[0].shifting_count), (1, 1))
 
     def test_all_eight_requested_activity_names_are_counted_with_default_configuration(self):
-        document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
+        document = tomllib.loads(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
         _, activities = shifting_settings(document, activities_required=True)
         labels = (
             "Lift On Delivery", "Shifting", "Lift Off Discharge", "Lift on Relokasi",
@@ -232,17 +232,17 @@ class CSVOperationsTests(unittest.TestCase):
 
 class CSVOperationsConfigTests(unittest.TestCase):
     def setUp(self):
-        self.document = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
+        self.document = tomllib.loads(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
         self.document["csv"]["files"]["shifting_summary"] = "../operations.csv"
 
     def settings(self):
         with patch("config.application.input_config._read_document", return_value=self.document):
-            return load_input_config(DEFAULT_INPUT_CONFIG_FILE)
+            return load_input_config(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE, datasets=shifting_report_calculation.EXISTING_YARD_DATASETS)
 
     def test_operations_path_uses_shared_csv_files_and_config_directory(self):
         settings = self.settings()
         self.assertEqual(settings["csv_files"]["shifting_summary"],
-                         (DEFAULT_INPUT_CONFIG_FILE.parent / "../operations.csv").resolve())
+                         (DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parent / "../operations.csv").resolve())
         self.assertNotIn("shifting_operations_file", settings)
 
     def test_workbook_settings_are_not_read_for_csv_operations(self):
@@ -274,7 +274,7 @@ class CSVOperationsConfigTests(unittest.TestCase):
         self.document["csv"]["shifting_workbook_file"] = "source.xlsx"
         settings = self.settings()
         self.assertNotIn("shifting_summary", settings["csv_files"])
-        self.assertEqual(settings["shifting_workbook_file"], DEFAULT_INPUT_CONFIG_FILE.parent / "source.xlsx")
+        self.assertEqual(settings["shifting_workbook_file"], DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parent / "source.xlsx")
 
     def test_only_operations_csv_with_sql_yard_needs_no_csv_mapping(self):
         self.document["input"]["sources"] = {
@@ -282,11 +282,11 @@ class CSVOperationsConfigTests(unittest.TestCase):
             for name in self.document["input"]["sources"]
         }
         self.document["csv"].pop("mapping_file", None)
-        sql_mapping = tomllib.loads(DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml").read_text(encoding="utf-8"))
+        sql_mapping = tomllib.loads(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml").read_text(encoding="utf-8"))
         with patch("config.application.input_config._read_document", side_effect=[self.document, sql_mapping]), patch.dict(
             "os.environ", {"YARD_DB_HOST": "example", "YARD_DB_NAME": "test", "YARD_DB_USER": "reader"},
         ):
-            settings = load_input_config(DEFAULT_INPUT_CONFIG_FILE)
+            settings = load_input_config(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE, datasets=shifting_report_calculation.EXISTING_YARD_DATASETS)
         self.assertEqual(set(settings["csv_files"]), {"shifting_summary"})
         self.assertNotIn("csv", settings["mapping_files"])
 
@@ -358,7 +358,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         json.dumps(report, allow_nan=False)
         output = io.StringIO()
         with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, None)}), patch.object(
-            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+            shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
         ), patch.object(shifting_report_calculation.YardPresenter, "outYard"), redirect_stdout(output):
             shifting_report_calculation.main()
         saved = json.loads((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text())
@@ -466,7 +466,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
     def test_invalid_csv_does_not_fall_back_or_write_jsonl(self):
         self.csv_path.write_text("invalid CSV", encoding="utf-8")
         with patch("repository.operations_input.load_shifting_summary") as workbook, patch.object(
-            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.path,
+            shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.path,
         ), self.assertRaises(InputError):
             shifting_report_calculation.main()
         workbook.assert_not_called()

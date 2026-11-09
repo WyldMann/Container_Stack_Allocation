@@ -1,4 +1,4 @@
-# Relative paths are resolved from this file's directory.
+# Inputs for shifting_report_calculation.py. Paths are relative to this file.
 [input]
 # CY name and container branch codes are resolved through terminal_branches.
 
@@ -17,7 +17,6 @@ yard_planning = "csv"
 removed_slots = "csv"
 parameters = "csv"
 existing_containers = "csv"
-inbound_containers = "csv"
 master_equipment = "csv"
 equipment_history = "csv"
 shifting_summary = "csv"
@@ -63,7 +62,6 @@ yard_planning = "../data_CY219/yard_planning.csv"
 removed_slots = "../data_CY219/removed_slots.csv"
 parameters = "../data_CY219/parameters.csv"
 existing_containers = "../data_CY219/containers.csv"
-inbound_containers = "../data_CY219/inbound.csv"
 master_equipment = "../data_CY219/master_equipment.csv"
 equipment_history = "../data_CY219/equipment_history.csv"
 # Raw activities with unique headers; see repository/shifting_csv_import.md.
@@ -83,6 +81,3 @@ connect_timeout = 10
 sslmode = "prefer"
 schema = "TERMINAL_APP"
 consistent_snapshot = true
-
-[output]
-containers_file = "../output/result.csv"

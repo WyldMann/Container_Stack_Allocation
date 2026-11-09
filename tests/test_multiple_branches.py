@@ -108,7 +108,7 @@ class MultipleBranchTests(unittest.TestCase):
         config_path = self.root / "config" / "input.toml"
         config_path.parent.mkdir()
         config_path.write_text(self.path.read_text(encoding="utf-8"), encoding="utf-8")
-        with patch.object(shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", config_path), patch.object(
+        with patch.object(shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", config_path), patch.object(
             shifting_report_calculation.YardPresenter, "outYard",
         ), redirect_stdout(io.StringIO()):
             shifting_report_calculation.main()
@@ -135,14 +135,14 @@ class MultipleBranchTests(unittest.TestCase):
             self.assertEqual(report["branch_code"], code)
             self.assertEqual(report["cy_name"], "CY 219 (Lini 2)" if code == "JKT74" else "CY 218 (Lini 2)")
         with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value=results), patch.object(
-            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.root / "config" / "input.toml",
+            shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.root / "config" / "input.toml",
         ), patch.object(shifting_report_calculation, "YardPresenter"), redirect_stdout(io.StringIO()):
             shifting_report_calculation.main()
         self.assertEqual(len(list((self.root / "output").glob("*.jsonl"))), 2)
 
     def test_missing_second_branch_does_not_append_partial_batch(self):
         self.fixture.set_filters('branch_code = ["JKT74", "MISSING"]')
-        with patch.object(shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.path), self.assertRaises(InputError):
+        with patch.object(shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.path), self.assertRaises(InputError):
             shifting_report_calculation.main()
         self.assertFalse(list(self.root.rglob("*.jsonl")))
 
@@ -189,7 +189,8 @@ class MultipleBranchTests(unittest.TestCase):
                           for context in contexts], ["JKT74", "JKT74", "JKT64", "JKT64"])
 
     def test_placement_entrypoint_runs_each_branch_without_overwriting_outputs(self):
-        with patch.object(main, "DEFAULT_INPUT_CONFIG_FILE", self.path), patch.object(
+        self.activities.unlink()
+        with patch.object(main, "DEFAULT_STACKING_INPUT_CONFIG_FILE", self.path), patch.object(
             main, "YardPresenter",
         ), patch.object(main, "BadDataPresenter"), patch.object(
             main.ContainerFileWriter, "writeCSV", autospec=True,

@@ -1,6 +1,7 @@
 # Raw shifting and lifting CSV import
 
-Select `shifting_summary = "csv"` in `[input.sources]` and configure:
+In `config/shifting_report_input.toml`, select `shifting_summary = "csv"` in
+`[input.sources]` and set the branch codes and CSV path.
 
 ```toml
 [input.filters]
@@ -10,7 +11,7 @@ branch_code = ["JKT74", "JKT64"]
 shifting_summary = "../data_CY219/shifting_report.csv"
 ```
 
-Paths resolve from `input.toml`. The CSV window ends at the most recent activity
+Paths resolve from the input file's directory. The CSV window ends at the most recent activity
 timestamp for the selected branch and equipment mapped to loaded yard blocks,
 among rows with a nonempty `DTL_ID`. Activities outside the configured categories
 also participate in finding that latest timestamp. Row order does not affect it.

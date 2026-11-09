@@ -7,7 +7,7 @@ from time import time
 from urllib.parse import quote
 
 from config import (
-    ConfigurationError, DEFAULT_CONFIG_FILE, DEFAULT_INPUT_CONFIG_FILE,
+    ConfigurationError, DEFAULT_CONFIG_FILE, DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE,
     load_config, load_input_config,
 )
 from config.application.input_filters import branch_input_settings
@@ -213,25 +213,25 @@ def _build_loaded_report(input_settings, inputs, connection, *, generated_at=Non
     return report, yard
 
 
-def build_report(input_path=DEFAULT_INPUT_CONFIG_FILE, *, branch_code=None):
+def build_report(input_path=DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE, *, branch_code=None):
     """Build one report; a multi-branch config requires an explicit branch code."""
     report, _ = _build_report_and_yard(input_path, branch_code=branch_code)
     return report
 
 
-def build_reports(input_path=DEFAULT_INPUT_CONFIG_FILE):
+def build_reports(input_path=DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE):
     """Return reports keyed by branch code, including yards without operations."""
     return {code: report for code, (report, _) in _build_reports_and_yards(input_path).items()}
 
 
 def main():
-    reports = _build_reports_and_yards(DEFAULT_INPUT_CONFIG_FILE)
+    reports = _build_reports_and_yards(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE)
     # Validate every record before appending any of this run's reports.
     lines = {code: json.dumps(report, ensure_ascii=False, allow_nan=False, separators=(", ", ": "))
              for code, (report, _) in reports.items()}
     presenter = YardPresenter()
     for code, (report, yard) in reports.items():
-        output = (DEFAULT_INPUT_CONFIG_FILE.parent.parent / "output"
+        output = (DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parent.parent / "output"
                   / f"existing_yard_metrics_{quote(code, safe='')}.jsonl")
         output.parent.mkdir(parents=True, exist_ok=True)
         with output.open("a", encoding="utf-8") as file:

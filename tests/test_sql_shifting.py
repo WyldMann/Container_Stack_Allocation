@@ -255,7 +255,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
         json.dumps(report, allow_nan=False)
         output = io.StringIO()
         with patch.object(shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, yard)}), patch.object(
-            shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
+            shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.fixture.root / "config" / "input.toml",
         ), patch.object(shifting_report_calculation.YardPresenter, "outYard"), redirect_stdout(output):
             shifting_report_calculation.main()
         record = json.loads((self.fixture.root / "output" / "existing_yard_metrics_JKT74.jsonl").read_text())
@@ -352,7 +352,7 @@ class SQLShiftingLoadingTests(SQLShiftingFixture, unittest.TestCase):
             with self.subTest(connection_fails=connection_fails):
                 self.connect.side_effect = failure if connection_fails else None
                 with patch("repository.operations_input.load_shifting_summary") as workbook_loader, patch.object(
-                    shifting_report_calculation, "DEFAULT_INPUT_CONFIG_FILE", self.path,
+                    shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.path,
                 ), patch.object(Path, "open", checked_open), self.assertRaisesRegex(RuntimeError, "report query failed"):
                     shifting_report_calculation.main()
                 workbook_loader.assert_not_called()

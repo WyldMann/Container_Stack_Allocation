@@ -6,7 +6,7 @@
 # Names are quoted exactly, including capitalization. Each dataset may override
 # schema and supply filters or order_by, referencing SQL source columns.
 # filter_columns maps branch_code and its internally resolved IDs to source columns.
-# Only branch_code is configured in input.toml; terminal/branch IDs come from terminal_branches.
+# The input files configure branch_code. Terminal/branch IDs come from terminal_branches.
 # branch_kind = "code" resolves a container or equipment BRANCH through terminal_branches.
 
 [sql.terminal_branches]

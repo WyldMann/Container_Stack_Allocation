@@ -1,0 +1,48 @@
+# Inputs for main.py. Paths are relative to this file.
+[input.filters]
+# Select one branch code or a list of branches to simulate separately.
+branch_code = ["JKT64","JKT74"]
+
+[input.sources]
+# Each yard dataset can use "csv" or "sql".
+terminal_branches = "csv"
+yard_blocks = "csv"
+yard_planning = "csv"
+removed_slots = "csv"
+parameters = "csv"
+existing_containers = "csv"
+inbound_containers = "csv"
+master_equipment = "csv"
+equipment_history = "csv"
+
+[csv]
+mapping_file = "csv_mapping.toml"
+
+[csv.files]
+terminal_branches = "../data_CY219/terminal_branch.csv"
+yard_blocks = "../data_CY219/yard_block.csv"
+yard_planning = "../data_CY219/yard_planning.csv"
+removed_slots = "../data_CY219/removed_slots.csv"
+parameters = "../data_CY219/parameters.csv"
+existing_containers = "../data_CY219/containers.csv"
+inbound_containers = "../data_CY219/inbound.csv"
+master_equipment = "../data_CY219/master_equipment.csv"
+equipment_history = "../data_CY219/equipment_history.csv"
+
+# Required when any input.sources entry is "sql".
+# Set the named environment variables and install requirements-sql.txt.
+[sql]
+mapping_file = "sql_mapping.toml"
+host_env = "YARD_DB_HOST"
+port = 5432
+dbname_env = "YARD_DB_NAME"
+user_env = "YARD_DB_USER"
+password_env = "YARD_DB_PASSWORD"
+connect_timeout = 10
+sslmode = "prefer"
+schema = "TERMINAL_APP"
+consistent_snapshot = true
+
+[output]
+# A run with multiple branches appends each branch code to the file stem.
+containers_file = "../output/result.csv"

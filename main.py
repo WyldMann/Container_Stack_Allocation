@@ -3,7 +3,7 @@ from urllib.parse import quote
 
 from config import (
     DEFAULT_CONFIG_FILE,
-    DEFAULT_INPUT_CONFIG_FILE,
+    DEFAULT_STACKING_INPUT_CONFIG_FILE,
     load_config,
     load_input_config,
 )
@@ -11,39 +11,26 @@ from config import (
 from config.application.input_filters import branch_input_settings
 from repository import load_yard_inputs
 from repository.branch_repository import BranchDirectory
-from repository.operations_input import load_operations
-from repository.sql_connection import input_connection
 from entities import Yard, Container
 from entities.bad_yard_data import PlacementRejected
 from presenter import YardPresenter, BadDataPresenter
 
 
 def run_yard(input_settings, settings, *, separate_output=False):
-    with input_connection(input_settings) as connection:
-        inputs = load_yard_inputs(input_settings, include_shifting=False, connection=connection)
-        shifting_summary = []
-        inbound_container_records = inputs["inbound_containers"]
+    inputs = load_yard_inputs(input_settings, include_shifting=False)
+    inbound_container_records = inputs["inbound_containers"]
 
-        yard = Yard(
-            yard_blocks_input=inputs["yard_blocks"],
-            removed_slots_input=inputs["removed_slots"],
-            parameters_input=inputs["parameters"],
-            yard_planning_input=inputs["yard_planning"],
-            containers_input=inputs["existing_containers"],
-            equipment_input=inputs["master_equipment"],
-            equipment_locations_input=inputs["equipment_history"],
-            feasibility_settings=settings.feasibility,
-            heuristic_settings=settings.heuristic,
-        )
-        if (input_settings.get("shifting_source") in ("csv", "sql")
-                or input_settings.get("shifting_workbook_file") is not None):
-            shifting_summary = load_operations(
-                input_settings, BranchDirectory(inputs["terminal_branches"]),
-                [{"block_id": block.getId(), "block_code": block.getCode()}
-                 for block in yard.blocks_by_id.values()],
-                connection=connection,
-            )
-            inputs["shifting_summary"] = shifting_summary
+    yard = Yard(
+        yard_blocks_input=inputs["yard_blocks"],
+        removed_slots_input=inputs["removed_slots"],
+        parameters_input=inputs["parameters"],
+        yard_planning_input=inputs["yard_planning"],
+        containers_input=inputs["existing_containers"],
+        equipment_input=inputs["master_equipment"],
+        equipment_locations_input=inputs["equipment_history"],
+        feasibility_settings=settings.feasibility,
+        heuristic_settings=settings.heuristic,
+    )
     yard_presenter = YardPresenter()
     yard_presenter.outYard(yard)
 
@@ -88,7 +75,7 @@ def run_yard(input_settings, settings, *, separate_output=False):
 
 def main():
     settings = load_config(DEFAULT_CONFIG_FILE)
-    selections = list(branch_input_settings(load_input_config(DEFAULT_INPUT_CONFIG_FILE)))
+    selections = list(branch_input_settings(load_input_config(DEFAULT_STACKING_INPUT_CONFIG_FILE)))
     for input_settings in selections:
         print("Branch:", input_settings.get("filters", {}).get("branch_code", "all"))
         run_yard(input_settings, settings, separate_output=len(selections) > 1)

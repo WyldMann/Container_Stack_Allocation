@@ -8,7 +8,7 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 from config import (
-    ConfigurationError, DEFAULT_INPUT_CONFIG_FILE,
+    ConfigurationError, DEFAULT_STACKING_INPUT_CONFIG_FILE,
     load_input_config,
 )
 from config.application.input_config import DATASETS
@@ -22,15 +22,13 @@ class InputConfigTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name).resolve() / "input.toml"
-        self.template = DEFAULT_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
-        self.template = self.template.replace('branch_code = ["JKT74", "JKT64"]', 'branch_code = "JKT74"')
-        self.template = self.template.replace('shifting_summary = "csv"', 'shifting_summary = "xlsx"')
+        self.template = DEFAULT_STACKING_INPUT_CONFIG_FILE.read_text(encoding="utf-8")
         configured_containers = tomllib.loads(self.template)["csv"]["files"]["existing_containers"]
         self.template = self.template.replace(configured_containers, "../data_CY219/containers.csv")
         for name in DATASETS:
             self.template = self.template.replace(f'{name} = "sql"', f'{name} = "csv"')
         self.mapping_path = self.path.with_name("sql_mapping.toml")
-        self.mapping_template = DEFAULT_INPUT_CONFIG_FILE.with_name(
+        self.mapping_template = DEFAULT_STACKING_INPUT_CONFIG_FILE.with_name(
             "sql_mapping.toml"
         ).read_text(encoding="utf-8")
         self.mapping_template = self.mapping_template.replace('schema = "TERMINAL_APP"\n', "")
@@ -272,7 +270,7 @@ class ConfiguredInputLoadingTests(unittest.TestCase):
         self.connection = self.driver.connect.return_value.__enter__.return_value
         self.settings = {
             "sources": dict.fromkeys(DATASETS, "sql"),
-            "mapping_files": {"sql": DEFAULT_INPUT_CONFIG_FILE.with_name("sql_mapping.toml")},
+            "mapping_files": {"sql": DEFAULT_STACKING_INPUT_CONFIG_FILE.with_name("sql_mapping.toml")},
             "connection": {"host": "example", "port": 5432, "dbname": "yard", "user": "reader"},
             "password_env": "TEST_YARD_DB_PASSWORD", "consistent_snapshot": True,
             "sql_datasets": {
