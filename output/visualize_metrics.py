@@ -17,8 +17,10 @@ from pathlib import Path
 import warnings
 
 
+branch = "JKT74"
+
 WIB = timezone(timedelta(hours=7), "WIB")
-DEFAULT_INPUT = Path(__file__).resolve().parent / "existing_yard_metrics_JKT74.jsonl"
+DEFAULT_INPUT = Path(__file__).resolve().parent / ("existing_yard_metrics_" + branch + ".jsonl")
 
 
 def load_records(path):
@@ -98,7 +100,7 @@ def plot_metrics(records):
         layout="constrained", squeeze=False,
     )
     axes = axes[:, 0]
-    figure.suptitle("Yard metrics over time", fontsize=16)
+    figure.suptitle(f"Yard metrics - {branch}", fontsize=16)
 
     for field, label in (
         ("avg_shifting_percentage", "Average shifting"),
@@ -120,8 +122,8 @@ def plot_metrics(records):
                 axis.plot(times, values, marker="o", color=color,
                           linestyle=("-", "--", ":", "-.")[index % 4],
                           label=label + equipment)
-        branch = f" / {block[1]}" if block[1] else ""
-        axis.set_title(f"{block[0]}{branch} / Block {block[2]}")
+        branch_label = f" / {block[1]}" if block[1] else ""
+        axis.set_title(f"{block[0]}{branch_label} / Block {block[2]}")
 
     for axis in axes:
         axis.set_ylim(0, 100)
