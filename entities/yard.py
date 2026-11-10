@@ -369,7 +369,9 @@ class Yard:
     def getStack(self, block_id: str, row_index: int, slot_index:int) -> Stack:
         return self.getBlockByID(block_id).getStack(row_index, slot_index)
 
-    def findCoordsCandidates(self, container: Container) -> tuple[float,dict[str,float],list[tuple[str,int,int,int]]]:
+    def findCoordsCandidates(
+        self, container: Container, *, rejection_counts: dict[str, int] | None = None,
+    ) -> tuple[float, dict[str, float], list[tuple[str, int, int, int]]]:
         max_score : float = 0
         candidate_coordinates : list[tuple[str,int,int,int]] = []
 
@@ -393,7 +395,11 @@ class Yard:
                         loader_context=loader_context,
                     )
                     current_coords = result.coordinates
-                    if current_coords is None: continue
+                    if current_coords is None:
+                        if rejection_counts is not None:
+                            reason = result.rejection_reason.value
+                            rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+                        continue
 
                     # candidate scoring
                     current_score = max(
@@ -416,9 +422,22 @@ class Yard:
                         candidate_coordinates = [current_coords]
         return max_score,parameter_scores,candidate_coordinates
 
-    def assignContainer(self, container) -> AssignResult | None:
+    def assignContainer(self, container, *, trace: dict | None = None) -> AssignResult | None:
         self.bad_data.validateInboundContainer(container, self.containers)
-        max_score, parameter_scores, candidate_coordinates = self.findCoordsCandidates(container)
+        if trace is None:
+            max_score, parameter_scores, candidate_coordinates = self.findCoordsCandidates(container)
+        else:
+            rejections = {}
+            max_score, parameter_scores, candidate_coordinates = self.findCoordsCandidates(
+                container, rejection_counts=rejections,
+            )
+            trace.update(
+                checked=sum(len(row) for block in self.blocks_by_id.values() for row in block.getSlots()),
+                rejections=rejections,
+                parameter_scores=parameter_scores,
+                max_parameter_score=max_score,
+                candidate_coordinates=candidate_coordinates,
+            )
         if not candidate_coordinates:
             return None
         return AssignResult(

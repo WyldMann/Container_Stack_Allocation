@@ -7,6 +7,9 @@
       <excludeFolder url="file://$MODULE_DIR$/data_CY219/old files" />
       <excludeFolder url="file://$MODULE_DIR$/data_CY219/old data" />
       <excludeFolder url="file://$MODULE_DIR$/data_CY219/test_CY218" />
+      <excludeFolder url="file://$MODULE_DIR$/data_container_stacking/old files" />
+      <excludeFolder url="file://$MODULE_DIR$/data_shifting_calculation/old data" />
+      <excludeFolder url="file://$MODULE_DIR$/data_shifting_calculation/test_CY218" />
     </content>
     <orderEntry type="jdk" jdkName="~\Documents\Yard Management\src\.venv" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

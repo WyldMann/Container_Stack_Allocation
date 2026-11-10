@@ -33,12 +33,20 @@ def _dataset_names(definitions, name, required=DATASETS, *, optional=()):
 
 def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
     """Validate source settings for the datasets used by an entrypoint."""
+    config_path = Path(path).resolve()
+    return parse_input_config(_read_document(config_path), base_dir=config_path.parent,
+                              datasets=datasets)
+
+
+def parse_input_config(document: dict, *, base_dir: str | Path, datasets=DATASETS) -> dict:
+    """Validate an interface draft without first writing a configuration file."""
+    if not isinstance(document, dict):
+        raise ConfigurationError("Input configuration must be a table.")
     datasets = tuple(datasets)
     if not datasets or set(datasets) - set(DATASETS):
         raise ConfigurationError("Select at least one known input dataset.")
     datasets = tuple(dict.fromkeys(("terminal_branches", *datasets)))
-    config_path = Path(path).resolve()
-    document = _read_document(config_path)
+    base_dir = Path(base_dir).resolve()
     unknown = set(document) - {"input", "csv", "sql", "output", "shifting_period", "shifting"}
     if unknown:
         raise ConfigurationError(f"Unknown input configuration sections: {sorted(unknown)}")
@@ -62,7 +70,7 @@ def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
     sql_names = {name for name, source in sources.items() if source == "sql"}
 
     def resolve(value, name):
-        return (config_path.parent / _string(value, name)).resolve()
+        return (base_dir / _string(value, name)).resolve()
 
     output = _read_section(document, "output", {"containers_file"})
     settings = {

@@ -111,7 +111,10 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None):
                 branch_column = branch_column or profile.columns.get("branch_code", "branch_code")
                 branch_codes = (branch_code,)
             elif (directory is not None and branch_code
-                    and name == "existing_containers" and profiles[name].branch_kind == "code"):
+                    and name in ("existing_containers", "equipment_history")
+                    and profiles[name].branch_kind == "code"):
+                # Scope movement history before selecting the latest row by
+                # equipment code: different branches can reuse that code.
                 branch_column = profiles[name].columns.get("branch_id", "branch_id")
                 branch_codes = tuple(directory.by_code)
             if sources[name] == "csv":
@@ -164,6 +167,12 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None):
         for name in ("existing_containers", "inbound_containers"):
             if name in inputs and profiles[name].branch_kind == "code":
                 inputs[name] = directory.normalize_containers(inputs[name], scoped=bool(branch_code))
+        if branch_code and "inbound_containers" in inputs and profiles["inbound_containers"].branch_kind == "id":
+            branch_id = strGeneralize(reference["terminal_branches"][0]["branch_id"])
+            inputs["inbound_containers"] = [
+                row for row in inputs["inbound_containers"]
+                if strGeneralize(row["branch_id"].strip()) in ("", branch_id)
+            ]
         if "equipment_history" in inputs and profiles["equipment_history"].branch_kind == "code":
             inputs["equipment_history"] = directory.normalize_equipment_locations(
                 inputs["equipment_history"], scoped=bool(branch_code),

@@ -104,6 +104,14 @@ class Repository:
             for _, record in self._iter_rows()
         ]
 
+    def read_source_records(self) -> list[tuple[str, dict[str, str]]]:
+        """Return mapped source values with their locations for import diagnostics.
+
+        Values are deliberately preserved before normalization, grouping, or
+        latest-record selection. Ordinary repository return types are unchanged.
+        """
+        return list(self._iter_rows())
+
     @staticmethod
     def group_rows(data):
         result = {}

@@ -1,0 +1,8 @@
+﻿parameter_id,parameter_name,principal,principal_score,container_condition,container_condition_score,container_fill,container_fill_score,container_size,container_size_score,container_grade,container_grade_score,pol,pod,route_score,vessel,voyage,vessel_voyage_score,weight_start,weight_end,weight_range_score,and_score,operation_type,operation_type_score
+33,40 FT,,0,ALL,0,ALL,2,40,5,,0,,,0,,,0,0,0,0,,ALL,2
+34,BUFFER SLOT,,0,ALL,2,ALL,2,ALL,2,,0,,,0,,,0,0,0,0,,ALL,0
+35,GRADING FG,,0,AV,2,E,2,20,2,FG,5,,,0,,,0,0,0,0,,L,2
+36,GRADING GG,,0,AV,2,E,2,20,2,GG,5,,,0,,,0,0,0,0,,L,2
+37,GRADING MK,,0,AV,2,E,2,20,2,MK,5,,,0,,,0,0,0,0,,L,2
+38,GRADING PG,,0,AV,2,E,2,20,2,PG,5,,,0,,,0,0,0,0,,L,2
+39,GRADING ST,,0,AV,2,E,2,20,2,ST,5,,,0,,,0,0,0,0,,L,2

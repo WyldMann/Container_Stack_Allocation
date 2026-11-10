@@ -1,7 +1,7 @@
 # Inputs for main.py. Paths are relative to this file.
 [input.filters]
 # Select one branch code or a list of branches to simulate separately.
-branch_code = ["JKT64","JKT74"]
+branch_code = ["JKT74"]
 
 [input.sources]
 # Each yard dataset can use "csv" or "sql".

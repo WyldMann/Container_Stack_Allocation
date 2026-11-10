@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Container stacking | Offline scenario setup</title>
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./yard-map.css">
+  <script src="./defaults.js" defer></script>
+  <script src="./yard-map.js" defer></script>
+  <script src="./simulation.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+<header>
+  <div>
+    <span class="eyebrow">CONTAINER STACKING</span>
+    <h1>Prepare a yard scenario</h1>
+    <p>Choose your CSVs, edit settings, and review the prepared yard.</p>
+  </div>
+  <span class="pill">Offline</span>
+</header>
+<main>
+  <div id="message" role="status" aria-live="polite"></div>
+  <section>
+    <div class="section-title">
+      <div><span class="eyebrow">01 / DATA</span><h2>Yard and inbound files</h2></div>
+      <div class="actions">
+        <button id="choose-draft" class="secondary" type="button">Load draft</button>
+        <input id="load-draft" type="file" accept=".json" hidden>
+      </div>
+    </div>
+    <fieldset class="file-sources">
+      <legend>CSV source</legend>
+      <label><input id="source-folder" type="radio" name="file-source" value="folder" checked> Use files in the project folder (default)</label>
+      <label><input id="source-upload" type="radio" name="file-source" value="upload"> Choose files in the browser</label>
+    </fieldset>
+    <p id="source-description"></p>
+    <div id="datasets" class="dataset-grid"></div>
+  </section>
+  <section>
+    <span class="eyebrow">02 / CONFIGURATION</span>
+    <h2>Branches and placement rules</h2>
+    <label class="branch-label">
+      Branch codes
+      <input id="branches" placeholder="JKT74, JKT64">
+      <small>Separate codes with commas. Leave blank to use the selection in the stacking input TOML.</small>
+    </label>
+    <p class="note">Inbound rows without a branch belong to every selected branch. Queue order follows the CSV.</p>
+    <p>The project TOMLs load automatically. Edit the values or choose a different file. This page uses CSV inputs. Use TOML syntax, including quotes for strings.</p>
+    <details open>
+      <summary>Placement settings <span id="config-toml-source" class="toml-source" data-project-file="config.toml"></span></summary>
+      <button id="choose-config" type="button" class="secondary toml-choose">Choose a different TOML (optional)</button>
+      <input type="file" id="load-config" accept=".toml" hidden>
+      <div id="config-toml" class="toml-lines"></div>
+    </details>
+    <details>
+      <summary>Stacking inputs <span id="input-toml-source" class="toml-source" data-project-file="container_stacking_input.toml"></span></summary>
+      <button id="choose-input" type="button" class="secondary toml-choose">Choose a different TOML (optional)</button>
+      <input type="file" id="load-input" accept=".toml" hidden>
+      <div id="input-toml" class="toml-lines"></div>
+    </details>
+    <details>
+      <summary>CSV column mappings <span id="mapping-toml-source" class="toml-source" data-project-file="csv_mapping.toml"></span></summary>
+      <button id="choose-mapping" type="button" class="secondary toml-choose">Choose a different TOML (optional)</button>
+      <input type="file" id="load-mapping" accept=".toml" hidden>
+      <div id="mapping-toml" class="toml-lines"></div>
+    </details>
+  </section>
+  <section class="stacking-review">
+    <div class="section-title">
+      <div><span class="eyebrow">03 / REVIEW</span><h2>Validate the scenario</h2></div>
+      <div class="actions">
+        <button id="generate-preview" type="button" hidden>Generate preview</button>
+        <button id="save-preview" class="secondary" type="button" hidden>Save preview</button>
+        <button id="save-draft" class="secondary" type="button">Save draft</button>
+        <button id="choose-preview" class="secondary" type="button">Load preview</button>
+        <input id="load-preview" type="file" accept=".json" hidden>
+      </div>
+    </div>
+    <p id="preview-launch-note" hidden>Open <code>stacking_ui\open_setup.cmd</code> to generate a preview here.</p>
+    <p id="preview-status" role="status" aria-live="polite"></p>
+    <div id="results"><div class="empty">Generate or load a preview to review the yard, inbound queue, and data issues.</div></div>
+  </section>
+</main>
+<footer>Container stacking | Offline scenario preparation</footer>
+</body>
+</html>

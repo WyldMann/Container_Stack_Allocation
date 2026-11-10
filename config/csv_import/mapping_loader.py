@@ -27,6 +27,16 @@ def load_mapping(
             f"Cannot load {label} mappings from {mapping_path}: {error}"
         ) from error
 
+    return parse_mapping(document, source=source)
+
+
+def parse_mapping(document: dict, *, source: str = "csv") -> dict[str, CSVMappingProfile]:
+    """Validate column mappings supplied as an interface draft."""
+    if source not in ("csv", "sql"):
+        raise ConfigurationError("Mapping source must be 'csv' or 'sql'.")
+    label = source.upper()
+    if not isinstance(document, dict):
+        raise ConfigurationError("Mappings must be a table.")
     if set(document) - {source}:
         raise ConfigurationError(f"Only the '{source}' section is allowed.")
 

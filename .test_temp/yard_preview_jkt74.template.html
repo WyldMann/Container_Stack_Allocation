@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Yard preview | JKT74</title>
+<style>
+  :root { color-scheme: light; font: 15px/1.45 system-ui, sans-serif; color:#16334b; background:#f0f4f6; --ink:#16334b; --muted:#526779; --line:#dce6ea; --navy:#153d5b; --neutral:#f0f3f5; }
+  * { box-sizing:border-box; }
+  body { margin:0; }
+  button { font:inherit; color:inherit; cursor:pointer; }
+  button:focus-visible { outline:3px solid #276a96; outline-offset:3px; }
+  h1, h2, h3, p { margin:0; }
+  .shell { max-width:1570px; margin:auto; padding:30px clamp(14px,2.4vw,38px) 24px; }
+  .masthead { display:flex; align-items:end; justify-content:space-between; gap:18px; margin-bottom:24px; flex-wrap:wrap; }
+  .eyebrow { font-size:11px; font-weight:750; letter-spacing:.13em; color:#306b66; text-transform:uppercase; }
+  h1 { font-size:clamp(30px,4vw,44px); letter-spacing:-.045em; line-height:1.1; margin:5px 0 6px; }
+  h2 { font-size:18px; letter-spacing:-.02em; }
+  h3 { font-size:14px; font-weight:700; }
+  .sub { color:var(--muted); font-size:13px; }
+  .branch { display:flex; align-items:center; gap:10px; color:var(--muted); }
+  .branch strong { color:#244d70; background:#e0edf8; border-radius:8px; padding:6px 9px; }
+  .workspace { display:grid; grid-template-columns:minmax(158px,.72fr) minmax(0,3.05fr) minmax(305px,1.36fr); align-items:start; gap:15px; }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:15px; min-width:0; box-shadow:0 3px 10px #153d5b05; }
+  .panel-pad { padding:16px; }
+  .mini-map { position:relative; height:284px; background-color:#f4f7f7; background-image:radial-gradient(#cfdddf 1px,transparent 1px); background-size:10px 10px; border:1px solid #e4ecee; border-radius:10px; margin:11px 0 13px; }
+  .map-block { position:absolute; width:min(85%,150px); transform:translate(-50%,-50%); padding:8px 9px; border:1px solid #cfdbdf; border-radius:9px; background:#fff; text-align:left; }
+  .map-block[aria-pressed="true"] { border-color:var(--navy); box-shadow:0 0 0 1px var(--navy); }
+  .map-label { display:flex; justify-content:space-between; align-items:center; gap:4px; font-size:12px; }
+  .map-label strong { font-size:15px; }
+  .mosaic { display:grid; grid-template-columns:repeat(var(--cols),minmax(0,1fr)); gap:1px; margin-top:5px; }
+  .mini-cell { aspect-ratio:1.6; border-radius:1px; background:var(--fill,#e6edf0); }
+  .mini-cell.removed { background:#b5c2c9; }
+  .legend { display:grid; gap:8px; margin-top:10px; }
+  .legend-item { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--muted); }
+  .legend-item strong { color:var(--ink); font-weight:650; }
+  .swatch { width:13px; height:13px; border-radius:4px; flex:none; background:var(--fill,#e7ecee); border:1px solid var(--accent,#c7d2d8); }
+  .swatch.removed, .tile.removed { background:repeating-linear-gradient(135deg,#edf1f3 0 5px,#d7e0e5 5px 7px); }
+  .anomaly-key { display:inline-grid; place-items:center; background:#fbd775; color:#5c3d02; border-radius:50%; height:14px; width:14px; font-weight:800; font-size:10px; flex:none; }
+  .grid-panel { padding:14px 14px 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .tab { border:1px solid var(--line); background:#f8fafb; border-radius:10px; padding:7px 12px; min-width:112px; text-align:left; }
+  .tab strong { display:block; font-size:20px; line-height:1.15; }
+  .tab span { color:var(--muted); font-size:11px; white-space:nowrap; }
+  .tab[aria-pressed="true"] { background:#e8f1f8; border-color:#87aac3; box-shadow:inset 0 -2px #427aa2; }
+  .section-head { display:flex; align-items:end; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:0 0 7px; }
+  .grid-scroll { overflow:auto; padding:2px 3px 5px; }
+  .stack-grid { width:100%; border-spacing:4px; table-layout:fixed; min-width:calc(38px + var(--cols) * 44px); }
+  .stack-grid th { color:var(--muted); font-size:11px; font-weight:700; text-align:center; white-space:nowrap; }
+  .stack-grid .row-head { width:34px; }
+  .stack-grid td { padding:0; }
+  .tile { width:100%; height:35px; padding:1px 0; border:1px solid transparent; border-radius:7px; position:relative; color:var(--ink); background:var(--fill,#edf1f3); text-align:center; font-variant-numeric:tabular-nums; }
+  .tile strong { display:block; font-size:13px; font-weight:700; line-height:1.08; }
+  .tile small { display:block; font-size:9.5px; color:var(--accent,#526779); font-weight:700; line-height:1.17; }
+  .tile:hover { border-color:#6c879b; }
+  .tile[aria-pressed="true"] { border-color:var(--navy); outline:1px solid var(--navy); outline-offset:1px; }
+  .tile:focus-visible { outline:2px solid #276a96; outline-offset:2px; z-index:1; }
+  .tile .flag { position:absolute; top:-2px; right:-2px; }
+  .tile .pair { position:absolute; left:2px; top:1px; font-size:8px; font-weight:800; color:#3c5874; }
+  .tip { padding:7px 0 0; border-top:1px solid #e8eef1; font-size:11px; color:var(--muted); }
+  .inspector { padding:15px; }
+  .stack-title { display:flex; align-items:center; justify-content:space-between; gap:7px; flex-wrap:wrap; }
+  .stack-location { color:var(--muted); font-size:13px; margin:3px 0 10px; }
+  .occupancy { border-radius:6px; background:#e9f0f5; color:#34536d; padding:4px 7px; font-size:11px; font-weight:700; }
+  .param-list { margin-bottom:13px; }
+  .param-card { border:1px solid var(--line); border-radius:8px; margin-bottom:6px; overflow:hidden; }
+  .param-card summary { cursor:pointer; padding:7px 9px; font-size:12px; font-weight:700; background:var(--fill); color:var(--ink); }
+  .rules { list-style:none; margin:0; padding:6px 9px; font-size:12px; color:var(--muted); }
+  .rules li { padding:3px 0; }
+  .rules strong { color:var(--ink); }
+  .tier-table { border-collapse:collapse; width:100%; font-size:11.5px; margin-top:6px; }
+  .tier-table th { text-align:left; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.045em; font-weight:750; }
+  .tier-table td,.tier-table th { padding:6px 3px; border-bottom:1px solid #e8eef1; }
+  .tier-table td { font-variant-numeric:tabular-nums; }
+  .tier-table tr:last-child td { border-bottom:0; }
+  .container-id { font-weight:700; white-space:nowrap; }
+  .empty-tier { color:var(--muted); }
+  .note { font-size:12px; color:var(--muted); margin:7px 0; }
+  .note.warning { color:#76530e; background:#fdf0ce; border-radius:7px; padding:6px 8px; }
+  footer { padding-top:15px; color:var(--muted); font-size:12px; }
+  @media (max-width:1180px) {
+    .workspace { grid-template-columns:180px minmax(0,1fr); }
+    .inspector { grid-column:2; }
+  }
+  @media (max-width:740px) {
+    .workspace { grid-template-columns:minmax(0,1fr); }
+    .inspector { grid-column:1; }
+    .mini-map { max-width:340px; }
+    .legend { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .tile { height:42px; }
+  }
+</style>
+</head>
+<body>
+<main class="shell">
+  <header class="masthead">
+    <div>
+      <div class="eyebrow">Container stacking / Snapshot</div>
+      <h1>Yard preview</h1>
+      <p class="sub">Yard plan and current stack contents</p>
+    </div>
+    <div class="branch"><strong id="branch-code"></strong><span id="branch-name"></span></div>
+  </header>
+  <div class="workspace">
+    <section class="panel panel-pad" aria-labelledby="map-title">
+      <h2 id="map-title">Yard map</h2>
+      <p class="sub">Schematic block positions</p>
+      <div id="mini-map" class="mini-map"></div>
+      <h3>Parameter legend</h3>
+      <div id="legend" class="legend"></div>
+    </section>
+    <section class="panel grid-panel" aria-labelledby="grid-title">
+      <div id="block-tabs" class="tabs" role="group" aria-label="Yard blocks"></div>
+      <div class="section-head">
+        <div><h2 id="grid-title"></h2><p id="block-summary" class="sub"></p></div>
+        <p class="sub">Occupied tiers / capacity</p>
+      </div>
+      <div id="grid-scroll" class="grid-scroll"></div>
+      <p class="tip">Select a stack to inspect its tiers. Use arrow keys to move between stacks.</p>
+    </section>
+    <section id="inspector" class="panel inspector" aria-labelledby="stack-title" aria-live="polite"></section>
+  </div>
+  <footer>JKT74 yard snapshot · Stack colors show planned parameters.</footer>
+</main>
+<script type="application/json" id="snapshot"><!-- SNAPSHOT_DATA --></script>
+<script>
+  "use strict";
+  const data = JSON.parse(document.getElementById("snapshot").textContent);
+  const byId = id => document.getElementById(id);
+  function node(tag, text, className) {
+    const item = document.createElement(tag);
+    if (text !== undefined) item.textContent = text;
+    if (className) item.className = className;
+    return item;
+  }
+  function button(label, className) {
+    const item = node("button", undefined, className);
+    item.type = "button";
+    item.setAttribute("aria-label", label);
+    return item;
+  }
+  function paint(item, ids) {
+    const colors = ids.map(id => data.parameters[id]?.colors).filter(Boolean);
+    if (!colors.length) return;
+    item.style.setProperty("--fill", colors[0][0]);
+    item.style.setProperty("--accent", colors[0][1]);
+    if (colors.length > 1) {
+      const stops = colors.map(([fill], i) => fill + " " + (i * 100 / colors.length) +
+        "% " + ((i + 1) * 100 / colors.length) + "%");
+      item.style.backgroundImage = "linear-gradient(90deg," + stops.join(",") + ")";
+    }
+  }
+  const two = value => String(value).padStart(2, "0");
+  const value = v => v === null || v === "" || v === undefined ? "—" : String(v);
+  const fillLabel = v => ({F:"Full", E:"Empty"}[v] ?? value(v));
+  const blockControls = new Map();
+  const selectedByBlock = new Map();
+  let activeBlock = data.blocks.find(block => block.code === "2C") ?? data.blocks[0];
+  let activeStack;
+  let tiles = [];
+
+  function drawOverview() {
+    const map = byId("mini-map");
+    const tabs = byId("block-tabs");
+    const minX = Math.min(...data.blocks.map(block => block.x));
+    const maxX = Math.max(...data.blocks.map(block => block.x));
+    const minY = Math.min(...data.blocks.map(block => block.y));
+    const maxY = Math.max(...data.blocks.map(block => block.y));
+    for (const block of data.blocks) {
+      const tab = button("Open block " + block.code, "tab");
+      tab.append(node("strong", block.code),
+        node("span", block.rows + " × " + block.slots + " · " + block.tier_limit + " tiers"));
+      tab.addEventListener("click", () => selectBlock(block));
+      tabs.append(tab);
+
+      const tile = button("Select block " + block.code + " on the yard map", "map-block");
+      tile.style.left = (minX === maxX ? 50 : 22 + 56 * (block.x - minX) / (maxX - minX)) + "%";
+      tile.style.top = (minY === maxY ? 50 : 25 + 50 * (block.y - minY) / (maxY - minY)) + "%";
+      const label = node("span", undefined, "map-label");
+      label.append(node("strong", block.code), node("span", "Y " + block.y, "sub"));
+      const mosaic = node("span", undefined, "mosaic");
+      mosaic.setAttribute("aria-hidden", "true");
+      mosaic.style.setProperty("--cols", block.slots);
+      for (const stack of block.stacks) {
+        const cell = node("span", undefined, stack.removed ? "mini-cell removed" : "mini-cell");
+        if (!stack.removed) paint(cell, stack.parameters);
+        mosaic.append(cell);
+      }
+      tile.append(label, mosaic);
+      tile.addEventListener("click", () => selectBlock(block));
+      map.append(tile);
+      blockControls.set(block, [tab, tile]);
+    }
+
+    const legend = byId("legend");
+    for (const [id, parameter] of Object.entries(data.parameters)) {
+      const entry = node("div", undefined, "legend-item");
+      const swatch = node("span", undefined, "swatch");
+      paint(swatch, [id]);
+      entry.append(swatch, node("span", "P" + id + " · " + parameter.name));
+      legend.append(entry);
+    }
+    for (const [label, mark] of [["Unassigned", "swatch"], ["Removed", "swatch removed"], ["Tier gap", "anomaly-key"]]) {
+      const item = node("div", undefined, "legend-item");
+      item.append(node("span", mark === "anomaly-key" ? "!" : undefined, mark), node("span", label));
+      legend.append(item);
+    }
+  }
+
+  function selectBlock(block) {
+    activeBlock = block;
+    for (const [candidate, controls] of blockControls) {
+      for (const control of controls) control.setAttribute("aria-pressed", String(candidate === block));
+    }
+    byId("grid-title").textContent = "Block " + block.code;
+    byId("block-summary").textContent = block.container_count + " containers · " +
+      block.occupied_tiers + " / " + block.tier_capacity + " tier positions";
+
+    const table = node("table", undefined, "stack-grid");
+    table.setAttribute("aria-label", "Stack grid for block " + block.code);
+    table.style.setProperty("--cols", block.slots);
+    const header = node("tr");
+    header.append(node("th", "Row", "row-head"));
+    for (let slot = 1; slot <= block.slots; slot++) {
+      const th = node("th", two(slot));
+      th.scope = "col";
+      th.setAttribute("aria-label", "Slot " + two(slot));
+      header.append(th);
+    }
+    const head = node("thead");
+    head.append(header);
+    table.append(head);
+    const body = node("tbody");
+    tiles = [];
+    for (let row = 0; row < block.rows; row++) {
+      const tr = node("tr");
+      const th = node("th", two(row + 1));
+      th.scope = "row";
+      tr.append(th);
+      for (let col = 0; col < block.slots; col++) {
+        const index = row * block.slots + col;
+        const stack = block.stacks[index];
+        const params = stack.parameters.map(id => "P" + id);
+        const label = "Row " + stack.row + ", slot " + stack.slot + ", " +
+          (stack.removed ? "removed" : stack.occupied + " of " + stack.capacity + " tiers occupied") +
+          (params.length ? ", " + params.join(", ") : ", unassigned") +
+          (stack.anomaly ? ", tier gap" : "");
+        const tile = button(label, stack.removed ? "tile removed" : "tile");
+        if (!stack.removed) paint(tile, stack.parameters);
+        tile.append(node("strong", stack.removed ? "×" : stack.occupied + "/" + stack.capacity));
+        if (!stack.removed) tile.append(node("small", params[0] ? params[0] +
+          (params.length > 1 ? " +" + (params.length - 1) : "") : "—"));
+        if (stack.anomaly) tile.append(node("span", "!", "flag anomaly-key"));
+        if (stack.tiers.some(tier => tier?.size_ft === "40")) tile.append(node("span", "40′", "pair"));
+        tile.addEventListener("click", () => selectStack(index));
+        tile.addEventListener("keydown", event => {
+          const directions = {ArrowLeft:[0,-1], ArrowRight:[0,1], ArrowUp:[-1,0], ArrowDown:[1,0]};
+          const direction = directions[event.key];
+          if (!direction) return;
+          event.preventDefault();
+          const targetRow = row + direction[0];
+          const targetCol = col + direction[1];
+          if (targetRow < 0 || targetRow >= block.rows || targetCol < 0 || targetCol >= block.slots) return;
+          const target = targetRow * block.slots + targetCol;
+          selectStack(target);
+          tiles[target].focus();
+        });
+        tiles.push(tile);
+        const td = node("td");
+        td.append(tile);
+        tr.append(td);
+      }
+      body.append(tr);
+    }
+    table.append(body);
+    byId("grid-scroll").replaceChildren(table);
+    const initial = block.stacks.findIndex(stack => !stack.removed && stack.occupied > 0);
+    selectStack(selectedByBlock.get(block) ?? Math.max(0, initial));
+  }
+
+  function selectStack(index) {
+    const previous = selectedByBlock.get(activeBlock);
+    if (previous !== undefined && previous !== index) {
+      tiles[previous].setAttribute("aria-pressed", "false");
+      tiles[previous].tabIndex = -1;
+    }
+    if (previous === undefined || tiles[index].getAttribute("aria-pressed") === null) {
+      for (const tile of tiles) {
+        tile.setAttribute("aria-pressed", "false");
+        tile.tabIndex = -1;
+      }
+    }
+    tiles[index].setAttribute("aria-pressed", "true");
+    tiles[index].tabIndex = 0;
+    selectedByBlock.set(activeBlock, index);
+    activeStack = activeBlock.stacks[index];
+    showInspector();
+  }
+
+  function showInspector() {
+    const {row, slot, occupied, capacity, parameters, tiers, removed, anomaly} = activeStack;
+    const panel = byId("inspector");
+    const top = node("div", undefined, "stack-title");
+    const heading = node("h2", "Stack details");
+    heading.id = "stack-title";
+    top.append(heading, node("span", removed ? "Removed" : occupied + " of " + capacity + " occupied", "occupancy"));
+    panel.replaceChildren(top, node("p", activeBlock.code + " · Row " + two(row) + " · Slot " + two(slot), "stack-location"));
+    if (anomaly) panel.append(node("p", "Tier gap below an occupied position.", "note warning"));
+    const pair = tiers.find(tier => tier?.size_ft === "40");
+    if (pair) panel.append(node("p", "40 ft footprint · Slots " + two(pair.anchor_slot - 1) + "–" + two(pair.anchor_slot), "note"));
+    panel.append(node("h3", "Assigned parameters"));
+    const list = node("div", undefined, "param-list");
+    for (const id of parameters) {
+      const parameter = data.parameters[id];
+      if (!parameter) continue;
+      const detail = node("details", undefined, "param-card");
+      detail.open = parameters.length === 1;
+      const summary = node("summary", "P" + id + " · " + parameter.name);
+      paint(summary, [id]);
+      const rules = node("ul", undefined, "rules");
+      for (const criterion of parameter.criteria) {
+        const line = node("li");
+        line.append(node("strong", criterion.name + " "), document.createTextNode(criterion.value +
+          (!parameter.and_score && criterion.score !== "" ? " · " + criterion.score + " pts" : "")));
+        rules.append(line);
+      }
+      if (parameter.and_score) rules.append(node("li", "All criteria match · " + parameter.and_score + " pts"));
+      if (!rules.children.length) rules.append(node("li", "No criteria recorded."));
+      detail.append(summary, rules);
+      list.append(detail);
+    }
+    if (!list.children.length) list.append(node("p", "No parameter assigned.", "note"));
+    panel.append(list);
+    if (removed) return;
+
+    panel.append(node("h3", "Tier contents"));
+    const table = node("table", undefined, "tier-table");
+    const head = node("thead");
+    const hr = node("tr");
+    for (const label of ["Tier", "Container", "Size", "Fill", "Grade", "Weight"]) {
+      const th = node("th", label);
+      th.scope = "col";
+      hr.append(th);
+    }
+    head.append(hr);
+    const body = node("tbody");
+    for (let index = tiers.length - 1; index >= 0; index--) {
+      const tier = tiers[index];
+      const tr = node("tr");
+      const tierNo = node("th", String(index + 1));
+      tierNo.scope = "row";
+      tr.append(tierNo);
+      if (!tier) {
+        const empty = node("td", "Empty", "empty-tier");
+        empty.colSpan = 5;
+        tr.append(empty);
+      } else {
+        tr.append(node("td", tier.container_id, "container-id"), node("td", tier.size_ft + " ft"),
+          node("td", fillLabel(tier.fill)), node("td", value(tier.grade)),
+          node("td", tier.weight === null ? "—" : tier.weight.toLocaleString("en-US")));
+      }
+      body.append(tr);
+    }
+    table.append(head, body);
+    panel.append(table);
+    if (tiers.some(tier => tier?.weight != null)) panel.append(node("p", "Weight values use the source units.", "note"));
+  }
+
+  byId("branch-code").textContent = data.branch;
+  byId("branch-name").textContent = data.name;
+  drawOverview();
+  selectBlock(activeBlock);
+</script>
+</body>
+</html>

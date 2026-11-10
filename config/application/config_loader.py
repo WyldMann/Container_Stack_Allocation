@@ -63,7 +63,16 @@ def _parse_heuristic(document: dict) -> HeuristicSettings:
 
 
 def load_config(path: str | Path) -> ApplicationSettings:
-    document = _read_document(path)
+    return parse_config(_read_document(path))
+
+
+def parse_config(document: dict) -> ApplicationSettings:
+    """Validate settings from TOML or an interface using the same rules."""
+    if not isinstance(document, dict):
+        raise ConfigurationError("Stacking configuration must be a table.")
+    unknown = set(document) - {"feasibility", "heuristic"}
+    if unknown:
+        raise ConfigurationError(f"Unknown stacking configuration sections: {sorted(unknown)}")
     return ApplicationSettings(
         feasibility=_parse_feasibility(document),
         heuristic=_parse_heuristic(document),
