@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from config import FeasibilitySettings, load_feasibility_settings
 from entities.block import Block
+from entities.container import Container
 from entities.feasibility.placement_feasibility import (
     PlacementFeasibility,
     RejectionReason,
@@ -48,6 +49,35 @@ class FeasibilityConfigIntegrationTests(unittest.TestCase):
         evaluator = PlacementFeasibility(FeasibilitySettings(loader_access=False))
         result = evaluator.evaluate(self.container, self.block, 0, 1)
         self.assertEqual(result.rejection_reason, RejectionReason.UNSAFE_STACKING)
+
+    def test_disabling_future_access_preserves_destination_access_check(self):
+        yard = Yard(
+            yard_blocks_input=[self.block_input],
+            feasibility_settings=FeasibilitySettings(preserve_future_loader_access=False),
+        )
+        self.block = yard.getBlockByID("A")
+        for row_index in range(3):
+            for slot_index in range(4):
+                position = (row_index, slot_index)
+                if position != (0, 1):
+                    self.fill(row_index, slot_index, "20", 1 if position == (1, 1) else 3)
+
+        incoming = Container(
+            container_id="NEW", principal="", container_condition="", container_fill="",
+            container_size="20", container_grade="", pol="", pod="", vessel="", voyage="",
+            weight="", move_time="",
+        )
+        # This placement fills the only working cell for the stack at (1, 1).
+        destination = ("A", 0, 1, 0)
+        _, _, candidates = yard.findCoordsCandidates(incoming)
+        self.assertIn(destination, candidates)
+        yard.addContainerByCoords(incoming, destination)
+        self.assertIs(self.block.getStack(0, 1).getContainer(0), incoming)
+
+        rejections = {}
+        _, _, candidates = yard.findCoordsCandidates(self.container, rejection_counts=rejections)
+        self.assertNotIn(("A", 1, 1, 1), candidates)
+        self.assertEqual(rejections.get("loader_destination_inaccessible"), 1)
 
     def test_disabling_stacking_preserves_loader_access_check(self):
         self.prepare_inaccessible_destination()

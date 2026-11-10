@@ -3,9 +3,12 @@
 # Enforce the existing pyramid stacking safety rule.
 stacking_safety = true
 
-# Require loader access to the destination and prevent new isolation
-# of locations with remaining capacity. RTG-served blocks are exempt.
+# Require loader access to the destination. RTG-served blocks are exempt.
 loader_access = true
+
+# Prevent placements that cut off access to locations with remaining capacity.
+# Applies only when loader_access is enabled.
+preserve_future_loader_access = true
 
 
 [heuristic]

@@ -49,6 +49,7 @@ class LoaderAccessRule:
         policy: LoaderBorderAccessPolicy,
         *,
         context: LoaderAccessContext | None = None,
+        preserve_future_loader_access: bool = True,
     ) -> LoaderAccessResult:
         self._validate_proposal(block, proposal)
         if context is None:
@@ -60,6 +61,9 @@ class LoaderAccessRule:
         destination_accessible = self._can_serve(
             block, destination, context.reachable_ground, policy,
         )
+        if not preserve_future_loader_access:
+            return LoaderAccessResult(destination_accessible=destination_accessible)
+
         blocked = frozenset(
             (row_index, slot_index) for _, row_index, slot_index in proposal.footprint
             if (row_index, slot_index) in context.ground

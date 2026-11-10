@@ -40,7 +40,7 @@ def _read_section(document: dict, name: str, allowed_options: set[str]) -> dict:
 
 def _parse_feasibility(document: dict) -> FeasibilitySettings:
     section = _read_section(
-        document, "feasibility", {"stacking_safety", "loader_access"}
+        document, "feasibility", {field.name for field in fields(FeasibilitySettings)}
     )
 
     for name, value in section.items():
