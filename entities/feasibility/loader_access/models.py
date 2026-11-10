@@ -15,7 +15,7 @@ class LoaderBorderAccessPolicy:
 
 @dataclass(frozen=True)
 class ReceivingLocation:
-    """A potential destination, identified by its anchor and size."""
+    """A loader service location, identified by its anchor and size."""
 
     row_index: int
     slot_index: int
@@ -26,7 +26,12 @@ class ReceivingLocation:
 class LoaderAccessResult:
     isolated_locations: tuple[ReceivingLocation, ...] = ()
     destination_accessible: bool = True
+    isolated_occupied_locations: tuple[ReceivingLocation, ...] = ()
 
     @property
     def allowed(self) -> bool:
-        return self.destination_accessible and not self.isolated_locations
+        return (
+            self.destination_accessible
+            and not self.isolated_occupied_locations
+            and not self.isolated_locations
+        )

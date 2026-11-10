@@ -1,4 +1,4 @@
-"""Original loader-access algorithm, retained only for equivalence checks.
+"""Standalone loader-access algorithm for equivalence checks.
 
 Keep the reference independent of production access helpers so optimizations
 cannot silently change both sides of a comparison.
@@ -37,10 +37,15 @@ class ReceivingLocation:
 class LoaderAccessResult:
     isolated_locations: tuple[ReceivingLocation, ...] = ()
     destination_accessible: bool = True
+    isolated_occupied_locations: tuple[ReceivingLocation, ...] = ()
 
     @property
     def allowed(self) -> bool:
-        return self.destination_accessible and not self.isolated_locations
+        return (
+            self.destination_accessible
+            and not self.isolated_locations
+            and not self.isolated_occupied_locations
+        )
 
 
 class LoaderAccessRule:
@@ -56,6 +61,8 @@ class LoaderAccessRule:
             block: Block,
             proposal: PlacementProposal,
             policy: LoaderBorderAccessPolicy,
+            *,
+            preserve_future_loader_access: bool = True,
     ) -> LoaderAccessResult:
 
         self._validate_proposal(block, proposal)
@@ -65,20 +72,31 @@ class LoaderAccessRule:
             block, destination, reachable_before, policy
         )
         reachable_after = self._reachable_ground(block, policy, proposal)
-        receiving_before = self._receiving_locations(block)
-        receiving_after = self._receiving_locations(block, proposal)
         isolated = []
 
-        # Only protect destinations that retain capacity afterward.
-        for location in receiving_before & receiving_after:
-            accessible_before = self._can_serve(
-                block, location, reachable_before, policy
-            )
-            accessible_after = self._can_serve(
-                block, location, reachable_after, policy
-            )
-            if accessible_before and not accessible_after:
-                isolated.append(location)
+        if preserve_future_loader_access:
+            receiving_before = self._receiving_locations(block)
+            receiving_after = self._receiving_locations(block, proposal)
+            # Only protect destinations that retain capacity afterward.
+            for location in receiving_before & receiving_after:
+                accessible_before = self._can_serve(block, location, reachable_before, policy)
+                accessible_after = self._can_serve(block, location, reachable_after, policy)
+                if accessible_before and not accessible_after:
+                    isolated.append(location)
+
+        isolated_occupied = []
+        for row_index, row in enumerate(block.getSlots()):
+            for slot_index, stack in enumerate(row):
+                container = next((item for item in stack.getContainers() if item is not None), None)
+                if container is None or stack.getMode() == "X":
+                    continue
+                size = container.getContSize()
+                if size == "40" and slot_index % 2 == 0:
+                    continue
+                location = ReceivingLocation(row_index, slot_index, size)
+                if (self._can_serve(block, location, reachable_before, policy)
+                        and not self._can_serve(block, location, reachable_after, policy)):
+                    isolated_occupied.append(location)
 
         return LoaderAccessResult(
             isolated_locations=tuple(
@@ -90,6 +108,7 @@ class LoaderAccessRule:
                 )
             ),
             destination_accessible=destination_accessible,
+            isolated_occupied_locations=tuple(isolated_occupied),
         )
 
     @staticmethod
@@ -237,7 +256,7 @@ class LoaderAccessRule:
 
 
 class ReferencePlacementFeasibility(PlacementFeasibility):
-    """Use the original access rule through the current candidate-search API."""
+    """Use the standalone access rule through the candidate-search API."""
 
     def __init__(self, settings=None):
         super().__init__(settings)
@@ -251,9 +270,14 @@ class ReferencePlacementFeasibility(PlacementFeasibility):
             return None
         if policy is None:
             policy = LoaderBorderAccessPolicy()
-        result = self.loader_access.evaluate(block, proposal, policy)
+        result = self.loader_access.evaluate(
+            block, proposal, policy,
+            preserve_future_loader_access=self.settings.preserve_future_loader_access,
+        )
         if not result.destination_accessible:
             return RejectionReason.LOADER_DESTINATION_INACCESSIBLE
+        if result.isolated_occupied_locations:
+            return RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED
         if result.isolated_locations:
             return RejectionReason.LOADER_ACCESS_BLOCKED
         return None

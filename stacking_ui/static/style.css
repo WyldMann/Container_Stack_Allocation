@@ -126,6 +126,35 @@
 .toml-setting span { font-weight: 600; overflow-wrap: anywhere; }
 .toml-setting input, .toml-setting textarea { width: 100%; padding: 5px 8px; }
 .toml-setting textarea { resize: vertical; }
+.toml-switch { position: relative; display: inline-flex; width: 40px; height: 24px; }
+.toml-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.toml-switch-track {
+  width: 100%;
+  border-radius: 999px;
+  background: #6a7a73;
+  pointer-events: none;
+}
+.toml-switch-track::after {
+  content: "";
+  position: absolute;
+  inset: 4px auto 4px 4px;
+  width: 16px;
+  border-radius: 50%;
+  background: #fff;
+}
+.toml-switch input:checked + .toml-switch-track { background: var(--green); }
+.toml-switch input:checked + .toml-switch-track::after { transform: translateX(16px); }
+.toml-switch input:focus-visible + .toml-switch-track { outline: 3px solid #76bda8; outline-offset: 2px; }
+.toml-switch input:disabled + .toml-switch-track { opacity: .5; }
 .toml-comment {
   margin: 12px 0 4px;
   color: #536863;

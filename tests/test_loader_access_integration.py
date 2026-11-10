@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -45,7 +46,33 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
         self.set_stack(0, 1)
         self.set_stack(1, 1, count=1)
         result = self.yard.feasibility.evaluate(self.container, self.block, 0, 1)
+        self.assertEqual(result.rejection_reason, RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED)
+
+    def test_disabling_future_access_still_protects_full_stacks(self):
+        evaluator = self.yard.feasibility
+        evaluator.settings = replace(evaluator.settings, preserve_future_loader_access=False)
+        self.set_stack(0, 0)
+        self.set_stack(0, 1)
+        for size in ('20', '40'):
+            with self.subTest(size=size):
+                self.set_stack(1, 0, container_size=size, count=3)
+                self.set_stack(1, 1, container_size=size, count=3)
+                result = evaluator.evaluate(self.container, self.block, 0, 1)
+                self.assertEqual(result.rejection_reason, RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED)
+
+    def test_disabling_future_access_only_allows_loss_of_receiving_access(self):
+        self.set_stack(0, 0)
+        self.set_stack(1, 0)
+        evaluator = self.yard.feasibility
+        result = evaluator.evaluate(self.container, self.block, 0, 0)
         self.assertEqual(result.rejection_reason, RejectionReason.LOADER_ACCESS_BLOCKED)
+
+        evaluator.settings = replace(evaluator.settings, preserve_future_loader_access=False)
+        _, _, coordinates = self.yard.findCoordsCandidates(self.container)
+        self.assertIn(('A', 0, 0, 0), coordinates)
+        self.block.getStack(0, 0).addContainer(self.container, 0)
+        result = evaluator.evaluate(self.container, self.block, 1, 0)
+        self.assertEqual(result.rejection_reason, RejectionReason.LOADER_DESTINATION_INACCESSIBLE)
 
     def test_alternate_approach_allows_placement(self):
         self.set_stack(0, 1)
@@ -86,6 +113,8 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
 
     def test_candidate_selection_uses_block_border_policy(self):
         self.set_stack(0, 1)
+        self.block.getStack(1, 0).makeVoid()
+        self.block.getStack(1, 1).makeVoid()
         parameter = Mock()
         parameter.evaluate.return_value = 1.0
         self.yard.parameters['P'] = parameter

@@ -234,14 +234,19 @@ function showToml(kind, text, loadedFrom) {
       if (visible || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
         const multiline = value.includes("\n");
+        const boolean = !isCsvPath && (value === "true" || value === "false");
         const input = el(multiline ? "textarea" : "input");
         if (multiline) {
           input.rows = Math.min(8, value.split("\n").length);
+        } else if (boolean) {
+          input.type = "checkbox";
+          input.checked = value === "true";
+          input.setAttribute("role", "switch");
         } else {
           input.type = "text";
         }
         input.spellcheck = false;
-        input.value = value;
+        if (!boolean) input.value = value;
         input.addEventListener("input", changed);
         if (isCsvPath) {
           csvPaths.set(dataset, input);
@@ -249,7 +254,16 @@ function showToml(kind, text, loadedFrom) {
           const comment = source.slice(boundary, lineEnd);
           if (comment) editor.append(el("p", comment, "toml-comment"));
           const label = el("label", undefined, "toml-setting");
-          label.append(el("span", match[2] + ":"), input);
+          label.append(el("span", match[2] + ":"));
+          if (boolean) {
+            const toggle = el("span", undefined, "toml-switch");
+            const track = el("span", undefined, "toml-switch-track");
+            track.setAttribute("aria-hidden", "true");
+            toggle.append(input, track);
+            label.append(toggle);
+          } else {
+            label.append(input);
+          }
           editor.append(label);
         }
         fields.push({start, end: start + value.length, input});
@@ -272,6 +286,10 @@ function showToml(kind, text, loadedFrom) {
   status.textContent = loadedFrom ?? (origin + status.dataset.projectFile);
 }
 
+function tomlFieldValue(input) {
+  return input.type === "checkbox" ? String(input.checked) : input.value;
+}
+
 async function refreshProjectTomls(replace = false) {
   const fresh = await globalThis.readStackingTomls();
   const wasLive = projectTomlsLive;
@@ -281,7 +299,7 @@ async function refreshProjectTomls(replace = false) {
   for (const [kind, key] of Object.entries(tomlEditors)) {
     const {source, fields, usesProject} = tomlDocuments[kind];
     const unedited = usesProject && fields.every(({start, end, input}) =>
-      !input || input.value === source.slice(start, end));
+      !input || tomlFieldValue(input) === source.slice(start, end));
     if (replace || (unedited && (!wasLive || source !== fresh[key].replace(/\r\n?/g, "\n")))) {
       showToml(kind, fresh[key]);
       refreshed = true;
@@ -296,7 +314,7 @@ function editedToml({source, fields}) {
   let cursor = 0;
   let result = "";
   for (const {start, end, input} of fields) {
-    result += source.slice(cursor, start) + (input?.value ?? "");
+    result += source.slice(cursor, start) + (input ? tomlFieldValue(input) : "");
     cursor = end;
   }
   return result + source.slice(cursor);

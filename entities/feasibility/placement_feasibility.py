@@ -23,6 +23,7 @@ class RejectionReason(Enum):
     ANOMALOUS_STACK = "anomalous_stack"
     UNSAFE_STACKING = "unsafe_stacking"
     LOADER_DESTINATION_INACCESSIBLE = "loader_destination_inaccessible"
+    LOADER_OCCUPIED_ACCESS_BLOCKED = "loader_occupied_access_blocked"
     LOADER_ACCESS_BLOCKED = "loader_access_blocked"
 
 
@@ -152,6 +153,8 @@ class PlacementFeasibility:
         )
         if not result.destination_accessible:
             return RejectionReason.LOADER_DESTINATION_INACCESSIBLE
+        if result.isolated_occupied_locations:
+            return RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED
         if result.isolated_locations:
             return RejectionReason.LOADER_ACCESS_BLOCKED
         return None

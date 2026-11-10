@@ -175,7 +175,8 @@ function placementTrace(calculation, status) {
     anomalous_stack: "Tier gap in the footprint",
     unsafe_stacking: "Stacking safety limit",
     loader_destination_inaccessible: "Loader cannot reach the destination",
-    loader_access_blocked: "Placement would block loader access"
+    loader_occupied_access_blocked: "Placement would block access to existing containers",
+    loader_access_blocked: "Placement would block access to future receiving locations"
   };
   const rejections = Object.entries(calculation.rejections).sort((a, b) => b[1] - a[1]);
   const rejected = rejections.reduce((total, [, count]) => total + count, 0);

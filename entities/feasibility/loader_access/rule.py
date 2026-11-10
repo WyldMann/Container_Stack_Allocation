@@ -1,5 +1,5 @@
 from collections import deque
-from collections.abc import Set
+from collections.abc import Iterator, Set
 
 from ...block import Block
 from ..placement_proposal import PlacementProposal
@@ -38,8 +38,13 @@ class LoaderAccessRule:
             location for location in receiving
             if self._can_serve(block, location, reachable, policy)
         )
+        accessible_occupied = frozenset(
+            location for location in self._occupied_locations(block, ground)
+            if self._can_serve(block, location, reachable, policy)
+        )
         return LoaderAccessContext(
             block, policy, row_lengths, ground, reachable, receiving, accessible,
+            accessible_occupied,
         )
 
     def evaluate(
@@ -61,9 +66,6 @@ class LoaderAccessRule:
         destination_accessible = self._can_serve(
             block, destination, context.reachable_ground, policy,
         )
-        if not preserve_future_loader_access:
-            return LoaderAccessResult(destination_accessible=destination_accessible)
-
         blocked = frozenset(
             (row_index, slot_index) for _, row_index, slot_index in proposal.footprint
             if (row_index, slot_index) in context.ground
@@ -74,17 +76,33 @@ class LoaderAccessRule:
             return LoaderAccessResult(destination_accessible=destination_accessible)
 
         reachable_after = self._reachable_after(context, blocked)
-        removed, _ = self._receiving_changes(block, proposal, context)
-        isolated = (
-            location for location in context.accessible_locations - removed
-            if not self._can_serve(block, location, reachable_after, policy)
+        occupied = context.accessible_occupied_locations
+        receiving = frozenset()
+        if preserve_future_loader_access:
+            removed, _ = self._receiving_changes(block, proposal, context)
+            receiving = context.accessible_locations - removed
+        isolated = sorted(
+            (location for location in occupied | receiving
+             if not self._can_serve(block, location, reachable_after, policy)),
+            key=lambda location: (location.row_index, location.slot_index, location.container_size),
         )
         return LoaderAccessResult(
-            isolated_locations=tuple(sorted(
-                isolated, key=lambda location: (location.row_index, location.slot_index, location.container_size),
-            )),
+            isolated_locations=tuple(location for location in isolated if location in receiving),
             destination_accessible=destination_accessible,
+            isolated_occupied_locations=tuple(location for location in isolated if location in occupied),
         )
+
+    @staticmethod
+    def _occupied_locations(block: Block, ground: Set[Position]) -> Iterator[ReceivingLocation]:
+        for row_index, slots in enumerate(block.getSlots()):
+            for slot_index, stack in enumerate(slots):
+                if (row_index, slot_index) in ground:
+                    continue
+                # Inspect contents so imported floating containers are included.
+                container = next(item for item in stack.getContainers() if item is not None)
+                size = container.getContSize()
+                if size == "20" or (size == "40" and slot_index % 2 == 1):
+                    yield ReceivingLocation(row_index, slot_index, size)
 
     @staticmethod
     def _validate_proposal(block: Block, proposal: PlacementProposal) -> None:

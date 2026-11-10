@@ -1,4 +1,4 @@
-"""Compare complete candidate searches against the original access algorithm.
+"""Compare complete candidate searches against the standalone access algorithm.
 
 Run from the repository root:
     python -m tests.benchmark_loader_access --sizes 10 20 30 --repeats 3

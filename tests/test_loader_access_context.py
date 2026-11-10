@@ -39,6 +39,7 @@ def result_signature(result):
     return (
         result.destination_accessible,
         tuple((loc.row_index, loc.slot_index, loc.container_size) for loc in result.isolated_locations),
+        tuple((loc.row_index, loc.slot_index, loc.container_size) for loc in result.isolated_occupied_locations),
     )
 
 
@@ -131,7 +132,7 @@ class LoaderAccessContextTests(unittest.TestCase):
         search.assert_called_once()
         scan.assert_not_called()
 
-    def test_generated_layouts_match_original_algorithm_and_local_receiving_changes(self):
+    def test_generated_layouts_match_standalone_algorithm_and_local_receiving_changes(self):
         rng = random.Random(90210)
         reference = ReferenceAccessRule()
         comparisons = 0

@@ -3,10 +3,11 @@
 # Enforce the existing pyramid stacking safety rule.
 stacking_safety = true
 
-# Require loader access to the destination. RTG-served blocks are exempt.
+# Require access to the destination and keep existing containers reachable.
+# RTG-served blocks are exempt.
 loader_access = true
 
-# Prevent placements that cut off access to locations with remaining capacity.
+# Also protect access to locations that can still receive containers.
 # Applies only when loader_access is enabled.
 preserve_future_loader_access = true
 
@@ -44,10 +45,10 @@ no_delta_container_mass_value = 0.1
 # Maximum neighborhood distance considered for size clustering,
 # measured between the closest footprint cells in grid units.
 # Zero produces a neutral clustering multiplier.
-size_cluster_radius = 3
+size_cluster_radius = 2
 
 # Neighbor distance at which its clustering contribution halves.
-hl_size_cluster_distance = 1.5
+hl_size_cluster_distance = 1.0
 
 # Positive smoothing value that pulls clustering towards neutral.
 # Larger values reduce the influence of neighboring container sizes.

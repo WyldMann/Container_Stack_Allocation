@@ -113,6 +113,7 @@ class LoaderAccessTests(unittest.TestCase):
     def test_already_isolated_location_does_not_reject_placement(self):
         self.set_stack(2, 2, count=1)
         self.set_stack(0, 0)
+        self.block.getStack(1, 0).makeVoid()
         self.assertFalse(self.can_serve(2, 2))
         self.assertTrue(self.evaluate(self.proposal(0, 0)).allowed)
 
