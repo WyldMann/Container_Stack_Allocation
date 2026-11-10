@@ -18,6 +18,9 @@ const tomlEditors = {
   mapping: "mapping_toml"
 };
 const tomlDocuments = {};
+const canReadProjectTomls = typeof globalThis.readStackingTomls === "function";
+let projectTomls = typeof TOML_DEFAULTS === "undefined" ? {} : TOML_DEFAULTS;
+let projectTomlsLive = false;
 const tomlKey = /(?:[A-Za-z0-9_-]+|"(?:\\.|[^"\\])*"|'[^']*')/.source;
 const tomlPath = tomlKey + "(?:[ \\t]*\\.[ \\t]*" + tomlKey + ")*";
 const tomlAssignment = new RegExp("^([ \\t]*(" + tomlPath + ")[ \\t]*=[ \\t]*)");
@@ -74,7 +77,7 @@ function onFile(input, handler) {
   }));
 }
 
-function tomlValueEnd(source, start) {
+function tomlValueEnd(source, start, inline = false) {
   // Find the next comment or newline outside strings, arrays, and inline tables.
   let quote = "";
   let depth = 0;
@@ -95,6 +98,8 @@ function tomlValueEnd(source, start) {
       const triple = character.repeat(3);
       quote = source.startsWith(triple, index) ? triple : character;
       index += quote.length - 1;
+    } else if (inline && !depth && (character === "," || character === "}")) {
+      return index;
     } else if (character === "[" || character === "{") {
       depth++;
     } else if (character === "]" || character === "}") {
@@ -115,6 +120,66 @@ function tomlParts(path) {
   return (path.match(tomlPathParts) ?? []).map(part => part.replace(/^["']|["']$/g, ""));
 }
 
+function setInlineTomlValue(source, path, value) {
+  for (let offset = 1; offset < source.length;) {
+    const assignment = tomlAssignment.exec(source.slice(offset));
+    if (!assignment) break;
+    const key = tomlParts(assignment[2]).join(".");
+    const start = offset + assignment[1].length;
+    const boundary = tomlValueEnd(source, start, true);
+    const previous = source.slice(start, boundary).trimEnd();
+    const replacement = path === key ? value :
+      path.startsWith(key + ".") && previous.startsWith("{") ?
+        setInlineTomlValue(previous, path.slice(key.length + 1), value) : null;
+    if (replacement !== null) return source.slice(0, start) + replacement + source.slice(start + previous.length);
+    if (source[boundary] !== ",") break;
+    offset = boundary + 1;
+  }
+  const remainder = source.slice(1).trimStart();
+  return "{ " + path + " = " + value + (remainder === "}" ? " " : ", ") + remainder;
+}
+
+function migrateDraftBranches(text, codes) {
+  const source = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+  const path = "input.filters.branch_code";
+  const value = JSON.stringify(codes).replace(/\u007f/g, "\\u007f");
+  let section = "";
+  let insertion;
+  for (let offset = 0; offset < source.length;) {
+    let lineEnd = source.indexOf("\n", offset);
+    if (lineEnd === -1) lineEnd = source.length;
+    const line = source.slice(offset, lineEnd);
+    const table = tomlTable.exec(line.trim());
+    if (table) {
+      section = tomlParts(table[1]).join(".");
+      if (section === "input.filters") {
+        insertion = {offset: Math.min(lineEnd + 1, source.length), key: "branch_code"};
+      }
+    }
+    const assignment = tomlAssignment.exec(line);
+    if (assignment) {
+      const key = [section, ...tomlParts(assignment[2])].filter(Boolean).join(".");
+      const start = offset + assignment[1].length;
+      const boundary = tomlValueEnd(source, start);
+      const previous = source.slice(start, boundary).trimEnd();
+      const replacement = key === path ? value :
+        path.startsWith(key + ".") && previous.startsWith("{") ?
+          setInlineTomlValue(previous, path.slice(key.length + 1), value) : null;
+      if (replacement !== null) return source.slice(0, start) + replacement + source.slice(start + previous.length);
+      if (!insertion && key.startsWith("input.filters.")) {
+        insertion = {offset, key: section ? path.slice(section.length + 1) : path};
+      }
+      lineEnd = source.indexOf("\n", boundary);
+      if (lineEnd === -1) lineEnd = source.length;
+    }
+    offset = lineEnd + 1;
+  }
+  if (!insertion) return source.trimEnd() + "\n\n[input.filters]\nbranch_code = " + value + "\n";
+  const prefix = source.slice(0, insertion.offset);
+  return prefix + (prefix.endsWith("\n") ? "" : "\n") + insertion.key + " = " + value + "\n" +
+    source.slice(insertion.offset);
+}
+
 function omittedTomlPath(kind, [root, key]) {
   return root === "sql" || (kind === "input" && (
     (root === "input" && key === "sources") ||
@@ -129,7 +194,7 @@ function showToml(kind, text, loadedFrom) {
   const csvPaths = new Map();
   const editor = $(kind + "-toml");
   editor.replaceChildren();
-  tomlDocuments[kind] = {source, fields, csvPaths};
+  tomlDocuments[kind] = {source, fields, csvPaths, usesProject: loadedFrom == null};
 
   let section = "";
   let statementStart = 0;
@@ -202,7 +267,28 @@ function showToml(kind, text, loadedFrom) {
     for (const comment of comments) editor.append(el("p", comment, "toml-comment"));
   }
   const status = $(kind + "-toml-source");
-  status.textContent = loadedFrom ?? ("Loaded project TOML: " + status.dataset.projectFile);
+  const origin = projectTomlsLive ? "Loaded project TOML: " :
+    projectTomls[tomlEditors[kind]] != null ? "Cached project TOML: " : "Project TOML unavailable: ";
+  status.textContent = loadedFrom ?? (origin + status.dataset.projectFile);
+}
+
+async function refreshProjectTomls(replace = false) {
+  const fresh = await globalThis.readStackingTomls();
+  const wasLive = projectTomlsLive;
+  projectTomls = fresh;
+  projectTomlsLive = true;
+  let refreshed = false;
+  for (const [kind, key] of Object.entries(tomlEditors)) {
+    const {source, fields, usesProject} = tomlDocuments[kind];
+    const unedited = usesProject && fields.every(({start, end, input}) =>
+      !input || input.value === source.slice(start, end));
+    if (replace || (unedited && (!wasLive || source !== fresh[key].replace(/\r\n?/g, "\n")))) {
+      showToml(kind, fresh[key]);
+      refreshed = true;
+    }
+  }
+  if (refreshed) showDatasets();
+  return refreshed;
 }
 
 function editedToml({source, fields}) {
@@ -217,13 +303,11 @@ function editedToml({source, fields}) {
 }
 
 function buildDraft() {
-  const branchCodes = $("branches").value.split(",").map(code => code.trim()).filter(Boolean);
   const useFolder = $("source-folder").checked;
   const draft = {
     version: 1,
     file_source: useFolder ? "folder" : "upload",
-    files: useFolder ? Object.fromEntries(Object.entries(files).filter(([, upload]) => upload.empty === true)) : files,
-    branch_codes: branchCodes.length ? branchCodes : null
+    files: useFolder ? Object.fromEntries(Object.entries(files).filter(([, upload]) => upload.empty === true)) : files
   };
   for (const [kind, key] of Object.entries(tomlEditors)) {
     draft[key] = editedToml(tomlDocuments[kind]);
@@ -271,11 +355,13 @@ function loadDraft(draft) {
   files = draft.files;
   $("source-folder").checked = source === "folder";
   $("source-upload").checked = source === "upload";
-  $("branches").value = (draft.branch_codes ?? []).join(", ");
   for (const [kind, key] of Object.entries(tomlEditors)) {
-    const loadedFrom = draft[key] == null ? undefined : "Loaded from saved draft";
-    showToml(kind, draft[key] ?? TOML_DEFAULTS[key], loadedFrom);
+    const legacyBranches = kind === "input" && draft.branch_codes != null;
+    const text = draft[key] ?? projectTomls[key] ?? "";
+    const loadedFrom = draft[key] != null || legacyBranches ? "Loaded from saved draft" : undefined;
+    showToml(kind, legacyBranches ? migrateDraftBranches(text, draft.branch_codes) : text, loadedFrom);
   }
+  if (draft.branch_codes != null) $("stacking-inputs").open = true;
   showDatasets();
   changed();
   message("Draft loaded.");
@@ -483,7 +569,6 @@ function showPreview(result, status = "Preview loaded.", simulation = null) {
   previewStatus(status);
 }
 
-$("branches").addEventListener("input", changed);
 for (const source of ["folder", "upload"]) {
   $("source-" + source).addEventListener("change", () => {
     showDatasets();
@@ -491,7 +576,7 @@ for (const source of ["folder", "upload"]) {
   });
 }
 for (const [kind, key] of Object.entries(tomlEditors)) {
-  showToml(kind, TOML_DEFAULTS[key]);
+  showToml(kind, projectTomls[key] ?? "");
   const picker = $("load-" + kind);
   $("choose-" + kind).addEventListener("click", () => picker.click());
   onFile(picker, async file => {
@@ -502,10 +587,20 @@ for (const [kind, key] of Object.entries(tomlEditors)) {
   });
 }
 showDatasets();
+const tomlActions = $("project-toml-actions");
+tomlActions.hidden = !canReadProjectTomls;
+$("project-toml-cache-note").hidden = canReadProjectTomls;
+$("reload-project-tomls").addEventListener("click", () => action(async () => {
+  await refreshProjectTomls(true);
+  changed();
+  message("Reloaded the project TOMLs from disk.");
+}));
+if (canReadProjectTomls) action(() => refreshProjectTomls());
 const canGenerate = typeof globalThis.generateStackingPreview === "function";
 $("generate-preview").hidden = !canGenerate;
 $("preview-launch-note").hidden = canGenerate;
 $("generate-preview").addEventListener("click", () => action(async () => {
+  if (canReadProjectTomls && await refreshProjectTomls()) changed();
   previewStatus("Generating preview...");
   const {preview, simulation} = await globalThis.generateStackingPreview(buildDraft());
   showPreview(preview, "Preview generated.", simulation);

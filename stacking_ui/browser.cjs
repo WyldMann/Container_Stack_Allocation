@@ -67,6 +67,7 @@ async function openSetup(python, pageUrl) {
       worker ??= startWorker(python);
       return worker.request(input);
     }
+    await page.exposeBinding("readStackingTomls", ({frame}) => request(frame, {op: "project_tomls"}));
     await page.exposeBinding("generateStackingPreview", ({frame}, draft) => request(frame, {op: "preview", draft}));
     await page.exposeBinding("stepStackingSimulation", ({frame}, step) => request(frame, {...step, op: "step"}));
     await page.goto(pageUrl);

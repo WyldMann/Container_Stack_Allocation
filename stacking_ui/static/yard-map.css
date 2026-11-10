@@ -151,6 +151,7 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
 .yard-tile strong, .yard-tile small { display: block; }
 .yard-tile strong { font-size: 13px; }
 .yard-tile .yard-count { font-size: 14px; font-weight: 800; }
+.yard-tile .yard-count-empty { color: #30363b; opacity: .25; }
 .yard-tile small { font-size: 10px; color: var(--yard-ink, #526779); }
 .yard-view .yard-tile:hover { border-color: #6d889c; }
 .yard-view .yard-tile[aria-pressed="true"] {

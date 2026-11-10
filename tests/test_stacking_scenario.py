@@ -7,6 +7,7 @@ import io
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import tomllib
 import unittest
 from unittest.mock import patch
@@ -278,6 +279,29 @@ class ScenarioTests(unittest.TestCase):
             parse_config({"heuristic": {"hl_equipment_distance": 0}})
         with self.assertRaises(ConfigurationError):
             parse_config({"heuristc": {}})
+
+    def test_worker_reads_current_project_tomls_on_each_request(self):
+        with TemporaryDirectory() as directory:
+            files = {key: Path(directory) / (key + ".toml") for key in ("config_toml", "input_toml", "mapping_toml")}
+            original = {key: self.payload[key] for key in files}
+            for key, path in files.items():
+                path.write_text(original[key], encoding="utf-8")
+            updated = "[feasibility]\nloader_access = false\n"
+
+            def requests():
+                yield b'{"op":"project_tomls"}\n'
+                files["config_toml"].write_text(updated, encoding="utf-8")
+                yield b'{"op":"project_tomls"}\n'
+
+            output = io.StringIO()
+            with patch("stacking_ui.configuration.TOML_FILES", files), patch(
+                "sys.stdin", SimpleNamespace(buffer=requests()),
+            ), redirect_stdout(output):
+                main(["--simulation-stdin"])
+
+            first, second = map(json.loads, output.getvalue().splitlines())
+            self.assertEqual(first["result"], original)
+            self.assertEqual(second["result"], original | {"config_toml": updated})
 
     def test_bundle_is_portable_and_upload_names_cannot_write_paths(self):
         self.payload["files"]["yard_blocks"]["name"] = "../../escape.csv"

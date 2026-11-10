@@ -52,4 +52,4 @@ size_cluster_prior = 2.0
 
 # Strength of the clustering reward for matching sizes and penalty
 # for different sizes. Zero produces a neutral multiplier of 1.
-size_cluster_bias = 1.0
+size_cluster_bias = 2.0

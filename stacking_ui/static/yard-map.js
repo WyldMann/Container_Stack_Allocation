@@ -61,14 +61,9 @@ function createYardMap(branch, branches = [branch]) {
     ["#f4e2e1", "#854a47"], ["#d9eef3", "#256072"], ["#f6e6cc", "#7f4d16"],
     ["#e9ead4", "#5e6126"], ["#f5e0ef", "#82416d"], ["#dfe9ff", "#3d5591"],
   ];
-  const occupancyStops = [[17, 96, 55], [79, 101, 25], [118, 81, 5], [149, 62, 22], [168, 33, 43]];
   function occupancyColor(rate) {
-    const position = Math.max(0, Math.min(rate, 1)) * (occupancyStops.length - 1);
-    const index = Math.min(Math.floor(position), occupancyStops.length - 2);
-    const fraction = position - index;
-    const channels = occupancyStops[index].map((channel, i) =>
-      Math.round(channel + fraction * (occupancyStops[index + 1][i] - channel)));
-    return "rgb(" + channels.join(", ") + ")";
+    const red = Math.round(185 * Math.max(0, Math.min(rate, 1)));
+    return "rgb(" + red + ", 0, 0)";
   }
 
   const ids = [...new Set(branches.flatMap(item => Object.keys(item.yard_map?.parameters ?? {})))].sort();
@@ -288,8 +283,8 @@ function createYardMap(branch, branches = [branch]) {
       tile.append(el("strong", "x"));
     } else {
       paint(tile, assigned);
-      const count = el("strong", occupancy, "yard-count");
-      count.style.color = occupancyColor(occupied / stack.capacity);
+      const count = el("strong", occupancy, occupied ? "yard-count" : "yard-count yard-count-empty");
+      if (occupied) count.style.color = occupancyColor(occupied / stack.capacity);
       const code = names[0] ? names[0] + (names.length > 1 ? " +" + (names.length - 1) : "") : "-";
       tile.append(count, el("small", code));
     }

@@ -14,13 +14,13 @@ import zipfile
 from config.application.config_loader import ConfigurationError
 from config.application.input_config import parse_input_config
 
-from .configuration import configuration, draft_files, dump_toml, portable_input, write_browser_defaults
+from .configuration import configuration, draft_files, dump_toml, portable_input, read_project_tomls, write_browser_defaults
 from .scenario import prepare_scenario, public_preview
 from .simulation import Simulation, SimulationError
 
 
 def open_setup():
-    page = write_browser_defaults().with_name("index.html")
+    page = Path(__file__).with_name("static") / "index.html"
     runtime = Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies" / "node"
     node = shutil.which("node")
     if node is None:
@@ -59,7 +59,9 @@ def serve_simulation():
         try:
             request = json.loads(line)
             with redirect_stdout(sys.stderr):
-                if request.get("op") == "preview":
+                if request.get("op") == "project_tomls":
+                    result = read_project_tomls()
+                elif request.get("op") == "preview":
                     scenario = prepare_draft(request.get("draft"))
                     result = {"preview": preview_document(scenario)}
                     simulation = Simulation(scenario)
@@ -70,7 +72,7 @@ def serve_simulation():
                 else:
                     raise SimulationError("Generate a preview before running the simulation.")
             response = {"result": result}
-        except (ConfigurationError, OSError, SimulationError) as error:
+        except (ConfigurationError, OSError, SimulationError, UnicodeError) as error:
             response = {"error": str(error)}
         print(json.dumps(response, allow_nan=False), flush=True)
 
