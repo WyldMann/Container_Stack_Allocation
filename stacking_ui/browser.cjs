@@ -62,7 +62,7 @@ async function openSetup(python, pageUrl) {
     const closed = new Promise(resolve => page.once("close", resolve));
     function request(frame, input) {
       if (frame !== page.mainFrame() || frame.url() !== pageUrl) {
-        throw new Error("Open the offline setup page to use the stacking worker.");
+        throw new Error("Open the setup page to use the stacking worker.");
       }
       worker ??= startWorker(python);
       return worker.request(input);

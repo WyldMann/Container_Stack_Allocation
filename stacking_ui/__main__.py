@@ -1,4 +1,4 @@
-"""Open the offline setup page or validate a saved stacking draft."""
+"""Open the setup page or validate a saved stacking draft."""
 
 import argparse
 from contextlib import redirect_stdout
@@ -36,7 +36,7 @@ def open_setup():
     launcher = Path(__file__).with_name("browser.cjs")
     result = subprocess.run([node, launcher, sys.executable, page.as_uri()], env=env, check=False)
     if result.returncode:
-        raise OSError("The offline setup window could not be opened.")
+        raise OSError("The setup window could not be opened.")
 
 
 def prepare_draft(draft):
@@ -139,7 +139,7 @@ def main(argv=None):
         preview = build_preview(draft)
         path = args.draft.with_suffix(".preview.json")
         path.write_text(json.dumps(preview, allow_nan=False, ensure_ascii=False), encoding="utf-8")
-        print(f"Load this preview in the offline page: {path}")
+        print(f"Load this preview in the setup page: {path}")
         if args.bundle:
             bundle = args.draft.with_suffix(".zip")
             export_bundle(draft, bundle)

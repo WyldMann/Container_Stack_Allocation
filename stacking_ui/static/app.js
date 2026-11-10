@@ -292,7 +292,7 @@ async function refreshProjectTomls(replace = false) {
 }
 
 function editedToml({source, fields}) {
-  // Replace edited values and omit settings that the offline page manages itself.
+  // Replace edited values and omit settings that the page manages itself.
   let cursor = 0;
   let result = "";
   for (const {start, end, input} of fields) {

@@ -1,4 +1,4 @@
-# Offline container-stacking scenario setup
+# Container stacking scenario setup
 
 Double-click `stacking_ui/open_setup.cmd` on Windows, or run the following from
 the project root.
@@ -7,7 +7,7 @@ the project root.
 .\.venv\Scripts\python.exe -m stacking_ui
 ```
 
-The launcher reads the current project TOML files and opens the offline HTML page
+The launcher reads the current project TOML files and opens the setup page
 in an Edge window. It uses local Node.js and `playwright-core`, including the
 installed Codex runtime when available. Each editor shows its loaded file and offers
 **Choose a different TOML (optional)** to replace its contents for the draft.
@@ -72,7 +72,7 @@ opening Edge.
 ```
 
 Python builds the preview with the existing yard and CSV validation rules. The
-offline launcher keeps the prepared yards in a local Python subprocess and calls
+launcher keeps the prepared yards in a local Python subprocess and calls
 the same placement engine as the command-line program. Each branch advances
 independently. A saved preview is a snapshot of the initial yard. In
 browser-upload mode, the selected uploads supply the CSVs.
