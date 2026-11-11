@@ -37,7 +37,7 @@
     <span class="eyebrow">02 / CONFIGURATION</span>
     <h2>Branches and placement rules</h2>
     <p class="note">Inbound rows without a branch belong to every selected branch. Queue order follows the CSV.</p>
-    <p>Edit the values or choose a different TOML. This page uses CSV inputs. Use TOML syntax, including quotes for strings.</p>
+    <p>Edit the placement settings or load a different TOML. Use TOML syntax for text values in Stacking inputs and CSV column mappings.</p>
     <div id="project-toml-actions" hidden>
       <button id="reload-project-tomls" type="button" class="secondary">Reload project TOMLs</button>
       <p class="note">The launcher reads the project files on page load and refreshes untouched editors before preview. Reload replaces all three editors with the current files.</p>
@@ -51,7 +51,7 @@
         <button id="save-config" type="button" class="secondary toml-save" disabled hidden>Save config.toml</button>
       </div>
       <input type="file" id="load-config" accept=".toml" hidden>
-      <div id="config-toml" class="toml-lines"></div>
+      <div id="config-toml"></div>
     </details>
     <details id="stacking-inputs" open>
       <summary>Stacking inputs <span id="input-toml-source" class="toml-source" data-project-file="container_stacking_input.toml" aria-live="polite"></span></summary>

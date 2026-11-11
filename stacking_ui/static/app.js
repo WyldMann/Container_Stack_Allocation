@@ -20,6 +20,57 @@ const tomlEditors = {
 const tomlDocuments = {};
 const loaderModes = ["off", "heuristic", "feasibility"];
 const loaderModeKeys = ["loader_access_mode", "preserve_future_loader_access_mode"];
+const placementGroups = [
+  {title: "Stacking safety", options: {
+    "feasibility.stacking_safety": ["Enforce pyramid stacking",
+      "Reject placements that would exceed the safe stack height for the location."]
+  }},
+  {title: "Loader access", description:
+    "Off skips the check. Heuristic uses access to rank placements. Feasibility rejects placements that block access. These checks apply to loader-served blocks.",
+  options: {
+    "feasibility.loader_access_mode": ["Current loader access",
+      "Protect access to the placement location and to containers already in the yard."],
+    "feasibility.preserve_future_loader_access_mode": ["Future loader access",
+      "Keep locations with room for more containers reachable."],
+    "feasibility.ignore_full_stacks_for_loader_access": ["Ignore full stacks",
+      "Exclude fully occupied stacks from the current access check."]
+  }},
+  {title: "Weight compatibility", options: {
+    "heuristic.enable_delta_container_mass": ["Score weight compatibility",
+      "Use the weight difference between the incoming container and its support to rank placements."],
+    "heuristic.w_delta_container_mass": ["Maximum weight score",
+      "Score for placing a container on one of the same weight."],
+    "heuristic.hl_delta_container_mass": ["Weight difference for half score",
+      "The score halves when the supporting container is heavier by this amount. Uses the CSV weight units."],
+    "heuristic.no_delta_container_mass_value": ["Unknown weight score",
+      "Use this score when either container's weight is unavailable."]
+  }},
+  {title: "Equipment distance", options: {
+    "heuristic.enable_equipment_distance": ["Score equipment distance",
+      "Use the distance from the serving equipment to rank placements."],
+    "heuristic.w_equipment_distance": ["Maximum distance score",
+      "Score when the equipment is already at the placement location."],
+    "heuristic.hl_equipment_distance": ["Distance for half score",
+      "The distance score halves at this distance, measured in yard grid units."]
+  }},
+  {title: "Container size clustering", options: {
+    "heuristic.enable_size_cluster": ["Score nearby container sizes",
+      "Favor placements near containers of the same size."],
+    "heuristic.size_cluster_radius": ["Search radius",
+      "Check nearby stacks within this many yard grid units. Zero turns off the clustering effect."],
+    "heuristic.hl_size_cluster_distance": ["Distance for half influence",
+      "A neighbor's influence halves at this distance, measured in yard grid units."],
+    "heuristic.size_cluster_prior": ["Clustering smoothing",
+      "Higher values reduce the influence of nearby container sizes."],
+    "heuristic.size_cluster_bias": ["Clustering strength",
+      "Controls the reward for matching sizes and penalty for different sizes. Zero turns off the clustering effect."]
+  }},
+  {title: "Scoring fallback", options: {
+    "heuristic.min_value": ["Fallback score",
+      "Use this score when the incoming container is heavier than its support or serving equipment is outside the block."]
+  }}
+];
+const placementOptions = Object.assign({}, ...placementGroups.map(group => group.options));
 const standalone = globalThis.stackingStandalone === true;
 const canReadProjectTomls = typeof globalThis.readStackingTomls === "function";
 const bundledTomls = typeof TOML_DEFAULTS === "undefined" ? {} : TOML_DEFAULTS;
@@ -131,6 +182,41 @@ function omittedTomlPath(kind, [root, key]) {
   ));
 }
 
+function addPlacementOption(rows, path, row, control) {
+  const [label, description] = placementOptions[path];
+  const options = rows.get(path) ?? [];
+  const help = el("p", description, "placement-help");
+  help.id = "placement-" + path.replace(".", "-") + "-" + options.length;
+  row.firstElementChild.textContent = label;
+  control.setAttribute("aria-describedby", help.id);
+  const option = el("div", undefined, "placement-option");
+  option.append(row, help);
+  options.push(option);
+  rows.set(path, options);
+  return option;
+}
+
+function showPlacementGroups(editor, rows) {
+  const groups = el("div", undefined, "placement-groups");
+  for (const {title, description, options} of placementGroups) {
+    const entries = Object.keys(options).flatMap(path => rows.get(path) ?? []);
+    if (!entries.length) continue;
+    const group = el("fieldset", undefined, "placement-group");
+    group.append(el("legend", title));
+    if (description) group.append(el("p", description, "placement-help"));
+    const list = el("div", undefined, "placement-options");
+    list.append(...entries);
+    group.append(list);
+    groups.append(group);
+  }
+  if (editor.childElementCount) {
+    const other = el("fieldset", undefined, "placement-group");
+    other.append(el("legend", "Other TOML settings"), ...editor.children);
+    groups.append(other);
+  }
+  editor.replaceChildren(groups);
+}
+
 function loaderAccessSwitch(access, key, prefix, value) {
   const future = key.startsWith("preserve_future_");
   const legacy = !key.endsWith("_mode");
@@ -205,6 +291,7 @@ function showToml(kind, text, loadedFrom) {
   const fields = [];
   const csvPaths = new Map();
   const loaderAccess = {};
+  const placementRows = new Map();
   const editor = $(kind + "-toml");
   editor.replaceChildren();
   tomlDocuments[kind] = {
@@ -214,7 +301,6 @@ function showToml(kind, text, loadedFrom) {
   let section = "";
   let statementStart = 0;
   let feasibilityStart = 0;
-  let feasibilityHeading;
   let inlineFeasibility = false;
   const seenModes = new Set();
   const comments = [];
@@ -235,6 +321,12 @@ function showToml(kind, text, loadedFrom) {
     const path = match ? [section, match[2]].filter(Boolean).join(".") : section;
     const parts = tomlParts(path);
     const [root, key, dataset] = parts;
+    const modeKey = kind === "config" && root === "feasibility" && parts.length === 2 &&
+      loaderModeKeys.find(mode => mode === key || mode === key + "_mode");
+    const optionPath = [root, modeKey || key].join(".");
+    const knownOption = kind === "config" && parts.length === 2 && Object.hasOwn(placementOptions, optionPath);
+    const knownTable = kind === "config" && table && parts.length === 1 &&
+      (root === "feasibility" || root === "heuristic");
     if (kind === "config" && root === "feasibility" && parts.length === 1) {
       if (table) feasibilityStart = Math.min(lineEnd + 1, source.length);
       else if (match) inlineFeasibility = true;
@@ -244,7 +336,7 @@ function showToml(kind, text, loadedFrom) {
     const isCsvPath = inFileCards && match && parts.length === 3 && Object.hasOwn(descriptions, dataset);
     const visible = !omitted && !inFileCards &&
       !(kind === "input" && table && root === "csv" && parts.length === 1);
-    if (visible) {
+    if (visible && !knownOption && !knownTable) {
       for (const comment of comments) editor.append(el("p", comment, "toml-comment"));
     }
     comments.length = 0;
@@ -256,19 +348,14 @@ function showToml(kind, text, loadedFrom) {
       if (lineEnd === -1) lineEnd = source.length;
       if (visible || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
-        if (kind === "config" && root === "feasibility" && parts.length === 2) {
-          const modeKey = key.endsWith("_mode") ? key : key + "_mode";
-          if (loaderModeKeys.includes(modeKey)) {
-            seenModes.add(modeKey);
-            const control = loaderAccessSwitch(loaderAccess, key, match[1], value);
-            if (control) {
-              const comment = source.slice(boundary, lineEnd);
-              if (comment) editor.append(el("p", comment, "toml-comment"));
-              editor.append(control.row);
-              fields.push({start: offset, end: start + value.length, input: control.input});
-              offset = statementStart = lineEnd + 1;
-              continue;
-            }
+        if (modeKey) {
+          seenModes.add(modeKey);
+          const control = loaderAccessSwitch(loaderAccess, key, match[1], value);
+          if (control) {
+            control.option = addPlacementOption(placementRows, optionPath, control.row, control.group);
+            fields.push({start: offset, end: start + value.length, input: control.input});
+            offset = statementStart = lineEnd + 1;
+            continue;
           }
         }
         const multiline = value.includes("\n");
@@ -296,7 +383,7 @@ function showToml(kind, text, loadedFrom) {
           csvPaths.set(dataset, input);
         } else {
           const comment = source.slice(boundary, lineEnd);
-          if (comment) editor.append(el("p", comment, "toml-comment"));
+          if (comment && !knownOption) editor.append(el("p", comment, "toml-comment"));
           const label = el("label", undefined, "toml-setting");
           label.append(el("span", match[2] + ":"));
           if (boolean) {
@@ -308,16 +395,13 @@ function showToml(kind, text, loadedFrom) {
           } else {
             label.append(input);
           }
-          editor.append(label);
+          if (knownOption) addPlacementOption(placementRows, optionPath, label, input);
+          else editor.append(label);
         }
         fields.push({start, end: start + value.length, input});
       }
-    } else if (visible) {
-      const heading = el(table ? "h4" : "p", trimmed, table ? "toml-section" : "toml-comment");
-      editor.append(heading);
-      if (kind === "config" && table && root === "feasibility" && parts.length === 1) {
-        feasibilityHeading = heading;
-      }
+    } else if (visible && !knownTable) {
+      editor.append(el(table ? "h4" : "p", trimmed, table ? "toml-section" : "toml-comment"));
     }
     offset = lineEnd + 1;
     if (omitted) fields.push({start: statementStart, end: Math.min(offset, source.length)});
@@ -334,26 +418,20 @@ function showToml(kind, text, loadedFrom) {
       for (const key of loaderModeKeys.filter(key => !seenModes.has(key))) {
         const prefix = separator + (feasibilityStart ? key : "feasibility." + key) + " = ";
         const control = loaderAccessSwitch(loaderAccess, key, prefix, null);
-        if (key === "loader_access_mode" && loaderAccess.preserve_future_loader_access_mode) {
-          loaderAccess.preserve_future_loader_access_mode.row.before(control.row);
-        } else if (key === "preserve_future_loader_access_mode" && loaderAccess.loader_access_mode) {
-          loaderAccess.loader_access_mode.row.after(control.row);
-        } else if (feasibilityHeading) {
-          feasibilityHeading.after(control.row);
-        } else {
-          editor.prepend(control.row);
-        }
+        control.option = addPlacementOption(placementRows, "feasibility." + key, control.row, control.group);
         fields.push({start: feasibilityStart, end: feasibilityStart, input: control.input});
       }
       fields.sort((a, b) => a.start - b.start || a.end - b.end);
     }
     const future = loaderAccess.preserve_future_loader_access_mode;
     if (future) {
-      loaderAccess.note = el("p", undefined, "note loader-access-note");
+      loaderAccess.note = el("p", undefined, "placement-help");
       loaderAccess.note.id = "loader-access-note";
-      future.group.setAttribute("aria-describedby", loaderAccess.note.id);
-      future.row.after(loaderAccess.note);
+      future.group.setAttribute("aria-describedby",
+        future.group.getAttribute("aria-describedby") + " " + loaderAccess.note.id);
+      future.option.append(loaderAccess.note);
     }
+    showPlacementGroups(editor, placementRows);
     updateLoaderAccess(loaderAccess);
   }
   const status = $(kind + "-toml-source");

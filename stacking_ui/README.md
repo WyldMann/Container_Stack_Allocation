@@ -41,9 +41,10 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    Relative paths start in `config/container_stacking`, and the CSVs must be inside the project.
    Choose **Choose files in the browser** to select the nine UTF-8 CSVs yourself.
    Either source lets you mark a dataset explicitly empty.
-2. Edit the prefilled value beside each setting name. Comments and section names
-   appear as text. Use TOML syntax for values, including quotes for strings. To
-   change the file structure, load another TOML into its editor. Edit
+2. Edit the prefilled values in Placement settings. Options are grouped by what
+   they affect and include short descriptions. Use TOML syntax when editing text
+   values in Stacking inputs and CSV column mappings. To change the file
+   structure, load another TOML into its editor. Edit
    `branch_code` under **Stacking inputs** to select branches. Each editor's
    **Save** button writes its values to the corresponding project TOML.
 3. Click **Generate preview**. The top-down map places blocks using their

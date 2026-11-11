@@ -199,7 +199,49 @@
   opacity: .45;
   cursor: default;
 }
-.loader-access-note { margin: 4px 0 8px; }
+.placement-groups {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0 20px;
+}
+.placement-group {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 10px 16px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8faf9;
+}
+.placement-group legend {
+  padding: 0 6px;
+  font-weight: 650;
+  color: var(--green);
+}
+.placement-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+}
+.placement-option .toml-setting {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  min-height: 32px;
+  margin: 0 0 3px;
+  font: 14px/1.4 system-ui, sans-serif;
+}
+.placement-option input[type="text"] {
+  width: 8rem;
+  font-variant-numeric: tabular-nums;
+}
+.placement-help { margin: 0; font-size: 13px; }
+.placement-group > .placement-help { margin-bottom: 12px; }
+.placement-help + .placement-help { margin-top: 4px; }
+@media (max-width: 850px) {
+  .placement-options { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .placement-option:has(.toml-segments) .toml-setting { grid-template-columns: 1fr; }
+}
 .toml-comment {
   margin: 12px 0 4px;
   color: #536863;
