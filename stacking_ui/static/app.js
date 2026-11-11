@@ -35,7 +35,7 @@ const placementGroups = [
     "feasibility.ignore_full_stacks_for_loader_access": ["Ignore full stacks",
       "Exclude fully occupied stacks from the current access check."]
   }},
-  {title: "Weight compatibility", options: {
+  {title: "Weight compatibility", toggle: "heuristic.enable_delta_container_mass", options: {
     "heuristic.enable_delta_container_mass": ["Score weight compatibility",
       "Use the weight difference between the incoming container and its support to rank placements."],
     "heuristic.w_delta_container_mass": ["Maximum weight score",
@@ -45,7 +45,7 @@ const placementGroups = [
     "heuristic.no_delta_container_mass_value": ["Unknown weight score",
       "Use this score when either container's weight is unavailable."]
   }},
-  {title: "Equipment distance", options: {
+  {title: "Equipment distance", toggle: "heuristic.enable_equipment_distance", options: {
     "heuristic.enable_equipment_distance": ["Score equipment distance",
       "Use the distance from the serving equipment to rank placements."],
     "heuristic.w_equipment_distance": ["Maximum distance score",
@@ -53,7 +53,7 @@ const placementGroups = [
     "heuristic.hl_equipment_distance": ["Distance for half score",
       "The distance score halves at this distance, measured in yard grid units."]
   }},
-  {title: "Container size clustering", options: {
+  {title: "Container size clustering", toggle: "heuristic.enable_size_cluster", options: {
     "heuristic.enable_size_cluster": ["Score nearby container sizes",
       "Favor placements near containers of the same size."],
     "heuristic.size_cluster_radius": ["Search radius",
@@ -115,7 +115,9 @@ async function action(task, report = message) {
   } finally {
     busy = false;
     controls.forEach(node => node.disabled = false);
-    updateLoaderAccess(tomlDocuments.config.loaderAccess);
+    const {loaderAccess, placementRows} = tomlDocuments.config;
+    updateLoaderAccess(loaderAccess);
+    updatePlacementDependencies(placementRows);
     Object.keys(tomlEditors).forEach(updateTomlSave);
   }
 }
@@ -217,6 +219,26 @@ function showPlacementGroups(editor, rows) {
   editor.replaceChildren(groups);
 }
 
+function setPlacementInactive(option, inactive) {
+  option.classList.toggle("is-inactive", inactive);
+  option.querySelector("input, textarea").disabled = busy || inactive;
+}
+
+function updatePlacementDependencies(rows) {
+  const isOff = path => rows.get(path)?.[0].querySelector('input[type="checkbox"]')?.checked === false;
+  for (const {toggle, options} of placementGroups) {
+    if (!toggle) continue;
+    const inactive = isOff(toggle);
+    for (const path of Object.keys(options)) {
+      if (path === toggle) continue;
+      for (const option of rows.get(path) ?? []) setPlacementInactive(option, inactive);
+    }
+  }
+  const fallbackInactive = isOff("heuristic.enable_delta_container_mass") &&
+    isOff("heuristic.enable_equipment_distance");
+  for (const option of rows.get("heuristic.min_value") ?? []) setPlacementInactive(option, fallbackInactive);
+}
+
 function loaderAccessSwitch(access, key, prefix, value) {
   const future = key.startsWith("preserve_future_");
   const legacy = !key.endsWith("_mode");
@@ -270,15 +292,17 @@ function updateLoaderAccess(access, currentChanged = false) {
   const mode = current?.mode ?? "feasibility";
   const limit = loaderModes.indexOf(mode);
   if (currentChanged && future && loaderModes.indexOf(future.mode) > limit) future.select(mode);
+  const futureInactive = mode === "off" && (future?.mode ?? mode) === "off";
   for (const choice of current?.choices ?? []) {
     choice.checked = choice.value === mode;
     choice.disabled = busy;
   }
   for (const [index, choice] of (future?.choices ?? []).entries()) {
     choice.checked = choice.value === (future.mode ?? mode);
-    choice.disabled = busy || index > limit;
+    choice.disabled = busy || futureInactive || index > limit;
   }
-  if (access.ignoreFull) access.ignoreFull.disabled = busy || mode === "off";
+  future?.option.classList.toggle("is-inactive", futureInactive);
+  if (access.ignoreFull) setPlacementInactive(access.ignoreFull, mode === "off");
   if (access.note) {
     access.note.textContent = mode === "heuristic" && (future.mode ?? mode) === "heuristic" ?
       "Current loader access ranks first when both modes are Heuristic." :
@@ -295,7 +319,8 @@ function showToml(kind, text, loadedFrom) {
   const editor = $(kind + "-toml");
   editor.replaceChildren();
   tomlDocuments[kind] = {
-    source, fields, csvPaths, loaderAccess, usesProject: loadedFrom == null, projectText: projectTomls[tomlEditors[kind]]
+    source, fields, csvPaths, loaderAccess, placementRows,
+    usesProject: loadedFrom == null, projectText: projectTomls[tomlEditors[kind]]
   };
 
   let section = "";
@@ -371,11 +396,9 @@ function showToml(kind, text, loadedFrom) {
           input.type = "text";
         }
         input.spellcheck = false;
-        if (kind === "config" && root === "feasibility" && key === "ignore_full_stacks_for_loader_access" && boolean) {
-          loaderAccess.ignoreFull = input;
-        }
         if (!boolean) input.value = value;
         input.addEventListener("input", () => {
+          if (knownOption && boolean) updatePlacementDependencies(placementRows);
           updateTomlSave(kind);
           changed();
         });
@@ -395,8 +418,14 @@ function showToml(kind, text, loadedFrom) {
           } else {
             label.append(input);
           }
-          if (knownOption) addPlacementOption(placementRows, optionPath, label, input);
-          else editor.append(label);
+          if (knownOption) {
+            const option = addPlacementOption(placementRows, optionPath, label, input);
+            if (optionPath === "feasibility.ignore_full_stacks_for_loader_access" && boolean) {
+              loaderAccess.ignoreFull = option;
+            }
+          } else {
+            editor.append(label);
+          }
         }
         fields.push({start, end: start + value.length, input});
       }
@@ -433,6 +462,7 @@ function showToml(kind, text, loadedFrom) {
     }
     showPlacementGroups(editor, placementRows);
     updateLoaderAccess(loaderAccess);
+    updatePlacementDependencies(placementRows);
   }
   const status = $(kind + "-toml-source");
   const origin = standalone ? (browserDefaults[tomlEditors[kind]] == null ?

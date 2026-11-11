@@ -234,6 +234,23 @@
   font-variant-numeric: tabular-nums;
 }
 .placement-help { margin: 0; font-size: 13px; }
+.placement-option.is-inactive, .placement-option.is-inactive .placement-help {
+  color: #64716c;
+}
+.placement-option.is-inactive input[type="text"],
+.placement-option.is-inactive textarea,
+.placement-option.is-inactive .toml-segments {
+  background: #e9eeeb;
+  color: #64716c;
+  border-color: var(--border);
+}
+.placement-option.is-inactive .toml-segments input:disabled + span {
+  color: #64716c;
+  opacity: 1;
+}
+.placement-option.is-inactive .toml-segments input:checked + span { background: #d9e2dd; }
+.placement-option.is-inactive .toml-switch input:checked + .toml-switch-track { background: #6a7a73; }
+.placement-option.is-inactive .toml-switch input { cursor: default; }
 .placement-group > .placement-help { margin-bottom: 12px; }
 .placement-help + .placement-help { margin-top: 4px; }
 @media (max-width: 850px) {
