@@ -121,6 +121,7 @@ class Simulation:
                     outcome["placement"] = {
                         **_location(yard, coordinates),
                         "container_id": container.getId(),
+                        "parameter_compliance": yard.getBlockByID(proposal.block_id).parameterCompliance(),
                         "stacks": [
                             stack_view(yard.getStack(block_id, r, s), r + 1, s + 1)
                             for block_id, r, s in proposal.footprint

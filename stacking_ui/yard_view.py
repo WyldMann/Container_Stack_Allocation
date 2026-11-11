@@ -78,6 +78,7 @@ def yard_view(yard):
             "occupied_tiers": sum(len(stack["tiers"]) for stack in stacks),
             "tier_capacity": sum(stack["capacity"] for stack in stacks),
             "container_count": len(containers),
+            "parameter_compliance": block.parameterCompliance(),
             "stacks": stacks,
         })
     return {"blocks": blocks, "parameters": parameters}

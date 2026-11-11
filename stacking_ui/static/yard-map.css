@@ -86,7 +86,7 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
   border-radius: 8px;
   background: #fff;
 }
-.yard-block-heading { height: 40px; }
+.yard-block-heading { height: 76px; }
 .yard-block-heading .yard-caption {
   margin: 0;
   overflow: hidden;

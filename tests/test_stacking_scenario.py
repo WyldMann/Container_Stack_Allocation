@@ -152,8 +152,12 @@ class ScenarioTests(unittest.TestCase):
         self.rows["yard_planning"] = [dict(parameter_id="38", block_id="10", row_no="2", slot_no="3",
                                             terminal_id="1", branch_id="2")]
         self.write_files()
-        simulation = Simulation(prepare_scenario(self.payload))
+        scenario = prepare_scenario(self.payload)
+        block, = public_preview(scenario)["branches"][0]["yard_map"]["blocks"]
+        self.assertEqual(block["parameter_compliance"], 0)
+        simulation = Simulation(scenario)
         step = simulation.step(simulation.id, "JKT74", 1)
+        self.assertEqual(step["placement"]["parameter_compliance"], 0.5)
         calculation = step["calculation"]
         candidates = calculation["candidates"]
 
@@ -173,6 +177,8 @@ class ScenarioTests(unittest.TestCase):
         ]
         self.write_files()
         scenario = prepare_scenario(self.payload)
+        block, = public_preview(scenario)["branches"][0]["yard_map"]["blocks"]
+        self.assertIsNone(block["parameter_compliance"])
         simulation = Simulation(scenario)
         for position in (1, 2):
             result = simulation.step(simulation.id, "JKT74", position)

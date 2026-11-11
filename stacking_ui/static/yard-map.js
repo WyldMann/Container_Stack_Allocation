@@ -9,7 +9,7 @@ function layoutYardBlocks(blocks) {
     if (!groups.has(key)) groups.set(key, {x: block.x, y: block.y, width: 0, height: 0, blocks: []});
     const group = groups.get(key);
     const width = Math.max(190, 56 + block.slots * 47);
-    const height = 88 + block.rows * 39;
+    const height = 124 + block.rows * 39;
     const offset = group.blocks.length ? group.height + gap : 0;
     group.blocks.push({block, width, height, offset});
     group.width = Math.max(group.width, width);
@@ -292,10 +292,14 @@ function createYardMap(branch, branches = [branch]) {
     if (stack.tiers.some(tier => tier.size === "40")) tile.append(el("span", "40 ft", "yard-pair"));
   }
 
-  function blockSummary(block) {
-    return block.rows + " rows × " + block.slots + " slots · " + block.tier_limit + " tiers · " +
+  const percent = new Intl.NumberFormat(undefined, {style: "percent", maximumFractionDigits: 1});
+  function updateBlockSummary({block, summary, occupancy, compliance}) {
+    summary.textContent = block.rows + " rows × " + block.slots + " slots · " + block.tier_limit + " tiers · " +
       block.container_count + " containers · " + block.occupied_tiers + "/" + block.tier_capacity +
       " tier positions occupied";
+    occupancy.textContent = "Occupancy rate " + (block.tier_capacity ? percent.format(block.occupied_tiers / block.tier_capacity) : "N/A");
+    compliance.textContent = "Parameter compliance " +
+      (block.parameter_compliance == null ? "N/A" : percent.format(block.parameter_compliance));
   }
 
   const views = [];
@@ -307,8 +311,10 @@ function createYardMap(branch, branches = [branch]) {
     panel.style.width = width + "px";
     panel.style.height = height + "px";
     const heading = el("div", undefined, "yard-block-heading");
-    const summary = el("p", blockSummary(block), "yard-caption");
-    heading.append(el("h4", "Block " + block.code), summary);
+    const summary = el("p", undefined, "yard-caption");
+    const occupancy = el("p", undefined, "yard-caption");
+    const compliance = el("p", undefined, "yard-caption");
+    heading.append(el("h4", "Block " + block.code), summary, occupancy, compliance);
     const grid = el("table", undefined, "yard-grid");
     grid.setAttribute("aria-label", "Stack grid for block " + block.code);
     const head = el("thead");
@@ -322,7 +328,8 @@ function createYardMap(branch, branches = [branch]) {
     }
     head.append(columns);
 
-    const view = {block, summary, tiles: [], focusIndex: 0};
+    const view = {block, summary, occupancy, compliance, tiles: [], focusIndex: 0};
+    updateBlockSummary(view);
     const rows = el("tbody");
     for (let row = 0; row < block.rows; row++) {
       const line = el("tr");
@@ -511,7 +518,7 @@ function createYardMap(branch, branches = [branch]) {
 
   function applyPlacement(placed) {
     const view = views.find(item => item.block.code === placed.block);
-    const {block, summary, tiles} = view;
+    const {block, tiles} = view;
     for (const stack of placed.stacks) {
       const index = (stack.row - 1) * block.slots + stack.slot - 1;
       block.occupied_tiers += stack.tiers.length - block.stacks[index].tiers.length;
@@ -523,7 +530,8 @@ function createYardMap(branch, branches = [branch]) {
       if (tiles[index] !== tiles[index + 1]) paintStack(tiles[index], block, stack, pairPartner(view, index));
     }
     block.container_count++;
-    summary.textContent = blockSummary(block);
+    block.parameter_compliance = placed.parameter_compliance;
+    updateBlockSummary(view);
   }
   return {element: root, applyPlacement, markPlacement, showTrace};
 }
