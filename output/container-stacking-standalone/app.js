@@ -22,7 +22,9 @@ const loaderModes = ["off", "heuristic", "feasibility"];
 const loaderModeKeys = ["loader_access_mode", "preserve_future_loader_access_mode"];
 const standalone = globalThis.stackingStandalone === true;
 const canReadProjectTomls = typeof globalThis.readStackingTomls === "function";
-let projectTomls = typeof TOML_DEFAULTS === "undefined" ? {} : TOML_DEFAULTS;
+const bundledTomls = typeof TOML_DEFAULTS === "undefined" ? {} : TOML_DEFAULTS;
+let projectTomls = {...bundledTomls};
+const browserDefaults = {};
 let projectTomlsLive = false;
 const tomlKey = /(?:[A-Za-z0-9_-]+|"(?:\\.|[^"\\])*"|'[^']*')/.source;
 const tomlPath = tomlKey + "(?:[ \\t]*\\.[ \\t]*" + tomlKey + ")*";
@@ -355,7 +357,8 @@ function showToml(kind, text, loadedFrom) {
     updateLoaderAccess(loaderAccess);
   }
   const status = $(kind + "-toml-source");
-  const origin = standalone ? "Loaded bundled TOML: " : projectTomlsLive ? "Loaded project TOML: " :
+  const origin = standalone ? (browserDefaults[tomlEditors[kind]] == null ?
+    "Loaded bundled TOML: " : "Loaded browser default: ") : projectTomlsLive ? "Loaded project TOML: " :
     projectTomls[tomlEditors[kind]] != null ? "Cached project TOML: " : "Project TOML unavailable: ";
   tomlDocuments[kind].sourceLabel = loadedFrom ?? (origin + status.dataset.projectFile);
   updateTomlSave(kind);
@@ -397,12 +400,19 @@ function editedToml({source, fields}, preserveHidden = false) {
 
 function updateTomlSave(kind) {
   const document = tomlDocuments[kind];
-  const persisted = projectTomls[tomlEditors[kind]];
+  const key = tomlEditors[kind];
+  const text = editedToml(document, true);
+  const persisted = projectTomls[key];
   const dirty = typeof persisted === "string" &&
-    editedToml(document, true) !== persisted.replace(/\r\n?/g, "\n");
+    text !== persisted.replace(/\r\n?/g, "\n");
   $("save-" + kind).disabled = busy || !dirty;
   const status = $(kind + "-toml-source");
-  const label = dirty ? document.sourceLabel + " · Unsaved changes" :
+  if (standalone) {
+    const defaultText = browserDefaults[key] ?? bundledTomls[key];
+    $("default-" + kind).disabled = busy || text === defaultText?.replace(/\r\n?/g, "\n");
+  }
+  const modified = standalone ? text !== document.source : dirty;
+  const label = modified ? document.sourceLabel + " · Unsaved changes" :
     document.saved ? (standalone ? "Exported " : "Saved ") + status.dataset.projectFile : document.sourceLabel;
   if (status.textContent !== label) status.textContent = label;
 }
@@ -633,10 +643,23 @@ for (const source of ["folder", "upload"]) {
   });
 }
 for (const [kind, key] of Object.entries(tomlEditors)) {
-  showToml(kind, projectTomls[key] ?? "");
+  const setDefault = $("default-" + kind);
+  if (standalone) {
+    browserDefaults[key] = globalThis.readStackingTomlDefault(key);
+    setDefault.hidden = false;
+    setDefault.addEventListener("click", () => action(async () => {
+      const text = editedToml(tomlDocuments[kind], true);
+      browserDefaults[key] = await globalThis.setStackingTomlDefault({key, text});
+      showToml(kind, browserDefaults[key]);
+      const name = $(kind + "-toml-source").dataset.projectFile;
+      message("Set " + name + " as the default in this browser.");
+    }));
+  }
+  showToml(kind, browserDefaults[key] ?? projectTomls[key] ?? "");
   const picker = $("load-" + kind);
   const save = $("save-" + kind);
   save.hidden = typeof globalThis.saveStackingToml !== "function";
+  if (standalone) save.textContent = "Save as TOML";
   save.addEventListener("click", () => action(async () => {
     const document = tomlDocuments[kind];
     const saved = await globalThis.saveStackingToml({

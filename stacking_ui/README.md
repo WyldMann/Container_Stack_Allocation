@@ -8,8 +8,9 @@ snapshot of the stacking CSVs and TOMLs. It runs without a server or a separate
 Python or Node.js installation.
 
 Use **Replace selected CSVs** to replace any bundled dataset, or load a
-different TOML in its editor. The Save buttons export TOMLs and
-**containers.csv** through the browser.
+different TOML in its editor. **Set default** remembers the current TOML in
+this browser for future visits to the same page. **Save as TOML** downloads a
+copy. **Save yard CSV** downloads **containers.csv**.
 
 To build a new snapshot from the project root, extract the
 [Pyodide 0.27.7 npm archive](https://registry.npmjs.org/pyodide/-/pyodide-0.27.7.tgz).

@@ -101,6 +101,23 @@
   globalThis.stackingStandalone = true;
   globalThis.generateStackingPreview = draft => request({op: "preview", draft});
   globalThis.stepStackingSimulation = step => request({...step, op: "step"});
+  const defaultStorageKey = key => "container-stacking:default:" + key;
+  globalThis.readStackingTomlDefault = key => {
+    try {
+      return localStorage.getItem(defaultStorageKey(key));
+    } catch {
+      return null;
+    }
+  };
+  globalThis.setStackingTomlDefault = async document => {
+    const {text} = await request({...document, op: "export_toml"});
+    try {
+      localStorage.setItem(defaultStorageKey(document.key), text);
+    } catch {
+      throw new Error("Could not store the default in this browser.");
+    }
+    return text;
+  };
   globalThis.saveStackingToml = async document => {
     const {name, text} = await request({...document, op: "export_toml"});
     download(name, text, "text/plain;charset=utf-8");
