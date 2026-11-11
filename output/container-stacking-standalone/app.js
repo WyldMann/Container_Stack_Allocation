@@ -466,7 +466,7 @@ function showToml(kind, text, loadedFrom) {
   }
   const status = $(kind + "-toml-source");
   const origin = standalone ? (browserDefaults[tomlEditors[kind]] == null ?
-    "Loaded bundled TOML: " : "Loaded browser default: ") : projectTomlsLive ? "Loaded project TOML: " :
+    "Bundled TOML: " : "Browser default: ") : projectTomlsLive ? "Loaded project TOML: " :
     projectTomls[tomlEditors[kind]] != null ? "Cached project TOML: " : "Project TOML unavailable: ";
   tomlDocuments[kind].sourceLabel = loadedFrom ?? (origin + status.dataset.projectFile);
   updateTomlSave(kind);
@@ -520,8 +520,8 @@ function updateTomlSave(kind) {
     $("default-" + kind).disabled = busy || text === defaultText?.replace(/\r\n?/g, "\n");
   }
   const modified = standalone ? text !== document.source : dirty;
-  const label = modified ? document.sourceLabel + " · Unsaved changes" :
-    document.saved ? (standalone ? "Exported " : "Saved ") + status.dataset.projectFile : document.sourceLabel;
+  const label = modified ? document.sourceLabel + (standalone ? " · Edited" : " · Unsaved changes") :
+    document.saved ? "Saved " + status.dataset.projectFile : document.sourceLabel;
   if (status.textContent !== label) status.textContent = label;
 }
 
@@ -774,9 +774,13 @@ for (const [kind, key] of Object.entries(tomlEditors)) {
       key, text: editedToml(document, true), expected: document.projectText
     });
     projectTomls[key] = saved;
-    if (!standalone) projectTomlsLive = true;
-    const name = $(kind + "-toml-source").dataset.projectFile;
-    showToml(kind, saved, standalone ? "Exported " + name : undefined);
+    if (standalone) {
+      const name = $(kind + "-toml-source").dataset.projectFile;
+      message("Downloaded " + name + ".");
+      return;
+    }
+    projectTomlsLive = true;
+    showToml(kind, saved);
     tomlDocuments[kind].saved = true;
     if (kind === "input") showDatasets();
     message();

@@ -94,7 +94,7 @@ def build(runtime, destination):
             archive.writestr("licenses/" + name, content)
         archive.writestr("README.txt", "Extract all files and open index.html in Chrome or Microsoft Edge.\n"
                          "The package includes a copy of the CSVs and TOMLs from build time.\n"
-                         "Use Replace selected CSVs or Choose a different TOML to use newer data.\n"
+                         "Use Replace selected CSVs or Load from TOML to use newer data.\n"
                          "Set default remembers a TOML in this browser for this page.\n"
                          "Save as TOML and Save yard CSV download files through the browser.\n")
 

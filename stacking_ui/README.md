@@ -7,8 +7,8 @@ files together. The package includes the Python engine, the interface, and a
 snapshot of the stacking CSVs and TOMLs. It runs without a server or a separate
 Python or Node.js installation.
 
-Use **Replace selected CSVs** to replace any bundled dataset, or load a
-different TOML in its editor. **Set default** remembers the current TOML in
+Use **Replace selected CSVs** to replace any bundled dataset, or use **Load
+from TOML** in its editor. **Set default** remembers the current TOML in
 this browser for future visits to the same page. **Save as TOML** downloads a
 copy. **Save yard CSV** downloads **containers.csv**.
 
@@ -34,7 +34,7 @@ the project root.
 The launcher reads the current project TOML files and opens the setup page
 in an Edge window. It uses local Node.js and `playwright-core`, including the
 installed Codex runtime when available. Each editor shows its loaded file and offers
-**Choose a different TOML (optional)** to replace its contents in the editor.
+**Load from TOML** to replace its contents in the editor.
 
 1. **Use files in the project folder** is selected by default. The dataset cards
    show the CSV paths from the stacking input TOML and let you edit them there.
