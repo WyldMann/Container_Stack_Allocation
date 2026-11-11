@@ -107,6 +107,12 @@
   overflow-wrap: anywhere;
 }
 .toml-choose { margin-top: 10px; }
+.toml-save:disabled {
+  background: #edf0ee;
+  color: #65716b;
+  border-color: var(--border);
+  cursor: default;
+}
 .toml-lines {
   max-height: 24rem;
   overflow: auto;

@@ -74,6 +74,25 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
         result = evaluator.evaluate(self.container, self.block, 1, 0)
         self.assertEqual(result.rejection_reason, RejectionReason.LOADER_DESTINATION_INACCESSIBLE)
 
+    def test_ignoring_full_stacks_preserves_access_to_partially_occupied_stacks(self):
+        evaluator = self.yard.feasibility
+        evaluator.settings = replace(evaluator.settings, ignore_full_stacks_for_loader_access=True)
+        self.set_stack(0, 0)
+        self.set_stack(0, 1)
+        for size in ('20', '40'):
+            with self.subTest(size=size):
+                self.set_stack(1, 0, container_size=size, count=3)
+                self.set_stack(1, 1, container_size=size, count=3)
+                result = evaluator.evaluate(self.container, self.block, 0, 1)
+                self.assertEqual(result.coordinates, ('A', 0, 1, 0))
+                _, _, candidates = self.yard.findCoordsCandidates(self.container)
+                self.assertIn(result.coordinates, candidates)
+
+                self.set_stack(1, 0, container_size=size, count=2)
+                self.set_stack(1, 1, container_size=size, count=2)
+                result = evaluator.evaluate(self.container, self.block, 0, 1)
+                self.assertEqual(result.rejection_reason, RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED)
+
     def test_alternate_approach_allows_placement(self):
         self.set_stack(0, 1)
         self.set_stack(1, 1, count=1)

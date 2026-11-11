@@ -28,7 +28,6 @@ const tomlTable = new RegExp("^\\[\\[?[ \\t]*(" + tomlPath + ")[ \\t]*\\]\\]?[ \
 const tomlPathParts = new RegExp(tomlKey, "g");
 let files = {};
 let busy = false;
-let preview;
 
 function el(tag, text, className) {
   const node = document.createElement(tag);
@@ -43,8 +42,7 @@ function message(text = "", error = false) {
 }
 
 function changed() {
-  preview = undefined;
-  $("save-preview").hidden = true;
+  $("save-yard").hidden = true;
   previewStatus("");
   $("results").replaceChildren(el("div", "Inputs changed. Generate a new preview to review them.", "empty"));
 }
@@ -61,6 +59,7 @@ async function action(task, report = message) {
   } finally {
     busy = false;
     controls.forEach(node => node.disabled = false);
+    Object.keys(tomlEditors).forEach(updateTomlSave);
   }
 }
 
@@ -77,7 +76,7 @@ function onFile(input, handler) {
   }));
 }
 
-function tomlValueEnd(source, start, inline = false) {
+function tomlValueEnd(source, start) {
   // Find the next comment or newline outside strings, arrays, and inline tables.
   let quote = "";
   let depth = 0;
@@ -98,8 +97,6 @@ function tomlValueEnd(source, start, inline = false) {
       const triple = character.repeat(3);
       quote = source.startsWith(triple, index) ? triple : character;
       index += quote.length - 1;
-    } else if (inline && !depth && (character === "," || character === "}")) {
-      return index;
     } else if (character === "[" || character === "{") {
       depth++;
     } else if (character === "]" || character === "}") {
@@ -120,66 +117,6 @@ function tomlParts(path) {
   return (path.match(tomlPathParts) ?? []).map(part => part.replace(/^["']|["']$/g, ""));
 }
 
-function setInlineTomlValue(source, path, value) {
-  for (let offset = 1; offset < source.length;) {
-    const assignment = tomlAssignment.exec(source.slice(offset));
-    if (!assignment) break;
-    const key = tomlParts(assignment[2]).join(".");
-    const start = offset + assignment[1].length;
-    const boundary = tomlValueEnd(source, start, true);
-    const previous = source.slice(start, boundary).trimEnd();
-    const replacement = path === key ? value :
-      path.startsWith(key + ".") && previous.startsWith("{") ?
-        setInlineTomlValue(previous, path.slice(key.length + 1), value) : null;
-    if (replacement !== null) return source.slice(0, start) + replacement + source.slice(start + previous.length);
-    if (source[boundary] !== ",") break;
-    offset = boundary + 1;
-  }
-  const remainder = source.slice(1).trimStart();
-  return "{ " + path + " = " + value + (remainder === "}" ? " " : ", ") + remainder;
-}
-
-function migrateDraftBranches(text, codes) {
-  const source = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
-  const path = "input.filters.branch_code";
-  const value = JSON.stringify(codes).replace(/\u007f/g, "\\u007f");
-  let section = "";
-  let insertion;
-  for (let offset = 0; offset < source.length;) {
-    let lineEnd = source.indexOf("\n", offset);
-    if (lineEnd === -1) lineEnd = source.length;
-    const line = source.slice(offset, lineEnd);
-    const table = tomlTable.exec(line.trim());
-    if (table) {
-      section = tomlParts(table[1]).join(".");
-      if (section === "input.filters") {
-        insertion = {offset: Math.min(lineEnd + 1, source.length), key: "branch_code"};
-      }
-    }
-    const assignment = tomlAssignment.exec(line);
-    if (assignment) {
-      const key = [section, ...tomlParts(assignment[2])].filter(Boolean).join(".");
-      const start = offset + assignment[1].length;
-      const boundary = tomlValueEnd(source, start);
-      const previous = source.slice(start, boundary).trimEnd();
-      const replacement = key === path ? value :
-        path.startsWith(key + ".") && previous.startsWith("{") ?
-          setInlineTomlValue(previous, path.slice(key.length + 1), value) : null;
-      if (replacement !== null) return source.slice(0, start) + replacement + source.slice(start + previous.length);
-      if (!insertion && key.startsWith("input.filters.")) {
-        insertion = {offset, key: section ? path.slice(section.length + 1) : path};
-      }
-      lineEnd = source.indexOf("\n", boundary);
-      if (lineEnd === -1) lineEnd = source.length;
-    }
-    offset = lineEnd + 1;
-  }
-  if (!insertion) return source.trimEnd() + "\n\n[input.filters]\nbranch_code = " + value + "\n";
-  const prefix = source.slice(0, insertion.offset);
-  return prefix + (prefix.endsWith("\n") ? "" : "\n") + insertion.key + " = " + value + "\n" +
-    source.slice(insertion.offset);
-}
-
 function omittedTomlPath(kind, [root, key]) {
   return root === "sql" || (kind === "input" && (
     (root === "input" && key === "sources") ||
@@ -194,7 +131,9 @@ function showToml(kind, text, loadedFrom) {
   const csvPaths = new Map();
   const editor = $(kind + "-toml");
   editor.replaceChildren();
-  tomlDocuments[kind] = {source, fields, csvPaths, usesProject: loadedFrom == null};
+  tomlDocuments[kind] = {
+    source, fields, csvPaths, usesProject: loadedFrom == null, projectText: projectTomls[tomlEditors[kind]]
+  };
 
   let section = "";
   let statementStart = 0;
@@ -247,7 +186,10 @@ function showToml(kind, text, loadedFrom) {
         }
         input.spellcheck = false;
         if (!boolean) input.value = value;
-        input.addEventListener("input", changed);
+        input.addEventListener("input", () => {
+          updateTomlSave(kind);
+          changed();
+        });
         if (isCsvPath) {
           csvPaths.set(dataset, input);
         } else {
@@ -283,7 +225,8 @@ function showToml(kind, text, loadedFrom) {
   const status = $(kind + "-toml-source");
   const origin = projectTomlsLive ? "Loaded project TOML: " :
     projectTomls[tomlEditors[kind]] != null ? "Cached project TOML: " : "Project TOML unavailable: ";
-  status.textContent = loadedFrom ?? (origin + status.dataset.projectFile);
+  tomlDocuments[kind].sourceLabel = loadedFrom ?? (origin + status.dataset.projectFile);
+  updateTomlSave(kind);
 }
 
 function tomlFieldValue(input) {
@@ -309,15 +252,27 @@ async function refreshProjectTomls(replace = false) {
   return refreshed;
 }
 
-function editedToml({source, fields}) {
-  // Replace edited values and omit settings that the page manages itself.
+function editedToml({source, fields}, preserveHidden = false) {
   let cursor = 0;
   let result = "";
   for (const {start, end, input} of fields) {
+    if (!input && preserveHidden) continue;
     result += source.slice(cursor, start) + (input ? tomlFieldValue(input) : "");
     cursor = end;
   }
   return result + source.slice(cursor);
+}
+
+function updateTomlSave(kind) {
+  const document = tomlDocuments[kind];
+  const persisted = projectTomls[tomlEditors[kind]];
+  const dirty = typeof persisted === "string" &&
+    editedToml(document, true) !== persisted.replace(/\r\n?/g, "\n");
+  $("save-" + kind).disabled = busy || !dirty;
+  const status = $(kind + "-toml-source");
+  const label = dirty ? document.sourceLabel + " · Unsaved changes" :
+    document.saved ? "Saved " + status.dataset.projectFile : document.sourceLabel;
+  if (status.textContent !== label) status.textContent = label;
 }
 
 function buildDraft() {
@@ -331,58 +286,6 @@ function buildDraft() {
     draft[key] = editedToml(tomlDocuments[kind]);
   }
   return draft;
-}
-
-function downloadJson(value, filename) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], {type: "application/json"}));
-  const link = el("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function downloadDraft() {
-  downloadJson(buildDraft(), "stacking-scenario-draft.json");
-  message("Draft downloaded.");
-}
-
-function loadDraft(draft) {
-  if (draft?.version !== 1 || !draft.files || typeof draft.files !== "object" || Array.isArray(draft.files)) {
-    throw new Error("Choose a saved stacking scenario draft.");
-  }
-  for (const [name, upload] of Object.entries(draft.files)) {
-    if (!Object.hasOwn(descriptions, name) || !upload || typeof upload.name !== "string" ||
-        (upload.empty !== true && typeof upload.content !== "string")) {
-      throw new Error("Invalid CSV entry in the draft.");
-    }
-  }
-  for (const key of Object.values(tomlEditors)) {
-    if (draft[key] != null && typeof draft[key] !== "string") {
-      throw new Error("Invalid TOML entry in the draft.");
-    }
-  }
-  if (draft.branch_codes != null && (!Array.isArray(draft.branch_codes) ||
-      draft.branch_codes.some(code => typeof code !== "string"))) {
-    throw new Error("Invalid branch codes in the draft.");
-  }
-  const source = draft.file_source ?? "upload";
-  if (source !== "folder" && source !== "upload") {
-    throw new Error("Invalid CSV source in the draft.");
-  }
-  files = draft.files;
-  $("source-folder").checked = source === "folder";
-  $("source-upload").checked = source === "upload";
-  for (const [kind, key] of Object.entries(tomlEditors)) {
-    const legacyBranches = kind === "input" && draft.branch_codes != null;
-    const text = draft[key] ?? projectTomls[key] ?? "";
-    const loadedFrom = draft[key] != null || legacyBranches ? "Loaded from saved draft" : undefined;
-    showToml(kind, legacyBranches ? migrateDraftBranches(text, draft.branch_codes) : text, loadedFrom);
-  }
-  if (draft.branch_codes != null) $("stacking-inputs").open = true;
-  showDatasets();
-  changed();
-  message("Draft loaded.");
 }
 
 function showDatasets() {
@@ -548,9 +451,9 @@ function previewOverview(branches, simulation) {
   return overview;
 }
 
-function showPreview(result, status = "Preview loaded.", simulation = null) {
+function showPreview(result, simulation) {
   if (result?.version !== 1 || result.kind !== "stacking-preview") {
-    throw new Error("Choose a stacking scenario .preview.json file.");
+    throw new Error("The preview response has an unexpected format.");
   }
 
   const heading = result.ready ? "Scenario ready" : "Review the issues below";
@@ -582,9 +485,9 @@ function showPreview(result, status = "Preview loaded.", simulation = null) {
     content.push(section);
   }
   $("results").replaceChildren(...content);
-  preview = result;
-  $("save-preview").hidden = false;
-  previewStatus(status);
+  $("save-yard").hidden = typeof globalThis.saveStackingYard !== "function" ||
+    !result.branches.some(branch => branch.yard_map?.blocks.length);
+  previewStatus("Preview generated.");
 }
 
 for (const source of ["folder", "upload"]) {
@@ -596,6 +499,20 @@ for (const source of ["folder", "upload"]) {
 for (const [kind, key] of Object.entries(tomlEditors)) {
   showToml(kind, projectTomls[key] ?? "");
   const picker = $("load-" + kind);
+  const save = $("save-" + kind);
+  save.hidden = typeof globalThis.saveStackingToml !== "function";
+  save.addEventListener("click", () => action(async () => {
+    const document = tomlDocuments[kind];
+    const saved = await globalThis.saveStackingToml({
+      key, text: editedToml(document, true), expected: document.projectText
+    });
+    projectTomls[key] = saved;
+    projectTomlsLive = true;
+    showToml(kind, saved);
+    tomlDocuments[kind].saved = true;
+    if (kind === "input") showDatasets();
+    message();
+  }));
   $("choose-" + kind).addEventListener("click", () => picker.click());
   onFile(picker, async file => {
     showToml(kind, await readText(file), "Loaded " + file.name);
@@ -621,14 +538,10 @@ $("generate-preview").addEventListener("click", () => action(async () => {
   if (canReadProjectTomls && await refreshProjectTomls()) changed();
   previewStatus("Generating preview...");
   const {preview, simulation} = await globalThis.generateStackingPreview(buildDraft());
-  showPreview(preview, "Preview generated.", simulation);
+  showPreview(preview, simulation);
 }, previewStatus));
-$("save-preview").addEventListener("click", () => {
-  if (preview) downloadJson(preview, "stacking-scenario.preview.json");
-});
-$("save-draft").addEventListener("click", downloadDraft);
-$("choose-draft").addEventListener("click", () => $("load-draft").click());
-$("choose-preview").addEventListener("click", () => $("load-preview").click());
-onFile($("load-draft"), async file => loadDraft(JSON.parse(await readText(file))));
-onFile($("load-preview"), async file => showPreview(JSON.parse(await readText(file))));
+$("save-yard").addEventListener("click", () => action(async () => {
+  const path = await globalThis.saveStackingYard();
+  if (path) previewStatus("Saved " + path);
+}, previewStatus));
 

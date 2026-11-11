@@ -1,17 +1,74 @@
 """Advance a prepared yard one inbound CSV row at a time."""
 
+import csv
+from io import StringIO
 from math import isfinite
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from entities import Container
 from entities.bad_yard_data import PlacementRejected
 from entities.feasibility.placement_proposal import PlacementProposal
+from filewriter import ContainerFileWriter
+from repository.branch_repository import BranchDirectory
 
 from .yard_view import stack_view
 
 
+CONTAINERS_CSV_FIELDS = (
+    "CONTNO", "BRANCH", "BLOK", "ROW", "SLOT", "TIER", "PRINCIPAL", "DMG_FLAG", "FULLMT",
+    "OPERATION_TYPE", "CONTSIZE", "CONT_GRADE", "POL", "POT", "POD", "VESSEL_OPERATOR",
+    "VESSEL", "VOYAGE", "WEIGHT", "MOVE_TIME",
+)
+
+
 class SimulationError(ValueError):
-    """The requested step does not belong to the active run."""
+    """The request cannot be completed with the current simulation state."""
+
+
+def export_yard_csv(branches):
+    if not branches:
+        raise SimulationError("Generate a preview with a yard before saving containers.csv.")
+    buffer = StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=CONTAINERS_CSV_FIELDS, extrasaction="ignore")
+    writer.writeheader()
+    for branch in branches:
+        branch_codes = BranchDirectory(branch["inputs"]["terminal_branches"]).codes_by_id
+        container_writer = ContainerFileWriter("containers.csv", branch_codes=branch_codes)
+        writer.writerows(container_writer.buildRows(branch["yard"]))
+    return buffer.getvalue()
+
+
+def save_yard_csv(branches):
+    content = export_yard_csv(branches)
+    try:
+        from tkinter import TclError, Tk, filedialog
+    except ImportError as error:
+        raise SimulationError("Saving the yard CSV requires Python's Tk file dialog.") from error
+
+    try:
+        window = Tk()
+        try:
+            window.withdraw()
+            window.attributes("-topmost", True)
+            filename = filedialog.asksaveasfilename(
+                parent=window, title="Save yard CSV", initialfile="containers.csv",
+                defaultextension=".csv", filetypes=[("CSV files", "*.csv")],
+            )
+        finally:
+            window.destroy()
+    except TclError as error:
+        raise SimulationError(f"Could not open the Save yard CSV dialog. {error}") from error
+    if not filename:
+        return None
+
+    path = Path(filename)
+    with TemporaryDirectory(dir=path.parent) as directory:
+        temporary = Path(directory) / path.name
+        temporary.write_text(content, encoding="utf-8", newline="")
+        temporary.replace(path)
+    return str(path)
 
 
 def _number(value):

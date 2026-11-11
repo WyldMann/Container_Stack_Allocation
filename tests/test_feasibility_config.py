@@ -27,11 +27,13 @@ class FeasibilityConfigurationTests(unittest.TestCase):
 stacking_safety = false
 loader_access = true
 preserve_future_loader_access = false
+ignore_full_stacks_for_loader_access = true
 """
         )
         self.assertFalse(settings.stacking_safety)
         self.assertTrue(settings.loader_access)
         self.assertFalse(settings.preserve_future_loader_access)
+        self.assertTrue(settings.ignore_full_stacks_for_loader_access)
 
     def test_omitted_option_uses_default(self):
         settings = self.load_text(
@@ -43,6 +45,7 @@ loader_access = false
         self.assertTrue(settings.stacking_safety)
         self.assertFalse(settings.loader_access)
         self.assertTrue(settings.preserve_future_loader_access)
+        self.assertFalse(settings.ignore_full_stacks_for_loader_access)
 
     def test_unknown_option_is_rejected(self):
         with self.assertRaises(ConfigurationError):
@@ -54,7 +57,10 @@ loader_acess = false
             )
 
     def test_non_boolean_options_are_rejected(self):
-        for option in ("stacking_safety", "loader_access", "preserve_future_loader_access"):
+        for option in (
+            "stacking_safety", "loader_access", "preserve_future_loader_access",
+            "ignore_full_stacks_for_loader_access",
+        ):
             for value in ('"false"', "0", "1", "[]"):
                 with self.subTest(option=option, value=value):
                     with self.assertRaises(ConfigurationError):
@@ -89,7 +95,10 @@ loader_access = false
         self.assertFalse(settings.loader_access)
 
     def test_direct_settings_require_booleans(self):
-        for option in ("stacking_safety", "loader_access", "preserve_future_loader_access"):
+        for option in (
+            "stacking_safety", "loader_access", "preserve_future_loader_access",
+            "ignore_full_stacks_for_loader_access",
+        ):
             with self.subTest(option=option):
                 with self.assertRaises(TypeError):
                     FeasibilitySettings(**{option: "false"})

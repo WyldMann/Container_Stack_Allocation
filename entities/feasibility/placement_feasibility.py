@@ -150,6 +150,7 @@ class PlacementFeasibility:
         result = self.loader_access.evaluate(
             block, proposal, policy, context=context,
             preserve_future_loader_access=self.settings.preserve_future_loader_access,
+            ignore_full_stacks_for_loader_access=self.settings.ignore_full_stacks_for_loader_access,
         )
         if not result.destination_accessible:
             return RejectionReason.LOADER_DESTINATION_INACCESSIBLE

@@ -6,6 +6,7 @@ import io
 import json
 import math
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 import tomllib
 
 from config import DEFAULT_CONFIG_FILE, DEFAULT_CSV_MAPPING_FILE, DEFAULT_STACKING_INPUT_CONFIG_FILE
@@ -159,6 +160,32 @@ def draft_files(payload, profiles, input_document):
 
 def read_project_tomls():
     return {key: path.read_text(encoding="utf-8-sig") for key, path in TOML_FILES.items()}
+
+
+def save_project_toml(key, text, expected):
+    if not isinstance(key, str) or key not in TOML_FILES:
+        raise ConfigurationError("Choose a project TOML to save.")
+    path = TOML_FILES[key]
+    document = read_toml(text, path.name)
+    if key == "config_toml":
+        parse_config(document)
+    elif key == "mapping_toml":
+        if set(parse_mapping(document)) != set(SCHEMAS):
+            raise ConfigurationError("CSV mapping must define all nine stacking datasets.")
+    else:
+        parse_input_config(document, base_dir=path.parent)
+    with NamedTemporaryFile(dir=path.parent, encoding="utf-8", mode="w", newline="", delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            stream.write(text)
+            stream.close()
+            if path.read_text(encoding="utf-8-sig") != expected:
+                raise ConfigurationError(f"{path.name} changed on disk. Reload the project TOMLs before saving.")
+            temporary.replace(path)
+        finally:
+            stream.close()
+            temporary.unlink(missing_ok=True)
+    return path.read_text(encoding="utf-8-sig")
 
 
 def write_browser_defaults():

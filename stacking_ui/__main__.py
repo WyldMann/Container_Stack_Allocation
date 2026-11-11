@@ -14,9 +14,12 @@ import zipfile
 from config.application.config_loader import ConfigurationError
 from config.application.input_config import parse_input_config
 
-from .configuration import configuration, draft_files, dump_toml, portable_input, read_project_tomls, write_browser_defaults
+from .configuration import (
+    configuration, draft_files, dump_toml, portable_input, read_project_tomls, save_project_toml,
+    write_browser_defaults,
+)
 from .scenario import prepare_scenario, public_preview
-from .simulation import Simulation, SimulationError
+from .simulation import Simulation, SimulationError, export_yard_csv, save_yard_csv
 
 
 def open_setup():
@@ -55,16 +58,25 @@ def build_preview(draft):
 
 def serve_simulation():
     simulation = None
+    yard_branches = []
     for line in sys.stdin.buffer:
         try:
             request = json.loads(line)
             with redirect_stdout(sys.stderr):
                 if request.get("op") == "project_tomls":
                     result = read_project_tomls()
+                elif request.get("op") == "save_project_toml":
+                    result = save_project_toml(request.get("key"), request.get("text"), request.get("expected"))
+                elif request.get("op") == "yard_csv":
+                    result = export_yard_csv(yard_branches)
+                elif request.get("op") == "save_yard_csv":
+                    result = save_yard_csv(yard_branches)
                 elif request.get("op") == "preview":
                     scenario = prepare_draft(request.get("draft"))
                     result = {"preview": preview_document(scenario)}
                     simulation = Simulation(scenario)
+                    yard_branches = [branch for branch in scenario["branches"]
+                                     if branch["yard"] is not None and branch["yard"].blocks_by_id]
                     result["simulation"] = {"id": simulation.id, "branches": list(simulation.branches)}
                     del scenario
                 elif request.get("op") == "step" and simulation is not None:
@@ -139,7 +151,7 @@ def main(argv=None):
         preview = build_preview(draft)
         path = args.draft.with_suffix(".preview.json")
         path.write_text(json.dumps(preview, allow_nan=False, ensure_ascii=False), encoding="utf-8")
-        print(f"Load this preview in the setup page: {path}")
+        print(f"Preview saved to {path}")
         if args.bundle:
             bundle = args.draft.with_suffix(".zip")
             export_bundle(draft, bundle)

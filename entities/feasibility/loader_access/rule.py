@@ -55,6 +55,7 @@ class LoaderAccessRule:
         *,
         context: LoaderAccessContext | None = None,
         preserve_future_loader_access: bool = True,
+        ignore_full_stacks_for_loader_access: bool = False,
     ) -> LoaderAccessResult:
         self._validate_proposal(block, proposal)
         if context is None:
@@ -89,8 +90,19 @@ class LoaderAccessRule:
         return LoaderAccessResult(
             isolated_locations=tuple(location for location in isolated if location in receiving),
             destination_accessible=destination_accessible,
-            isolated_occupied_locations=tuple(location for location in isolated if location in occupied),
+            isolated_occupied_locations=tuple(
+                location for location in isolated
+                if location in occupied
+                and not (ignore_full_stacks_for_loader_access and self._is_full(block, location))
+            ),
         )
+
+    @staticmethod
+    def _is_full(block: Block, location: ReceivingLocation) -> bool:
+        row, slot = location.row_index, location.slot_index
+        if block.getStack(row, slot).availableTierInt() is not None:
+            return False
+        return location.container_size == "20" or block.getStack(row, slot - 1).availableTierInt() is None
 
     @staticmethod
     def _occupied_locations(block: Block, ground: Set[Position]) -> Iterator[ReceivingLocation]:

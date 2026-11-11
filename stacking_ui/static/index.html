@@ -23,13 +23,8 @@
 <main>
   <div id="message" role="status" aria-live="polite"></div>
   <section>
-    <div class="section-title">
-      <div><span class="eyebrow">01 / DATA</span><h2>Yard and inbound files</h2></div>
-      <div class="actions">
-        <button id="choose-draft" class="secondary" type="button">Load draft</button>
-        <input id="load-draft" type="file" accept=".json" hidden>
-      </div>
-    </div>
+    <span class="eyebrow">01 / DATA</span>
+    <h2>Yard and inbound files</h2>
     <fieldset class="file-sources">
       <legend>CSV source</legend>
       <label><input id="source-folder" type="radio" name="file-source" value="folder" checked> Use files in the project folder (default)</label>
@@ -49,20 +44,29 @@
     </div>
     <p id="project-toml-cache-note" class="note" hidden>These TOMLs are cached. Open <code>stacking_ui\open_setup.cmd</code> to read the current files from disk.</p>
     <details open>
-      <summary>Placement settings <span id="config-toml-source" class="toml-source" data-project-file="config.toml"></span></summary>
-      <button id="choose-config" type="button" class="secondary toml-choose">Choose a different TOML (optional)</button>
+      <summary>Placement settings <span id="config-toml-source" class="toml-source" data-project-file="config.toml" aria-live="polite"></span></summary>
+      <div class="actions toml-choose">
+        <button id="choose-config" type="button" class="secondary">Choose a different TOML (optional)</button>
+        <button id="save-config" type="button" class="secondary toml-save" disabled hidden>Save config.toml</button>
+      </div>
       <input type="file" id="load-config" accept=".toml" hidden>
       <div id="config-toml" class="toml-lines"></div>
     </details>
     <details id="stacking-inputs" open>
-      <summary>Stacking inputs <span id="input-toml-source" class="toml-source" data-project-file="container_stacking_input.toml"></span></summary>
-      <button id="choose-input" type="button" class="secondary toml-choose">Choose a different TOML (optional)</button>
+      <summary>Stacking inputs <span id="input-toml-source" class="toml-source" data-project-file="container_stacking_input.toml" aria-live="polite"></span></summary>
+      <div class="actions toml-choose">
+        <button id="choose-input" type="button" class="secondary">Choose a different TOML (optional)</button>
+        <button id="save-input" type="button" class="secondary toml-save" disabled hidden>Save container_stacking_input.toml</button>
+      </div>
       <input type="file" id="load-input" accept=".toml" hidden>
       <div id="input-toml" class="toml-lines"></div>
     </details>
     <details>
-      <summary>CSV column mappings <span id="mapping-toml-source" class="toml-source" data-project-file="csv_mapping.toml"></span></summary>
-      <button id="choose-mapping" type="button" class="secondary toml-choose">Choose a different TOML (optional)</button>
+      <summary>CSV column mappings <span id="mapping-toml-source" class="toml-source" data-project-file="csv_mapping.toml" aria-live="polite"></span></summary>
+      <div class="actions toml-choose">
+        <button id="choose-mapping" type="button" class="secondary">Choose a different TOML (optional)</button>
+        <button id="save-mapping" type="button" class="secondary toml-save" disabled hidden>Save csv_mapping.toml</button>
+      </div>
       <input type="file" id="load-mapping" accept=".toml" hidden>
       <div id="mapping-toml" class="toml-lines"></div>
     </details>
@@ -72,15 +76,12 @@
       <div><span class="eyebrow">03 / REVIEW</span><h2>Validate the scenario</h2></div>
       <div class="actions">
         <button id="generate-preview" type="button" hidden>Generate preview</button>
-        <button id="save-preview" class="secondary" type="button" hidden>Save preview</button>
-        <button id="save-draft" class="secondary" type="button">Save draft</button>
-        <button id="choose-preview" class="secondary" type="button">Load preview</button>
-        <input id="load-preview" type="file" accept=".json" hidden>
+        <button id="save-yard" class="secondary" type="button" hidden>Save yard CSV</button>
       </div>
     </div>
     <p id="preview-launch-note" hidden>Open <code>stacking_ui\open_setup.cmd</code> to generate a preview here.</p>
     <p id="preview-status" role="status" aria-live="polite"></p>
-    <div id="results"><div class="empty">Generate or load a preview to review the yard, inbound queue, and data issues.</div></div>
+    <div id="results"><div class="empty">Generate a preview to review the yard, inbound queue, and data issues.</div></div>
   </section>
 </main>
 <footer>Container stacking | Scenario preparation</footer>

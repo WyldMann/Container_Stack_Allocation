@@ -7,14 +7,17 @@ stacking_safety = true
 # RTG-served blocks are exempt.
 # With loader_access enabled, preserve_future_loader_access also protects
 # access to locations that can still receive containers.
+# Enable ignore_full_stacks_for_loader_access to allow placements that
+# cut off loader access to fully occupied stacks.
 loader_access = true
 preserve_future_loader_access = true
+ignore_full_stacks_for_loader_access = true
 
 
 [heuristic]
 # Disabled factors skip scoring and contribute a neutral multiplier of 1.
 enable_delta_container_mass = true
-enable_equipment_distance = true
+enable_equipment_distance = false
 enable_size_cluster = true
 
 # Maximum mass-compatibility score, reached when the incoming
@@ -44,10 +47,10 @@ no_delta_container_mass_value = 0.1
 # Maximum neighborhood distance considered for size clustering,
 # measured between the closest footprint cells in grid units.
 # Zero produces a neutral clustering multiplier.
-size_cluster_radius = 2
+size_cluster_radius = 1
 
 # Neighbor distance at which its clustering contribution halves.
-hl_size_cluster_distance = 1.0
+hl_size_cluster_distance = 0.5
 
 # Positive smoothing value that pulls clustering towards neutral.
 # Larger values reduce the influence of neighboring container sizes.
