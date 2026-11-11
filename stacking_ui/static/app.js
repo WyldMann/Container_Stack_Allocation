@@ -20,6 +20,17 @@ const tomlEditors = {
 const tomlDocuments = {};
 const loaderModes = ["off", "heuristic", "feasibility"];
 const loaderModeKeys = ["loader_access_mode", "preserve_future_loader_access_mode"];
+const loaderScoringOptions = [
+  {key: "loader_inaccessible_destination_multiplier", mode: "current", defaultValue: "0.25",
+    label: "Unreachable destination multiplier",
+    description: "Multiply the current access score by this value (0–1) when the loader cannot reach the destination."},
+  {key: "loader_occupied_access_loss_weight", mode: "current", defaultValue: "1.0",
+    label: "Occupied access loss weight",
+    description: "Higher values penalize cutting off occupied stacks more. Zero removes this score penalty."},
+  {key: "loader_future_access_loss_weight", mode: "future", defaultValue: "1.0",
+    label: "Future access loss weight",
+    description: "Higher values penalize cutting off future receiving options more. Zero removes this score penalty."}
+];
 const placementGroups = [
   {title: "Stacking safety", options: {
     "feasibility.stacking_safety": ["Enforce pyramid stacking",
@@ -33,7 +44,9 @@ const placementGroups = [
     "feasibility.preserve_future_loader_access_mode": ["Future loader access",
       "Keep locations with room for more containers reachable."],
     "feasibility.ignore_full_stacks_for_loader_access": ["Ignore full stacks",
-      "Exclude fully occupied stacks from the current access check."]
+      "Exclude fully occupied stacks from the current access check."],
+    ...Object.fromEntries(loaderScoringOptions.map(({key, label, description}) =>
+      ["heuristic." + key, [label, description]]))
   }},
   {title: "Weight compatibility", toggle: "heuristic.enable_delta_container_mass", options: {
     "heuristic.enable_delta_container_mass": ["Score weight compatibility",
@@ -116,7 +129,7 @@ async function action(task, report = message) {
     busy = false;
     controls.forEach(node => node.disabled = false);
     const {loaderAccess, placementRows} = tomlDocuments.config;
-    updateLoaderAccess(loaderAccess);
+    updateLoaderAccess(loaderAccess, placementRows);
     updatePlacementDependencies(placementRows);
     Object.keys(tomlEditors).forEach(updateTomlSave);
   }
@@ -239,7 +252,7 @@ function updatePlacementDependencies(rows) {
   for (const option of rows.get("heuristic.min_value") ?? []) setPlacementInactive(option, fallbackInactive);
 }
 
-function loaderAccessSwitch(access, key, prefix, value) {
+function loaderAccessSwitch(access, rows, key, prefix, value) {
   const future = key.startsWith("preserve_future_");
   const legacy = !key.endsWith("_mode");
   const modeKey = legacy ? key + "_mode" : key;
@@ -276,7 +289,7 @@ function loaderAccessSwitch(access, key, prefix, value) {
     control.choices.push(choice);
     choice.addEventListener("change", () => {
       control.select(mode);
-      updateLoaderAccess(access, !future);
+      updateLoaderAccess(access, rows, !future);
       updateTomlSave("config");
       changed();
     });
@@ -286,7 +299,7 @@ function loaderAccessSwitch(access, key, prefix, value) {
   return control;
 }
 
-function updateLoaderAccess(access, currentChanged = false) {
+function updateLoaderAccess(access, rows, currentChanged = false) {
   const current = access.loader_access_mode;
   const future = access.preserve_future_loader_access_mode;
   const mode = current?.mode ?? "feasibility";
@@ -303,10 +316,39 @@ function updateLoaderAccess(access, currentChanged = false) {
   }
   future?.option.classList.toggle("is-inactive", futureInactive);
   if (access.ignoreFull) setPlacementInactive(access.ignoreFull, mode === "off");
+  const effectiveModes = {current: mode, future: future?.mode ?? mode};
+  for (const {key, mode: scoringMode} of loaderScoringOptions) {
+    for (const option of rows.get("heuristic." + key) ?? []) {
+      setPlacementInactive(option, effectiveModes[scoringMode] !== "heuristic");
+    }
+  }
   if (access.note) {
     access.note.textContent = mode === "heuristic" && (future.mode ?? mode) === "heuristic" ?
       "Current loader access ranks first when both modes are Heuristic." :
       "Future loader access can use the current mode or a weaker mode.";
+  }
+}
+
+function addMissingLoaderWeights(rows, fields, source, offset) {
+  const separator = offset && source[offset - 1] !== "\n" ? "\n" : "";
+  for (const {key, defaultValue} of loaderScoringOptions) {
+    const path = "heuristic." + key;
+    if (rows.has(path)) continue;
+    const prefix = separator + (offset ? key : path) + " = ";
+    const input = el("input");
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.spellcheck = false;
+    input.value = defaultValue;
+    input.addEventListener("input", () => {
+      updateTomlSave("config");
+      changed();
+    });
+    const row = el("label", undefined, "toml-setting");
+    row.append(el("span"), input);
+    addPlacementOption(rows, path, row, input);
+    fields.push({start: offset, end: offset, input,
+      format: value => value === defaultValue ? "" : prefix + value + "\n"});
   }
 }
 
@@ -326,7 +368,9 @@ function showToml(kind, text, loadedFrom) {
   let section = "";
   let statementStart = 0;
   let feasibilityStart = 0;
+  let heuristicStart = 0;
   let inlineFeasibility = false;
+  let inlineHeuristic = false;
   const seenModes = new Set();
   const comments = [];
   for (let offset = 0; offset < source.length;) {
@@ -356,6 +400,10 @@ function showToml(kind, text, loadedFrom) {
       if (table) feasibilityStart = Math.min(lineEnd + 1, source.length);
       else if (match) inlineFeasibility = true;
     }
+    if (kind === "config" && root === "heuristic" && parts.length === 1) {
+      if (table) heuristicStart = Math.min(lineEnd + 1, source.length);
+      else if (match) inlineHeuristic = true;
+    }
     const omitted = omittedTomlPath(kind, parts);
     const inFileCards = kind === "input" && root === "csv" && key === "files";
     const isCsvPath = inFileCards && match && parts.length === 3 && Object.hasOwn(descriptions, dataset);
@@ -375,7 +423,7 @@ function showToml(kind, text, loadedFrom) {
         const value = source.slice(start, boundary).trimEnd();
         if (modeKey) {
           seenModes.add(modeKey);
-          const control = loaderAccessSwitch(loaderAccess, key, match[1], value);
+          const control = loaderAccessSwitch(loaderAccess, placementRows, key, match[1], value);
           if (control) {
             control.option = addPlacementOption(placementRows, optionPath, control.row, control.group);
             fields.push({start: offset, end: start + value.length, input: control.input});
@@ -446,12 +494,13 @@ function showToml(kind, text, loadedFrom) {
       const separator = feasibilityStart && source[feasibilityStart - 1] !== "\n" ? "\n" : "";
       for (const key of loaderModeKeys.filter(key => !seenModes.has(key))) {
         const prefix = separator + (feasibilityStart ? key : "feasibility." + key) + " = ";
-        const control = loaderAccessSwitch(loaderAccess, key, prefix, null);
+        const control = loaderAccessSwitch(loaderAccess, placementRows, key, prefix, null);
         control.option = addPlacementOption(placementRows, "feasibility." + key, control.row, control.group);
         fields.push({start: feasibilityStart, end: feasibilityStart, input: control.input});
       }
-      fields.sort((a, b) => a.start - b.start || a.end - b.end);
     }
+    if (!inlineHeuristic) addMissingLoaderWeights(placementRows, fields, source, heuristicStart);
+    fields.sort((a, b) => a.start - b.start || a.end - b.end);
     const future = loaderAccess.preserve_future_loader_access_mode;
     if (future) {
       loaderAccess.note = el("p", undefined, "placement-help");
@@ -461,7 +510,7 @@ function showToml(kind, text, loadedFrom) {
       future.option.append(loaderAccess.note);
     }
     showPlacementGroups(editor, placementRows);
-    updateLoaderAccess(loaderAccess);
+    updateLoaderAccess(loaderAccess, placementRows);
     updatePlacementDependencies(placementRows);
   }
   const status = $(kind + "-toml-source");
@@ -472,8 +521,9 @@ function showToml(kind, text, loadedFrom) {
   updateTomlSave(kind);
 }
 
-function tomlFieldValue(input) {
-  return input.type === "checkbox" ? String(input.checked) : input.value;
+function tomlFieldValue(input, format) {
+  const value = input.type === "checkbox" ? String(input.checked) : input.value;
+  return format ? format(value) : value;
 }
 
 async function refreshProjectTomls(replace = false) {
@@ -484,8 +534,8 @@ async function refreshProjectTomls(replace = false) {
   let refreshed = false;
   for (const [kind, key] of Object.entries(tomlEditors)) {
     const {source, fields, usesProject} = tomlDocuments[kind];
-    const unedited = usesProject && fields.every(({start, end, input}) =>
-      !input || tomlFieldValue(input) === source.slice(start, end));
+    const unedited = usesProject && fields.every(({start, end, input, format}) =>
+      !input || tomlFieldValue(input, format) === source.slice(start, end));
     if (replace || (unedited && (!wasLive || source !== fresh[key].replace(/\r\n?/g, "\n")))) {
       showToml(kind, fresh[key]);
       refreshed = true;
@@ -498,9 +548,9 @@ async function refreshProjectTomls(replace = false) {
 function editedToml({source, fields}, preserveHidden = false) {
   let cursor = 0;
   let result = "";
-  for (const {start, end, input} of fields) {
+  for (const {start, end, input, format} of fields) {
     if (!input && preserveHidden) continue;
-    result += source.slice(cursor, start) + (input ? tomlFieldValue(input) : "");
+    result += source.slice(cursor, start) + (input ? tomlFieldValue(input, format) : "");
     cursor = end;
   }
   return result + source.slice(cursor);

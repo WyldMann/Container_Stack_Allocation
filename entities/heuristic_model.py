@@ -114,21 +114,24 @@ class HeuristicModel:
         else:
             return self.w_equipment_distance * self.decayFormula(self.lambda_equipment_distance,equipment_distance)
 
-    @staticmethod
     def loader_access_multipliers(
-        access: LoaderAccessResult | None, *, score_current: bool, score_future: bool,
+        self, access: LoaderAccessResult | None, *, score_current: bool, score_future: bool,
     ) -> tuple[float, float]:
         if access is None:
             return 1.0, 1.0
         current = 1.0
         if score_current:
-            destination_factor = 1.0 if access.destination_accessible else 0.25
-            current = destination_factor / (1 + len(access.isolated_occupied_locations))
+            destination_factor = (
+                1.0 if access.destination_accessible else self.settings.loader_inaccessible_destination_multiplier
+            )
+            occupied_loss = self.settings.loader_occupied_access_loss_weight * len(access.isolated_occupied_locations)
+            current = destination_factor / (1 + occupied_loss)
         future = 1.0
         if score_future:
             # Receiving options are distinct by anchor and size. An occupied stack
             # with room left can lose both existing service and future capacity.
-            future = 1.0 / (1 + len(access.isolated_locations))
+            future_loss = self.settings.loader_future_access_loss_weight * len(access.isolated_locations)
+            future = 1.0 / (1 + future_loss)
         return current, future
 
     #multiplicative weights

@@ -3,11 +3,13 @@ from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from config.application.config_loader import parse_config
 from entities import Container
 from entities.bad_yard_data import PlacementRejected
 from entities.equipment import Loader, RTG
-from entities.feasibility.loader_access import LoaderBorderAccessPolicy
+from entities.feasibility.loader_access import LoaderAccessResult, LoaderBorderAccessPolicy, ReceivingLocation
 from entities.feasibility.placement_feasibility import RejectionReason
+from entities.heuristic_model import HeuristicModel
 from entities.yard import Yard
 from stacking_ui.simulation import _calculation
 
@@ -159,6 +161,36 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
             candidate, = yard.bestCoordCandidate(self.container, [coordinate])
             self.assertIsNone(candidate.loader_access)
             self.assertEqual(candidate.evaluation_score, 1.0)
+
+    def test_configured_loader_weights_are_applied_only_in_heuristic_mode(self):
+        settings = parse_config({
+            "feasibility": {"loader_access_mode": "heuristic"},
+            "heuristic": {
+                "loader_inaccessible_destination_multiplier": 0.6,
+                "loader_occupied_access_loss_weight": 2,
+                "loader_future_access_loss_weight": 0.5,
+            },
+        })
+        yard = self.yard
+        yard.feasibility.settings = settings.feasibility
+        yard.model = HeuristicModel(settings.heuristic)
+        coordinate = ("A", 1, 1, 0)
+        occupied = ReceivingLocation(1, 2, "20")
+        access = LoaderAccessResult(
+            destination_accessible=False,
+            isolated_occupied_locations=(occupied,),
+            isolated_locations=(occupied, ReceivingLocation(1, 3, "40")),
+        )
+        with patch.object(yard, "modelEval", return_value=(None, None, 0.0, 1.0, 10.0)):
+            candidate, = yard.bestCoordCandidate(self.container, [coordinate], loader_access_results={coordinate: access})
+            self.assertAlmostEqual(candidate.loader_access_multiplier, 0.2)
+            self.assertEqual(candidate.future_loader_access_multiplier, 0.5)
+            self.assertAlmostEqual(candidate.evaluation_score, 1.0)
+
+            yard.feasibility.settings = replace(settings.feasibility, preserve_future_loader_access_mode="off")
+            candidate, = yard.bestCoordCandidate(self.container, [coordinate], loader_access_results={coordinate: access})
+            self.assertEqual(candidate.future_loader_access_multiplier, 1.0)
+            self.assertAlmostEqual(candidate.evaluation_score, 2.0)
 
     def test_ignoring_full_stacks_preserves_access_to_partially_occupied_stacks(self):
         evaluator = self.yard.feasibility

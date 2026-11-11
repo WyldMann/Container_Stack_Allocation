@@ -58,3 +58,12 @@ size_cluster_prior = 2.0
 # Strength of the clustering reward for matching sizes and penalty
 # for different sizes. Zero produces a neutral multiplier of 1.
 size_cluster_bias = 2.0
+
+# Current loader-access score multiplier for an unreachable destination (0 to 1).
+loader_inaccessible_destination_multiplier = 0.25
+
+# Current access score divides by 1 plus this weight per occupied location losing access.
+loader_occupied_access_loss_weight = 1.0
+
+# Future access score divides by 1 plus this weight per receiving option losing access.
+loader_future_access_loss_weight = 1.0

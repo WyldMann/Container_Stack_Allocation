@@ -18,6 +18,9 @@ class HeuristicSettings:
     enable_delta_container_mass: bool = True
     enable_equipment_distance: bool = True
     enable_size_cluster: bool = True
+    loader_inaccessible_destination_multiplier: float = 0.25
+    loader_occupied_access_loss_weight: float = 1.0
+    loader_future_access_loss_weight: float = 1.0
 
     def __post_init__(self) -> None:
         radius = self.size_cluster_radius
@@ -43,7 +46,13 @@ class HeuristicSettings:
                 finite = False
             if not finite:
                 raise ValueError(f"{name} must be finite.")
-            if name == "size_cluster_bias":
+            if name == "loader_inaccessible_destination_multiplier":
+                if not 0 <= value <= 1:
+                    raise ValueError(f"{name} must be between 0 and 1.")
+            elif name in (
+                "size_cluster_bias", "loader_occupied_access_loss_weight",
+                "loader_future_access_loss_weight",
+            ):
                 if value < 0:
                     raise ValueError(f"{name} must be non-negative.")
             elif value <= 0:

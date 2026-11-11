@@ -55,12 +55,26 @@ class HeuristicConfigTests(unittest.TestCase):
                 values += ('1.5',)
             else:
                 values += ('nan', 'inf', '-inf')
-                if field.name != 'size_cluster_bias':
+                if field.name not in (
+                    'size_cluster_bias', 'loader_inaccessible_destination_multiplier',
+                    'loader_occupied_access_loss_weight', 'loader_future_access_loss_weight',
+                ):
                     values += ('0',)
             for value in values:
                 with self.subTest(field=field.name, value=value):
                     with self.assertRaises(ConfigurationError):
                         self.load_text(f'[heuristic]\n{field.name} = {value}\n')
+
+    def test_loader_weights_allow_zero_and_limit_destination_multiplier(self):
+        for name in (
+            'loader_inaccessible_destination_multiplier', 'loader_occupied_access_loss_weight',
+            'loader_future_access_loss_weight',
+        ):
+            with self.subTest(name=name):
+                settings = self.load_text(f'[heuristic]\n{name} = 0\n').heuristic
+                self.assertEqual(getattr(settings, name), 0)
+        with self.assertRaisesRegex(ConfigurationError, 'between 0 and 1'):
+            self.load_text('[heuristic]\nloader_inaccessible_destination_multiplier = 1.1\n')
 
     def test_factor_switches_accept_booleans_and_preserve_other_defaults(self):
         for name in ('enable_delta_container_mass', 'enable_equipment_distance', 'enable_size_cluster'):
