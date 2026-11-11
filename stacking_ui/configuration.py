@@ -102,11 +102,11 @@ def configuration(payload):
         section.setdefault("filters", {})["branch_code"] = payload["branch_codes"]
     # Older drafts contain the selected files and have no explicit source mode.
     source = payload.get("file_source", "upload")
-    if source not in ("folder", "upload"):
-        raise ConfigurationError("file_source must be 'folder' or 'upload'.")
+    if source not in ("folder", "upload", "bundle"):
+        raise ConfigurationError("file_source must be 'folder', 'upload', or 'bundle'.")
     portable = portable_input(input_document)
     inputs = portable
-    if source == "folder":
+    if source in ("folder", "bundle"):
         inputs = {key: value for key, value in input_document.items() if key != "sql"}
         inputs["input"] = portable["input"]
     return settings, mapping, profiles, inputs
@@ -131,7 +131,8 @@ def draft_files(payload, profiles, input_document):
         raise ConfigurationError("files must contain only known stacking datasets.")
     templates = empty_csv_templates(profiles)
     folder_paths = {}
-    if payload.get("file_source") == "folder":
+    source = payload.get("file_source")
+    if source in ("folder", "bundle"):
         settings = parse_input_config(input_document, base_dir=DEFAULT_STACKING_INPUT_CONFIG_FILE.parent)
         folder_paths = settings["csv_files"]
 
@@ -140,6 +141,8 @@ def draft_files(payload, profiles, input_document):
         upload = selected.get(name)
         if isinstance(upload, dict) and upload.get("empty") is True:
             files[name] = {"name": name + ".csv", "content": templates[name]}
+        elif source == "bundle" and name in selected:
+            files[name] = upload
         elif name in folder_paths:
             path = folder_paths[name]
             display_path = input_document["csv"]["files"][name]
@@ -162,7 +165,7 @@ def read_project_tomls():
     return {key: path.read_text(encoding="utf-8-sig") for key, path in TOML_FILES.items()}
 
 
-def save_project_toml(key, text, expected):
+def validate_project_toml(key, text):
     if not isinstance(key, str) or key not in TOML_FILES:
         raise ConfigurationError("Choose a project TOML to save.")
     path = TOML_FILES[key]
@@ -174,6 +177,11 @@ def save_project_toml(key, text, expected):
             raise ConfigurationError("CSV mapping must define all nine stacking datasets.")
     else:
         parse_input_config(document, base_dir=path.parent)
+    return path
+
+
+def save_project_toml(key, text, expected):
+    path = validate_project_toml(key, text)
     with NamedTemporaryFile(dir=path.parent, encoding="utf-8", mode="w", newline="", delete=False) as stream:
         temporary = Path(stream.name)
         try:

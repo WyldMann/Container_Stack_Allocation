@@ -1,5 +1,28 @@
 # Container stacking scenario setup
 
+## Share the standalone simulator
+
+Extract the standalone ZIP and open **index.html** in Chrome or Microsoft Edge. Keep the
+files together. The package includes the Python engine, the interface, and a
+snapshot of the stacking CSVs and TOMLs. It runs without a server or a separate
+Python or Node.js installation.
+
+Use **Replace selected CSVs** to replace any bundled dataset, or load a
+different TOML in its editor. The Save buttons export TOMLs and
+**containers.csv** through the browser.
+
+To build a new snapshot from the project root, extract the
+[Pyodide 0.27.7 npm archive](https://registry.npmjs.org/pyodide/-/pyodide-0.27.7.tgz).
+Save the [Pyodide license](https://github.com/pyodide/pyodide/blob/0.27.7/LICENSE)
+as **LICENSE** and the [CPython 3.12 license](https://github.com/python/cpython/blob/3.12/LICENSE)
+as **LICENSE-Python** in the extracted **package** directory. Then run:
+
+```powershell
+.\.venv\Scripts\python.exe -m stacking_ui.standalone path\to\package output\container-stacking-standalone.zip
+```
+
+## Project launcher
+
 Double-click `stacking_ui/open_setup.cmd` on Windows, or run the following from
 the project root.
 

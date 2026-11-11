@@ -1,7 +1,6 @@
 """Open the setup page or validate a saved stacking draft."""
 
 import argparse
-from contextlib import redirect_stdout
 from dataclasses import asdict
 from pathlib import Path
 import json
@@ -14,12 +13,8 @@ import zipfile
 from config.application.config_loader import ConfigurationError
 from config.application.input_config import parse_input_config
 
-from .configuration import (
-    configuration, draft_files, dump_toml, portable_input, read_project_tomls, save_project_toml,
-    write_browser_defaults,
-)
-from .scenario import prepare_scenario, public_preview
-from .simulation import Simulation, SimulationError, export_yard_csv, save_yard_csv
+from .configuration import configuration, draft_files, dump_toml, portable_input, write_browser_defaults
+from .session import SimulationSession, prepare_draft, preview_document
 
 
 def open_setup():
@@ -42,51 +37,14 @@ def open_setup():
         raise OSError("The setup window could not be opened.")
 
 
-def prepare_draft(draft):
-    if not isinstance(draft, dict) or draft.get("version") != 1 or "files" not in draft:
-        raise ConfigurationError("Expected a saved stacking scenario draft.")
-    return prepare_scenario(draft)
-
-
-def preview_document(scenario):
-    return {"version": 1, "kind": "stacking-preview", **public_preview(scenario)}
-
-
 def build_preview(draft):
     return preview_document(prepare_draft(draft))
 
 
 def serve_simulation():
-    simulation = None
-    yard_branches = []
+    session = SimulationSession()
     for line in sys.stdin.buffer:
-        try:
-            request = json.loads(line)
-            with redirect_stdout(sys.stderr):
-                if request.get("op") == "project_tomls":
-                    result = read_project_tomls()
-                elif request.get("op") == "save_project_toml":
-                    result = save_project_toml(request.get("key"), request.get("text"), request.get("expected"))
-                elif request.get("op") == "yard_csv":
-                    result = export_yard_csv(yard_branches)
-                elif request.get("op") == "save_yard_csv":
-                    result = save_yard_csv(yard_branches)
-                elif request.get("op") == "preview":
-                    scenario = prepare_draft(request.get("draft"))
-                    result = {"preview": preview_document(scenario)}
-                    simulation = Simulation(scenario)
-                    yard_branches = [branch for branch in scenario["branches"]
-                                     if branch["yard"] is not None and branch["yard"].blocks_by_id]
-                    result["simulation"] = {"id": simulation.id, "branches": list(simulation.branches)}
-                    del scenario
-                elif request.get("op") == "step" and simulation is not None:
-                    result = simulation.step(request.get("id"), request.get("branch"), request.get("position"))
-                else:
-                    raise SimulationError("Generate a preview before running the simulation.")
-            response = {"result": result}
-        except (ConfigurationError, OSError, SimulationError, UnicodeError) as error:
-            response = {"error": str(error)}
-        print(json.dumps(response, allow_nan=False), flush=True)
+        print(session.handle_json(line), flush=True)
 
 
 def export_bundle(payload, path):

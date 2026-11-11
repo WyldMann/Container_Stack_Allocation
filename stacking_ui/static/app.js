@@ -18,6 +18,7 @@ const tomlEditors = {
   mapping: "mapping_toml"
 };
 const tomlDocuments = {};
+const standalone = globalThis.stackingStandalone === true;
 const canReadProjectTomls = typeof globalThis.readStackingTomls === "function";
 let projectTomls = typeof TOML_DEFAULTS === "undefined" ? {} : TOML_DEFAULTS;
 let projectTomlsLive = false;
@@ -223,7 +224,7 @@ function showToml(kind, text, loadedFrom) {
     for (const comment of comments) editor.append(el("p", comment, "toml-comment"));
   }
   const status = $(kind + "-toml-source");
-  const origin = projectTomlsLive ? "Loaded project TOML: " :
+  const origin = standalone ? "Loaded bundled TOML: " : projectTomlsLive ? "Loaded project TOML: " :
     projectTomls[tomlEditors[kind]] != null ? "Cached project TOML: " : "Project TOML unavailable: ";
   tomlDocuments[kind].sourceLabel = loadedFrom ?? (origin + status.dataset.projectFile);
   updateTomlSave(kind);
@@ -271,7 +272,7 @@ function updateTomlSave(kind) {
   $("save-" + kind).disabled = busy || !dirty;
   const status = $(kind + "-toml-source");
   const label = dirty ? document.sourceLabel + " · Unsaved changes" :
-    document.saved ? "Saved " + status.dataset.projectFile : document.sourceLabel;
+    document.saved ? (standalone ? "Exported " : "Saved ") + status.dataset.projectFile : document.sourceLabel;
   if (status.textContent !== label) status.textContent = label;
 }
 
@@ -279,7 +280,7 @@ function buildDraft() {
   const useFolder = $("source-folder").checked;
   const draft = {
     version: 1,
-    file_source: useFolder ? "folder" : "upload",
+    file_source: standalone ? "bundle" : useFolder ? "folder" : "upload",
     files: useFolder ? Object.fromEntries(Object.entries(files).filter(([, upload]) => upload.empty === true)) : files
   };
   for (const [kind, key] of Object.entries(tomlEditors)) {
@@ -291,9 +292,11 @@ function buildDraft() {
 function showDatasets() {
   const grid = $("datasets");
   const useFolder = $("source-folder").checked;
-  $("source-description").textContent = useFolder
-    ? "Use the prefilled CSV paths or edit them below. Relative paths start in config/container_stacking. Keep the quotes around each path."
-    : "Choose a UTF-8 CSV for each dataset, or mark it explicitly empty.";
+  $("source-description").textContent = standalone
+    ? (useFolder ? "Use the CSVs included in this package." : "Choose replacement UTF-8 CSVs. Datasets without a replacement use their bundled CSV.")
+    : (useFolder
+      ? "Use the prefilled CSV paths or edit them below. Relative paths start in config/container_stacking. Keep the quotes around each path."
+      : "Choose a UTF-8 CSV for each dataset, or mark it explicitly empty.");
   grid.replaceChildren();
   for (const [name, [title, description]] of Object.entries(descriptions)) {
     const card = el("div", undefined, "dataset");
@@ -308,8 +311,10 @@ function showDatasets() {
     const empty = el("input");
     empty.type = "checkbox";
     empty.checked = upload?.empty === true;
-    const csvPath = useFolder ? tomlDocuments.input.csvPaths.get(name) : undefined;
-    const sourceLabel = useFolder ? (csvPath ? "" : "Use configured CSV path") : "No file selected";
+    const pathField = tomlDocuments.input.csvPaths.get(name);
+    const csvPath = useFolder && !standalone ? pathField : undefined;
+    const sourceLabel = standalone ? (pathField ? tomlFieldValue(pathField) : "Use configured CSV path") :
+      useFolder ? (csvPath ? "" : "Use configured CSV path") : "No file selected";
     const filename = el("div", empty.checked ? "Explicitly empty dataset" :
       (useFolder ? sourceLabel : upload?.name ?? sourceLabel), "filename");
 
@@ -507,8 +512,9 @@ for (const [kind, key] of Object.entries(tomlEditors)) {
       key, text: editedToml(document, true), expected: document.projectText
     });
     projectTomls[key] = saved;
-    projectTomlsLive = true;
-    showToml(kind, saved);
+    if (!standalone) projectTomlsLive = true;
+    const name = $(kind + "-toml-source").dataset.projectFile;
+    showToml(kind, saved, standalone ? "Exported " + name : undefined);
     tomlDocuments[kind].saved = true;
     if (kind === "input") showDatasets();
     message();
@@ -524,7 +530,7 @@ for (const [kind, key] of Object.entries(tomlEditors)) {
 showDatasets();
 const tomlActions = $("project-toml-actions");
 tomlActions.hidden = !canReadProjectTomls;
-$("project-toml-cache-note").hidden = canReadProjectTomls;
+$("project-toml-cache-note").hidden = canReadProjectTomls || standalone;
 $("reload-project-tomls").addEventListener("click", () => action(async () => {
   await refreshProjectTomls(true);
   changed();
@@ -542,6 +548,6 @@ $("generate-preview").addEventListener("click", () => action(async () => {
 }, previewStatus));
 $("save-yard").addEventListener("click", () => action(async () => {
   const path = await globalThis.saveStackingYard();
-  if (path) previewStatus("Saved " + path);
+  if (path) previewStatus((standalone ? "Exported " : "Saved ") + path);
 }, previewStatus));
 
