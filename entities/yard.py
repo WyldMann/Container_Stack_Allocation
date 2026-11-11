@@ -11,6 +11,7 @@ from .equipment import RTG,Loader,Equipment
 from .stack import Stack
 from .block import Block
 from .feasibility import PlacementFeasibility, PlacementProposal, LoaderBorderAccessPolicy
+from .feasibility.loader_access import LoaderAccessResult
 
 from .bad_yard_data import BadYardData
 
@@ -371,6 +372,7 @@ class Yard:
 
     def findCoordsCandidates(
         self, container: Container, *, rejection_counts: dict[str, int] | None = None,
+        loader_access_results: dict[tuple[str, int, int, int], LoaderAccessResult] | None = None,
     ) -> tuple[float, dict[str, float], list[tuple[str, int, int, int]]]:
         max_score : float = 0
         candidate_coordinates : list[tuple[str,int,int,int]] = []
@@ -410,27 +412,29 @@ class Yard:
                     # if tie
                     if max_score == current_score:
                         # if container has no fulfillable parameters, put it in stacks with no parameters
-                        if max_score == 0:
-                            if not stack.getParameters():
-                                candidate_coordinates.append(current_coords)
-                        # if container has fulfilabe parameters, stack is another candidate
-                        else:
-                            candidate_coordinates.append(current_coords)
+                        if max_score == 0 and stack.getParameters():
+                            continue
+                        candidate_coordinates.append(current_coords)
                     # if new stack with better higher parameter score is found, reset coordscandidates with new max parameter score
                     elif max_score < current_score:
                         max_score = current_score
                         candidate_coordinates = [current_coords]
+                        if loader_access_results is not None:
+                            loader_access_results.clear()
+                    else:
+                        continue
+                    if loader_access_results is not None and result.loader_access is not None:
+                        loader_access_results[current_coords] = result.loader_access
         return max_score,parameter_scores,candidate_coordinates
 
     def assignContainer(self, container, *, trace: dict | None = None) -> AssignResult | None:
         self.bad_data.validateInboundContainer(container, self.containers)
-        if trace is None:
-            max_score, parameter_scores, candidate_coordinates = self.findCoordsCandidates(container)
-        else:
-            rejections = {}
-            max_score, parameter_scores, candidate_coordinates = self.findCoordsCandidates(
-                container, rejection_counts=rejections,
-            )
+        access_results = {}
+        rejections = {} if trace is not None else None
+        max_score, parameter_scores, candidate_coordinates = self.findCoordsCandidates(
+            container, rejection_counts=rejections, loader_access_results=access_results,
+        )
+        if trace is not None:
             trace.update(
                 checked=sum(len(row) for block in self.blocks_by_id.values() for row in block.getSlots()),
                 rejections=rejections,
@@ -444,7 +448,7 @@ class Yard:
             container,
             parameter_scores,
             max_score,
-            self.bestCoordCandidate(container, candidate_coordinates),
+            self.bestCoordCandidate(container, candidate_coordinates, loader_access_results=access_results),
         )
 
     def placeContainerWithAssignResult(self, result: AssignResult) -> None:
@@ -522,17 +526,43 @@ class Yard:
         return (delta_container_mass, equipment, distance, multiplier,
                 self.model.evaluate(delta_container_mass, distance, multiplier))
 
-    # returns a list of CandidateEvaluation with highest eval_score to lowest
-    def bestCoordCandidate(self,container, candidate_coordinates: list[tuple[str,int,int,int]]) -> list[CandidateEvaluation]:
-        # [(coord,eval_score)...] sorted from highest to lowest eval_score
-        sorted_candidate_evaluations = sorted(
-            [CandidateEvaluation(coordinate,
-                self.getStack(coordinate[0],coordinate[1],coordinate[2]).getParameters(),
-                                 *self.modelEval(container,coordinate)) for coordinate in candidate_coordinates],
-            key = lambda candidate: candidate.evaluation_score,
-            reverse = True
+    def bestCoordCandidate(
+        self, container, candidate_coordinates: list[tuple[str, int, int, int]], *,
+        loader_access_results: dict[tuple[str, int, int, int], LoaderAccessResult] | None = None,
+    ) -> list[CandidateEvaluation]:
+        """Rank the coordinates that advanced from feasibility and parameter selection."""
+        settings = self.feasibility.settings
+        score_current = settings.effective_loader_access_mode == "heuristic"
+        score_future = settings.effective_future_loader_access_mode == "heuristic"
+        prioritize_current_access = settings.prioritize_current_loader_access
+        candidates = []
+        for coordinate in candidate_coordinates:
+            block_id, row, slot, _ = coordinate
+            if loader_access_results is not None:
+                access = loader_access_results.get(coordinate)
+            elif score_current or score_future:
+                # Direct callers can supply coordinates without a prior search.
+                access = self.feasibility.evaluate(
+                    container, self.getBlockByID(block_id), row, slot,
+                    loader_policy=self.loader_access_policies.get(block_id),
+                ).loader_access
+            else:
+                access = None
+            current, future = self.model.loader_access_multipliers(
+                access, score_current=score_current, score_future=score_future,
+            )
+            mass, equipment, distance, cluster, score = self.modelEval(container, coordinate)
+            candidates.append(CandidateEvaluation(
+                coordinate, self.getStack(block_id, row, slot).getParameters(),
+                mass, equipment, distance, cluster, score * current * future,
+                loader_access=access, loader_access_multiplier=current,
+                future_loader_access_multiplier=future,
+            ))
+        return sorted(
+            candidates,
+            key=lambda candidate: candidate.ranking_key(prioritize_current_access),
+            reverse=True,
         )
-        return sorted_candidate_evaluations
 
     def assign_and_place(self,container) -> AssignResult | None:
         result = self.assignContainer(container)

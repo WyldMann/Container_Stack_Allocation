@@ -1,7 +1,6 @@
 """Open the setup page or validate a saved stacking draft."""
 
 import argparse
-from dataclasses import asdict
 from pathlib import Path
 import json
 import os
@@ -56,7 +55,7 @@ def export_bundle(payload, path):
 
     files = draft_files(payload, profiles, inputs)
     contents = {
-        "config.toml": dump_toml(asdict(settings)),
+        "config.toml": dump_toml(settings.to_document()),
         "csv_mapping.toml": dump_toml(mapping),
         "container_stacking_input.toml": dump_toml(portable),
     }

@@ -1,6 +1,5 @@
 """Configuration and CSV sources for offline stacking drafts."""
 
-from dataclasses import asdict
 import csv
 import io
 import json
@@ -213,7 +212,7 @@ def defaults():
     return {
         "version": 1,
         "config_toml": config_text,
-        "settings": asdict(parse_config(read_toml(config_text, "Stacking settings"))),
+        "settings": parse_config(read_toml(config_text, "Stacking settings")).to_document(),
         "mapping_toml": mapping_text,
         "input_toml": dump_toml(portable_input(read_toml(
             DEFAULT_STACKING_INPUT_CONFIG_FILE.read_text(encoding="utf-8"), "Stacking inputs"))),

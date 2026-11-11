@@ -354,6 +354,23 @@ class ScenarioTests(unittest.TestCase):
         with self.assertRaises(ConfigurationError):
             parse_config({"heuristc": {}})
 
+    def test_simulator_validates_loader_modes_and_round_trips_mixed_mode(self):
+        self.payload["config_toml"] = (
+            '[feasibility]\nloader_access_mode = "heuristic"\n'
+            'preserve_future_loader_access_mode = "feasibility"\n'
+        )
+        with self.assertRaisesRegex(ConfigurationError, "exceeds"):
+            prepare_scenario(self.payload)
+        self.payload["config_toml"] = (
+            '[feasibility]\nloader_access_mode = "feasibility"\n'
+            'preserve_future_loader_access_mode = "heuristic"\n'
+        )
+        preview = self.preview()
+        self.assertTrue(preview["ready"], preview)
+        settings = parse_config(tomllib.loads(preview["config_toml"])).feasibility
+        self.assertEqual(settings.effective_loader_access_mode, "feasibility")
+        self.assertEqual(settings.effective_future_loader_access_mode, "heuristic")
+
     def test_worker_reads_current_project_tomls_on_each_request(self):
         with TemporaryDirectory() as directory:
             files = {key: Path(directory) / (key + ".toml") for key in ("config_toml", "input_toml", "mapping_toml")}

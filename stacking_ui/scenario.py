@@ -7,7 +7,6 @@ No placements, output CSV writes, or changes to project configuration occur.
 
 from collections import Counter, defaultdict, deque
 import csv
-from dataclasses import asdict
 from pathlib import Path
 import tempfile
 import warnings
@@ -43,7 +42,7 @@ def prepare_scenario(payload):
     files = draft_files(payload, profiles, input_document)
     input_document = portable_input(input_document)
     result = {"branches": [], "issues": [], "datasets": {},
-              "config_toml": dump_toml(asdict(settings)),
+              "config_toml": dump_toml(settings.to_document()),
               "mapping_toml": dump_toml(mapping), "input_toml": dump_toml(input_document)}
     source_records = {}
     with tempfile.TemporaryDirectory(prefix="stacking-import-") as temporary:

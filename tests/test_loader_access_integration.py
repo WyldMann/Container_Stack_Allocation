@@ -1,12 +1,15 @@
 import unittest
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from entities.equipment import RTG
+from entities import Container
+from entities.bad_yard_data import PlacementRejected
+from entities.equipment import Loader, RTG
 from entities.feasibility.loader_access import LoaderBorderAccessPolicy
 from entities.feasibility.placement_feasibility import RejectionReason
 from entities.yard import Yard
+from stacking_ui.simulation import _calculation
 
 
 class LoaderAccessIntegrationTests(unittest.TestCase):
@@ -73,6 +76,89 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
         self.block.getStack(0, 0).addContainer(self.container, 0)
         result = evaluator.evaluate(self.container, self.block, 1, 0)
         self.assertEqual(result.rejection_reason, RejectionReason.LOADER_DESTINATION_INACCESSIBLE)
+
+    def test_future_heuristic_lowers_rank_and_commit_still_checks_occupied_access(self):
+        yard = self.yard
+        yard.feasibility.settings = replace(
+            yard.feasibility.settings,
+            loader_access_mode="feasibility",
+            preserve_future_loader_access_mode="heuristic",
+            ignore_full_stacks_for_loader_access=True,
+        )
+        for row, slot in ((0, 0), (0, 1), (1, 0), (1, 1)):
+            self.set_stack(row, slot)
+        loader = Loader("L", ("A", 0, 0))
+        yard.master_loaders.append(loader)
+        self.block.addLoader(loader)
+        container = Container(
+            container_id="NEW", principal="", container_condition="", container_fill="",
+            container_size="20", container_grade="", pol="", pod="", vessel="",
+            voyage="", weight="", move_time="",
+        )
+        trace = {}
+        # Hold other heuristic factors equal so only future access determines rank.
+        with patch.object(yard, "modelEval", return_value=(None, loader, 0.0, 1.0, 1.0)):
+            result = yard.assignContainer(container, trace=trace)
+        entry = next(candidate for candidate in result.sorted_candidate_evaluations
+                     if candidate.coordinates == ("A", 0, 0, 0))
+        self.assertIn("40", [location.container_size for location in entry.loader_access.isolated_locations])
+        self.assertLess(entry.future_loader_access_multiplier, 1.0)
+        self.assertEqual(entry.loader_access_multiplier, 1.0)
+        self.assertGreater(result.getBestCandidate().evaluation_score, entry.evaluation_score)
+        calculation = _calculation(yard, trace, result)
+        self.assertIn("future_loader_access_multiplier", calculation["enabled_multipliers"])
+        display = next(candidate for candidate in calculation["candidates"]
+                       if (candidate["row"], candidate["slot"]) == (1, 1))
+        self.assertTrue(display["loader_destination_accessible"])
+        self.assertEqual(display["isolated_occupied_locations"], 0)
+        self.assertEqual(display["isolated_future_locations"], len(entry.loader_access.isolated_locations))
+
+        # The search result becomes stale when an occupied stack needs the route.
+        self.set_stack(1, 0, count=1)
+        with self.assertRaisesRegex(PlacementRejected, "loader_occupied_access_blocked"):
+            yard.placeContainer(container, entry.coordinates, loader)
+        self.set_stack(1, 0)
+        yard.placeContainer(container, entry.coordinates, loader)
+        self.assertIs(yard.containers["NEW"], container)
+
+    def test_both_heuristics_give_current_access_priority_over_score(self):
+        yard = self.yard
+        yard.feasibility.settings = replace(
+            yard.feasibility.settings, loader_access_mode="heuristic",
+            ignore_full_stacks_for_loader_access=True,
+        )
+        self.set_stack(0, 0)
+        self.set_stack(0, 1)
+        self.set_stack(1, 0, count=1)
+        self.set_stack(1, 1)
+        isolates = ("A", 0, 0, 0)
+        preserves = ("A", 0, 1, 0)
+        with patch.object(yard, "modelEval", side_effect=lambda _, coordinate: (
+            None, None, 0.0, 1.0, 100.0 if coordinate == isolates else 1.0,
+        )):
+            first, second = yard.bestCoordCandidate(self.container, [isolates, preserves])
+        self.assertEqual(first.coordinates, preserves)
+        self.assertEqual(second.coordinates, isolates)
+        self.assertEqual(second.loader_access_multiplier, 0.5)
+        self.assertGreater(second.evaluation_score, first.evaluation_score)
+
+    def test_inaccessible_destination_is_penalized_in_heuristic_mode_and_rtg_is_exempt(self):
+        yard = self.yard
+        yard.feasibility.settings = replace(
+            yard.feasibility.settings, loader_access_mode="heuristic",
+            preserve_future_loader_access_mode="off",
+        )
+        self.set_stack(1, 1)
+        with patch.object(yard, "modelEval", return_value=(None, None, 0.0, 1.0, 1.0)):
+            coordinate = ("A", 1, 1, 0)
+            candidate, = yard.bestCoordCandidate(self.container, [coordinate])
+            self.assertFalse(candidate.loader_access.destination_accessible)
+            self.assertEqual(candidate.loader_access_multiplier, 0.25)
+            self.assertEqual(candidate.future_loader_access_multiplier, 1.0)
+            self.block.setRTG(RTG("RTG-1", ("A", 0, 0)))
+            candidate, = yard.bestCoordCandidate(self.container, [coordinate])
+            self.assertIsNone(candidate.loader_access)
+            self.assertEqual(candidate.evaluation_score, 1.0)
 
     def test_ignoring_full_stacks_preserves_access_to_partially_occupied_stacks(self):
         evaluator = self.yard.feasibility

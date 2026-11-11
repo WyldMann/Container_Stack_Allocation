@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from entities.block import Block
 from entities.feasibility.placement_proposal import PlacementProposal
-from entities.feasibility.placement_feasibility import PlacementFeasibility, RejectionReason
+from entities.feasibility.placement_feasibility import PlacementFeasibility
 
 Position = tuple[int, int]
 
@@ -265,19 +265,12 @@ class ReferencePlacementFeasibility(PlacementFeasibility):
     def prepare_loader_context(self, block, loader_policy=None):
         return None
 
-    def _check_loader_access(self, block, proposal, policy, context=None):
+    def _evaluate_loader_access(self, block, proposal, policy, context=None, *, check_future):
         if block.getRTG() is not None:
             return None
         if policy is None:
             policy = LoaderBorderAccessPolicy()
-        result = self.loader_access.evaluate(
+        return self.loader_access.evaluate(
             block, proposal, policy,
-            preserve_future_loader_access=self.settings.preserve_future_loader_access,
+            preserve_future_loader_access=check_future,
         )
-        if not result.destination_accessible:
-            return RejectionReason.LOADER_DESTINATION_INACCESSIBLE
-        if result.isolated_occupied_locations:
-            return RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED
-        if result.isolated_locations:
-            return RejectionReason.LOADER_ACCESS_BLOCKED
-        return None

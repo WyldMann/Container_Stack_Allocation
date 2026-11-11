@@ -258,10 +258,14 @@ class LoaderAccessContextIntegrationTests(unittest.TestCase):
                 context = optimized.prepare_loader_context(block, policy)
                 for row_index, stacks in enumerate(block.getSlots()):
                     for slot_index in range(len(stacks)):
+                        expected = reference.evaluate(container, block, row_index, slot_index, loader_policy=policy)
+                        actual = optimized.evaluate(container, block, row_index, slot_index,
+                                                    loader_policy=policy, loader_context=context)
+                        self.assertEqual(actual.coordinates, expected.coordinates)
+                        self.assertEqual(actual.rejection_reason, expected.rejection_reason)
                         self.assertEqual(
-                            reference.evaluate(container, block, row_index, slot_index, loader_policy=policy),
-                            optimized.evaluate(container, block, row_index, slot_index,
-                                               loader_policy=policy, loader_context=context),
+                            result_signature(actual.loader_access) if actual.loader_access else None,
+                            result_signature(expected.loader_access) if expected.loader_access else None,
                         )
 
 

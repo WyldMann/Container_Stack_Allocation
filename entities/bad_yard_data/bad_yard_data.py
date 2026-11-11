@@ -281,6 +281,7 @@ class BadYardData:
             row_index,
             slot_index,
             loader_policy=loader_policies.get(block_id),
+            include_loader_heuristics=False,
         )
         if not result.feasible:
             raise PlacementRejected(

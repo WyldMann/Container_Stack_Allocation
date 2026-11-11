@@ -8,6 +8,7 @@ from config import (
     FeasibilitySettings,
     load_feasibility_settings,
 )
+from config.application.config_loader import parse_config
 
 
 class FeasibilityConfigurationTests(unittest.TestCase):
@@ -55,6 +56,43 @@ loader_access = false
 loader_acess = false
 """
             )
+
+    def test_loader_mode_strength_is_validated_for_all_pairs(self):
+        modes = ("off", "heuristic", "feasibility")
+        for current_rank, current in enumerate(modes):
+            for future_rank, future in enumerate(modes):
+                with self.subTest(current=current, future=future):
+                    options = dict(loader_access_mode=current, preserve_future_loader_access_mode=future)
+                    if future_rank > current_rank:
+                        with self.assertRaisesRegex(ValueError, "exceeds"):
+                            FeasibilitySettings(**options)
+                        with self.assertRaisesRegex(ConfigurationError, "exceeds"):
+                            parse_config({"feasibility": options})
+                    else:
+                        parsed = parse_config({"feasibility": options})
+                        self.assertEqual(parsed.feasibility.effective_loader_access_mode, current)
+                        self.assertEqual(parsed.feasibility.effective_future_loader_access_mode, future)
+
+    def test_loader_modes_roundtrip_and_legacy_settings_keep_effective_behavior(self):
+        for options, current, future in (
+            ({"loader_access": False, "preserve_future_loader_access": True}, "off", "off"),
+            ({"loader_access": True, "preserve_future_loader_access": False}, "feasibility", "off"),
+            ({"loader_access_mode": "heuristic"}, "heuristic", "heuristic"),
+        ):
+            with self.subTest(options=options):
+                document = parse_config({"feasibility": options}).to_document()
+                self.assertEqual(document["feasibility"]["loader_access_mode"], current)
+                self.assertEqual(document["feasibility"]["preserve_future_loader_access_mode"], future)
+                self.assertEqual(parse_config(document).to_document(), document)
+
+    def test_invalid_or_conflicting_loader_mode_settings_are_rejected(self):
+        for key in ("loader_access", "preserve_future_loader_access"):
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ConfigurationError, "Set either"):
+                    parse_config({"feasibility": {key: True, key + "_mode": "feasibility"}})
+                for value in (False, "invalid", 1, []):
+                    with self.assertRaisesRegex(ConfigurationError, key + "_mode"):
+                        parse_config({"feasibility": {key + "_mode": value}})
 
     def test_non_boolean_options_are_rejected(self):
         for option in (

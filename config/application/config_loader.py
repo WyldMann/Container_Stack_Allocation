@@ -43,13 +43,15 @@ def _parse_feasibility(document: dict) -> FeasibilitySettings:
         document, "feasibility", {field.name for field in fields(FeasibilitySettings)}
     )
 
-    for name, value in section.items():
-        if type(value) is not bool:
+    for name in ("loader_access", "preserve_future_loader_access"):
+        if name in section and name + "_mode" in section:
             raise ConfigurationError(
-                f"feasibility.{name} must be true or false."
+                f"Set either feasibility.{name} or feasibility.{name}_mode."
             )
-
-    return FeasibilitySettings(**section)
+    try:
+        return FeasibilitySettings(**section)
+    except (TypeError, ValueError) as error:
+        raise ConfigurationError(f"Invalid feasibility settings: {error}") from error
 
 
 def _parse_heuristic(document: dict) -> HeuristicSettings:

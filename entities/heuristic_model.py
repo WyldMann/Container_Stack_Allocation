@@ -3,6 +3,7 @@ from config import HeuristicSettings
 
 from .block import Block
 from .container import Container
+from .feasibility.loader_access import LoaderAccessResult
 from .stack import Stack
 
 class HeuristicModel:
@@ -112,6 +113,23 @@ class HeuristicModel:
             return self.min_value
         else:
             return self.w_equipment_distance * self.decayFormula(self.lambda_equipment_distance,equipment_distance)
+
+    @staticmethod
+    def loader_access_multipliers(
+        access: LoaderAccessResult | None, *, score_current: bool, score_future: bool,
+    ) -> tuple[float, float]:
+        if access is None:
+            return 1.0, 1.0
+        current = 1.0
+        if score_current:
+            destination_factor = 1.0 if access.destination_accessible else 0.25
+            current = destination_factor / (1 + len(access.isolated_occupied_locations))
+        future = 1.0
+        if score_future:
+            # Receiving options are distinct by anchor and size. An occupied stack
+            # with room left can lose both existing service and future capacity.
+            future = 1.0 / (1 + len(access.isolated_locations))
+        return current, future
 
     #multiplicative weights
     def evaluate(self,delta_container_mass:float|None, equipment_distance:float,
