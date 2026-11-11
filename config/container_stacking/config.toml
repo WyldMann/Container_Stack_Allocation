@@ -5,10 +5,9 @@ stacking_safety = true
 
 # Require access to the destination and keep existing containers reachable.
 # RTG-served blocks are exempt.
+# With loader_access enabled, preserve_future_loader_access also protects
+# access to locations that can still receive containers.
 loader_access = true
-
-# Also protect access to locations that can still receive containers.
-# Applies only when loader_access is enabled.
 preserve_future_loader_access = true
 
 
