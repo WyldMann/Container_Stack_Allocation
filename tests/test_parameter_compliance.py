@@ -15,7 +15,8 @@ class ParameterComplianceTests(unittest.TestCase):
             weight_range_score='1',
         )
         self.assertEqual(parameter.getMaxScore(), 10.0)
-        self.assertEqual(parameter.compliance(make_container()), 0.9)
+        self.assertEqual(parameter.compliance(make_container(container_fill='F')), 0.9)
+        self.assertEqual(parameter.compliance(make_container()), 1.0)
         self.assertEqual(parameter.compliance(make_container(weight='10')), 1.0)
 
     def test_and_and_zero_maximum(self):

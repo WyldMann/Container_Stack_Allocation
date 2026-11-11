@@ -131,7 +131,26 @@ class ParameterEvaluationTests(unittest.TestCase):
             ('20', 4, 10), ('21', 0, 0), ('', 0, 10),
         ):
             with self.subTest(weight=weight):
-                container = make_container(weight=weight)
+                container = make_container(container_fill='F', weight=weight)
+                self.assertEqual(parameter.evaluateAdd(container), additive)
+                self.assertEqual(parameter.evaluate(container), and_result)
+
+    def test_weight_range_uses_empty_container_defaults(self):
+        parameter = make_parameter(
+            weight_start='2000', weight_end='3000', weight_range_score='4', and_score='10',
+        )
+        for size, weight, expected_weight, additive, and_result in (
+            ('20', '', 2000.0, 4, 10),
+            ('40', None, 4000.0, 0, 0),
+            ('40', '  ', 4000.0, 0, 0),
+            ('40', '2500', 2500.0, 4, 10),
+            ('20', '0', 0.0, 0, 0),
+            ('20', 'invalid', None, 0, 10),
+            ('45', '', None, 0, 10),
+        ):
+            with self.subTest(size=size, weight=weight):
+                container = make_container(container_size=size, weight=weight)
+                self.assertEqual(container.getWeight(), expected_weight)
                 self.assertEqual(parameter.evaluateAdd(container), additive)
                 self.assertEqual(parameter.evaluate(container), and_result)
 

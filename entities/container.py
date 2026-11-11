@@ -39,7 +39,7 @@ class Container:
                  pod: str,
                  vessel: str,
                  voyage: str,
-                 weight: str,
+                 weight: str | None,
 
                  move_time: str,
 
@@ -70,6 +70,8 @@ class Container:
         self.vessel = vessel
         self.voyage = voyage
         self.weight = parse_optional_finite_float(weight)
+        if container_fill == "E" and (weight is None or not str(weight).strip()):
+            self.weight = {"20": 2000.0, "40": 4000.0}.get(container_size)
         self.move_time = parse_datetime(move_time)
 
         if branch_id is None: branch_id = ""
