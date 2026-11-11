@@ -7,8 +7,8 @@ stacking_safety = true
 # Current access covers the destination and occupied stacks. RTGs are exempt.
 # Future access covers receiving options and must use the same or a weaker
 # mode (off < heuristic < feasibility). Omit it to inherit the current mode.
-loader_access_mode = "feasibility"
-preserve_future_loader_access_mode = "feasibility"
+loader_access_mode = "heuristic"
+preserve_future_loader_access_mode = "heuristic"
 # Exclude fully occupied stacks from current access protection.
 ignore_full_stacks_for_loader_access = true
 
