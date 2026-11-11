@@ -111,6 +111,7 @@ def prepare_scenario(payload):
             code = selection["filters"]["branch_code"]
             branch = {"branch_code": code, "issues": [], "queue": [], "yard": None,
                       "inputs": None, "counts": {}, "summary": {},
+                      "container_profile": profiles["existing_containers"],
                       "inbound_available": inbound_available}
             result["branches"].append(branch)
             try:
@@ -325,7 +326,8 @@ def public_preview(result):
     preview = {key: value for key, value in result.items() if key != "branches"}
     preview["branches"] = []
     for branch in result["branches"]:
-        entry = {key: value for key, value in branch.items() if key not in ("yard", "inputs")}
+        entry = {key: value for key, value in branch.items()
+                 if key not in ("yard", "inputs", "container_profile")}
         yard = branch["yard"]
         entry["yard_map"] = yard_view(yard) if yard is not None else None
         entry["ready"] = (yard is not None and branch["inbound_available"]

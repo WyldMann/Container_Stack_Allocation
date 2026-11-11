@@ -16,11 +16,15 @@ from repository.branch_repository import BranchDirectory
 from .yard_view import stack_view
 
 
-CONTAINERS_CSV_FIELDS = (
-    "CONTNO", "BRANCH", "BLOK", "ROW", "SLOT", "TIER", "PRINCIPAL", "DMG_FLAG", "FULLMT",
-    "OPERATION_TYPE", "CONTSIZE", "CONT_GRADE", "POL", "POT", "POD", "VESSEL_OPERATOR",
-    "VESSEL", "VOYAGE", "WEIGHT", "MOVE_TIME",
-)
+CONTAINER_EXPORT_COLUMNS = {
+    "container_id": "CONTNO", "branch_id": "BRANCH", "block_code": "BLOK",
+    "row_no": "ROW", "slot_no": "SLOT", "tier_no": "TIER", "principal": "PRINCIPAL",
+    "container_condition": "DMG_FLAG", "container_fill": "FULLMT",
+    "operation_type": "OPERATION_TYPE", "container_size": "CONTSIZE",
+    "container_grade": "CONT_GRADE", "pol": "POL", "pot": "POT", "pod": "POD",
+    "vessel_operator": "VESSEL_OPERATOR", "vessel": "VESSEL", "voyage": "VOYAGE",
+    "weight": "WEIGHT", "move_time": "MOVE_TIME",
+}
 
 
 class SimulationError(ValueError):
@@ -30,13 +34,25 @@ class SimulationError(ValueError):
 def export_yard_csv(branches):
     if not branches:
         raise SimulationError("Generate a preview with a yard before saving containers.csv.")
+    # Keep the prepared yard's mapping even if the project settings change later.
+    profile = branches[0]["container_profile"]
+    columns = {field: profile.columns.get(field, field) for field in CONTAINER_EXPORT_COLUMNS}
+    headers = {column.strip().casefold(): column for column in columns.values()}
+    for column in profile.filter_columns.values():
+        headers.setdefault(column.strip().casefold(), column)
     buffer = StringIO(newline="")
-    writer = csv.DictWriter(buffer, fieldnames=CONTAINERS_CSV_FIELDS, extrasaction="ignore")
+    writer = csv.DictWriter(buffer, fieldnames=list(headers.values()))
     writer.writeheader()
     for branch in branches:
-        branch_codes = BranchDirectory(branch["inputs"]["terminal_branches"]).codes_by_id
+        directory = BranchDirectory(branch["inputs"]["terminal_branches"])
+        branch_codes = directory.codes_by_id if profile.branch_kind == "code" else None
         container_writer = ContainerFileWriter("containers.csv", branch_codes=branch_codes)
-        writer.writerows(container_writer.buildRows(branch["yard"]))
+        identity = directory.by_code[branch["branch_code"]]
+        for record in container_writer.buildRows(branch["yard"]):
+            row = {columns[field]: record[source] for field, source in CONTAINER_EXPORT_COLUMNS.items()}
+            for field, column in profile.filter_columns.items():
+                row[headers[column.strip().casefold()]] = identity[field]
+            writer.writerow(row)
     return buffer.getvalue()
 
 

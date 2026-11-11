@@ -15,9 +15,10 @@ import zipfile
 
 from config.application.config_loader import ConfigurationError, parse_config
 from config.csv_import.mapping_loader import parse_mapping
+from filewriter import ContainerFileWriter
 from stacking_ui.configuration import defaults, dump_toml
 from stacking_ui.scenario import prepare_scenario, public_preview
-from stacking_ui.simulation import Simulation, SimulationError
+from stacking_ui.simulation import Simulation, SimulationError, export_yard_csv
 from stacking_ui.__main__ import main
 
 
@@ -97,6 +98,73 @@ class ScenarioTests(unittest.TestCase):
                 self.assertEqual(len(first["queue"]), 2)
                 self.assertEqual(len(second["queue"]), 3)
                 self.assertEqual(second["queue"][-1]["sources"][0]["line"], 4)
+
+    def test_yard_export_round_trips_active_mapping_and_placed_containers(self):
+        for custom_headers, branch_kind in ((False, "code"), (True, "code"), (True, "id")):
+            with self.subTest(custom_headers=custom_headers, branch_kind=branch_kind):
+                self.setUp()
+                mapping = tomllib.loads(self.payload["mapping_toml"])
+                profile = mapping["csv"]["existing_containers"]
+                profile["branch_kind"] = branch_kind
+                if custom_headers:
+                    profile["columns"] = {field: "custom_" + field
+                                          for field in self.profiles["existing_containers"].schema.fields}
+                    # Omitted mappings use the domain field as the CSV header.
+                    del profile["columns"]["weight"]
+                    profile["columns"].update(row_no="SLOT", slot_no="ROW")
+                if branch_kind == "id":
+                    profile["filter_columns"] = {
+                        "branch_id": profile["columns"]["branch_id"],
+                        "terminal_id": "TERMINAL", "branch_code": "YARD_CODE",
+                    }
+                    self.rows["existing_containers"][0].update(
+                        branch_id="2", terminal_id="1", branch_code="JKT74")
+                self.payload["mapping_toml"] = dump_toml(mapping)
+                self.profiles = parse_mapping(mapping)
+                self.write_files()
+                scenario = prepare_scenario(self.payload)
+                self.assertTrue(public_preview(scenario)["ready"], public_preview(scenario))
+                simulation = Simulation(scenario)
+                for position in (1, 2):
+                    step = simulation.step(simulation.id, "JKT74", position)
+                    self.assertEqual(step["row"]["status"], "placed")
+                branch, = scenario["branches"]
+                expected = ContainerFileWriter("unused.csv").buildRows(branch["yard"])
+                exported = export_yard_csv(scenario["branches"])
+                records = list(csv.DictReader(io.StringIO(exported)))
+                self.assertEqual(len(records), 3)  # Includes the 40-foot container once.
+                self.assertEqual(records[0][profile["columns"]["branch_id"]],
+                                 "2" if branch_kind == "id" else "JKT74")
+                if branch_kind == "id":
+                    self.assertTrue(all(row["TERMINAL"] == "1" and row["YARD_CODE"] == "JKT74"
+                                        for row in records))
+                self.rows["inbound_containers"] = []
+                self.write_files()
+                self.payload["files"]["existing_containers"]["content"] = exported
+                reimported = prepare_scenario(self.payload)
+                self.assertTrue(public_preview(reimported)["ready"], public_preview(reimported))
+                self.assertEqual(ContainerFileWriter("unused.csv").buildRows(
+                    reimported["branches"][0]["yard"]), expected)
+
+    def test_yard_export_preserves_each_branch_scope(self):
+        self.rows["terminal_branches"].append(dict(
+            branch_id="3", terminal_id="1", branch_code="JKT64", branch_name="Second yard"))
+        self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {"block_id": "11", "branch_id": "3"})
+        self.rows["equipment_history"].append(self.rows["equipment_history"][0] | {"branch_id": "JKT64"})
+        self.rows["existing_containers"].append(
+            self.rows["existing_containers"][0] | {"branch_id": "JKT64", "container_id": "OTHER"})
+        self.rows["inbound_containers"] = []
+        document = tomllib.loads(self.payload["input_toml"])
+        document["input"]["filters"]["branch_code"] = ["JKT74", "JKT64"]
+        self.payload["input_toml"] = dump_toml(document)
+        self.write_files()
+        scenario = prepare_scenario(self.payload)
+        self.assertTrue(public_preview(scenario)["ready"], public_preview(scenario))
+        self.payload["files"]["existing_containers"]["content"] = export_yard_csv(scenario["branches"])
+        reimported = prepare_scenario(self.payload)
+        self.assertTrue(public_preview(reimported)["ready"], public_preview(reimported))
+        self.assertEqual([list(branch["yard"].containers) for branch in reimported["branches"]],
+                         [["OLD"], ["OTHER"]])
 
     def test_duplicate_queue_ids_are_not_removed_and_link_to_source(self):
         self.rows["inbound_containers"] += [dict(container_id="NEW1", container_size="20"), dict(container_id="OLD", container_size="20")]
