@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file: blob: 'wasm-unsafe-eval'; style-src 'self' file:; worker-src blob:; connect-src blob:; base-uri 'none'; form-action 'none'">
+  <title>Container stacking | Scenario setup</title>
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./yard-map.css">
+  <script src="./defaults.js" defer></script>
+  <script src="./runtime-assets.js" defer></script>
+  <script src="./standalone.js" defer></script>
+  <script src="./yard-map.js" defer></script>
+  <script src="./simulation.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+<header>
+  <div>
+    <span class="eyebrow">CONTAINER STACKING</span>
+    <h1>Prepare a yard scenario</h1>
+    <p>Choose your CSVs, edit settings, and review the prepared yard.</p>
+  </div>
+</header>
+<main>
+  <div id="message" role="status" aria-live="polite"></div>
+  <section>
+    <span class="eyebrow">01 / DATA</span>
+    <h2>Yard and inbound files</h2>
+    <fieldset class="file-sources">
+      <legend>CSV source</legend>
+      <label><input id="source-folder" type="radio" name="file-source" value="folder" checked> Use bundled CSVs (default)</label>
+      <label><input id="source-upload" type="radio" name="file-source" value="upload"> Replace selected CSVs</label>
+    </fieldset>
+    <p id="source-description"></p>
+    <div id="datasets" class="dataset-grid"></div>
+  </section>
+  <section>
+    <span class="eyebrow">02 / CONFIGURATION</span>
+    <h2>Branches and placement rules</h2>
+    <p class="note">Inbound rows without a branch belong to every selected branch. Queue order follows the CSV.</p>
+    <p>Edit the values or choose a different TOML. This page uses CSV inputs. Use TOML syntax, including quotes for strings.</p>
+    <div id="project-toml-actions" hidden>
+      <button id="reload-project-tomls" type="button" class="secondary">Reload project TOMLs</button>
+      <p class="note">The launcher reads the project files on page load and refreshes untouched editors before preview. Reload replaces all three editors with the current files.</p>
+    </div>
+    <p id="project-toml-cache-note" class="note" hidden>These TOMLs are cached. Open <code>stacking_ui\open_setup.cmd</code> to read the current files from disk.</p>
+    <details open>
+      <summary>Placement settings <span id="config-toml-source" class="toml-source" data-project-file="config.toml" aria-live="polite"></span></summary>
+      <div class="actions toml-choose">
+        <button id="choose-config" type="button" class="secondary">Choose a different TOML (optional)</button>
+        <button id="save-config" type="button" class="secondary toml-save" disabled hidden>Save config.toml</button>
+      </div>
+      <input type="file" id="load-config" accept=".toml" hidden>
+      <div id="config-toml" class="toml-lines"></div>
+    </details>
+    <details id="stacking-inputs" open>
+      <summary>Stacking inputs <span id="input-toml-source" class="toml-source" data-project-file="container_stacking_input.toml" aria-live="polite"></span></summary>
+      <div class="actions toml-choose">
+        <button id="choose-input" type="button" class="secondary">Choose a different TOML (optional)</button>
+        <button id="save-input" type="button" class="secondary toml-save" disabled hidden>Save container_stacking_input.toml</button>
+      </div>
+      <input type="file" id="load-input" accept=".toml" hidden>
+      <div id="input-toml" class="toml-lines"></div>
+    </details>
+    <details>
+      <summary>CSV column mappings <span id="mapping-toml-source" class="toml-source" data-project-file="csv_mapping.toml" aria-live="polite"></span></summary>
+      <div class="actions toml-choose">
+        <button id="choose-mapping" type="button" class="secondary">Choose a different TOML (optional)</button>
+        <button id="save-mapping" type="button" class="secondary toml-save" disabled hidden>Save csv_mapping.toml</button>
+      </div>
+      <input type="file" id="load-mapping" accept=".toml" hidden>
+      <div id="mapping-toml" class="toml-lines"></div>
+    </details>
+  </section>
+  <section class="stacking-review">
+    <div class="section-title">
+      <div><span class="eyebrow">03 / REVIEW</span><h2>Validate the scenario</h2></div>
+      <div class="actions">
+        <button id="generate-preview" type="button" hidden>Generate preview</button>
+        <button id="save-yard" class="secondary" type="button" hidden>Save yard CSV</button>
+      </div>
+    </div>
+    <p id="preview-launch-note" hidden>Open <code>stacking_ui\open_setup.cmd</code> to generate a preview here.</p>
+    <p id="preview-status" role="status" aria-live="polite"></p>
+    <div id="results"><div class="empty">Generate a preview to review the yard, inbound queue, and data issues.</div></div>
+  </section>
+</main>
+<footer>Container stacking | Scenario preparation</footer>
+</body>
+</html>
