@@ -161,6 +161,45 @@
 .toml-switch input:checked + .toml-switch-track::after { transform: translateX(16px); }
 .toml-switch input:focus-visible + .toml-switch-track { outline: 3px solid #76bda8; outline-offset: 2px; }
 .toml-switch input:disabled + .toml-switch-track { opacity: .5; }
+.toml-segments {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-self: start;
+  gap: 2px;
+  padding: 3px;
+  background: #eef4f0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: 13px/1.4 system-ui, sans-serif;
+}
+.toml-segments label { position: relative; }
+.toml-segments input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+}
+.toml-segments span {
+  display: block;
+  border-radius: 5px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.toml-segments input:checked + span {
+  background: var(--green);
+  color: white;
+}
+.toml-segments input:focus-visible + span {
+  outline: 3px solid #76bda8;
+  outline-offset: 2px;
+}
+.toml-segments input:disabled + span {
+  opacity: .45;
+  cursor: default;
+}
+.loader-access-note { margin: 4px 0 8px; }
 .toml-comment {
   margin: 12px 0 4px;
   color: #536863;

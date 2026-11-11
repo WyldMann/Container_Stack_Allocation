@@ -145,11 +145,27 @@ const traceNumber = value => value == null ? "—" : traceNumberFormat.format(va
 const multiplierLabels = {
   mass_multiplier: "Mass multiplier",
   distance_multiplier: "Equipment distance multiplier",
-  cluster_multiplier: "Size cluster multiplier"
+  cluster_multiplier: "Size cluster multiplier",
+  loader_access_multiplier: "Current loader access multiplier",
+  future_loader_access_multiplier: "Future loader access multiplier"
 };
+
+const loaderAccessLabels = ["Loader can serve destination", "Occupied stacks losing access",
+  "Future receiving options losing access"];
+
+function loaderAccessValues(candidate) {
+  const destination = candidate.loader_destination_accessible;
+  return [
+    destination == null ? "—" : destination ? "Yes" : "No",
+    traceNumber(candidate.isolated_occupied_locations),
+    traceNumber(candidate.isolated_future_locations)
+  ];
+}
 
 function heuristicRows(candidate, multipliers = Object.keys(multiplierLabels)) {
   return [
+    ...(candidate.loader_destination_accessible == null ? [] :
+      loaderAccessValues(candidate).map((value, i) => [loaderAccessLabels[i], value])),
     ...multipliers.map(key => [multiplierLabels[key], traceNumber(candidate[key])]),
     ["Heuristic score", traceNumber(candidate.score)]
   ];
@@ -200,7 +216,7 @@ function placementTrace(calculation, status) {
     stages.append(decision);
     if (calculation.winning_score_ties > 1) {
       stages.append(el("li", "Tie-break · " + number(calculation.winning_score_ties) +
-        " candidates shared the top score. The engine used the first in yard scan order."));
+        " candidates tied for first. The engine used the first in yard scan order."));
     }
   }
   trace.append(stages);
@@ -217,7 +233,11 @@ function placementTrace(calculation, status) {
     ])));
   }
   if (calculation.candidates.length) {
+    const showLoaderAccess = calculation.candidates.some(candidate => candidate.loader_destination_accessible != null);
     details.append(el("p", "Locations that passed parameter selection, in yard order."));
+    if (calculation.prioritize_current_loader_access) {
+      details.append(el("p", "Ranking prefers accessible destinations, then fewer occupied stacks losing access, then a higher heuristic score."));
+    }
     if (multipliers.length) {
       details.append(el("p", "Heuristic score = " + multipliers.map(key => multiplierLabels[key].toLowerCase()).join(" × ")));
     }
@@ -226,13 +246,15 @@ function placementTrace(calculation, status) {
       if (!details.open) return;
       details.removeEventListener("toggle", showCandidates);
       details.append(table(["Location", "Selection", "Parameters", "Equipment", "Distance", "Mass difference",
+        ...(showLoaderAccess ? loaderAccessLabels : []),
         ...multipliers.map(key => multiplierLabels[key]), "Heuristic score"],
       calculation.candidates.map(candidate => [
         placementLocation(candidate),
         candidate.selected ? (status === "placed" ? "Selected" : "Proposed") : "Alternative",
         candidate.parameters.map(parameter => "P" + parameter).join(", ") || "—", candidate.equipment,
         candidate.equipment_outside_block ? "Outside block" : number(candidate.distance),
-        number(candidate.mass_difference), ...multipliers.map(key => number(candidate[key])), number(candidate.score)
+        number(candidate.mass_difference), ...(showLoaderAccess ? loaderAccessValues(candidate) : []),
+        ...multipliers.map(key => number(candidate[key])), number(candidate.score)
       ])));
     }
     details.addEventListener("toggle", showCandidates);

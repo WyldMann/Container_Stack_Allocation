@@ -97,13 +97,18 @@ def _location(yard, coordinates):
 
 
 def _calculation(yard, search, result):
+    settings = yard.feasibility.settings
+    prioritize_current_access = settings.prioritize_current_loader_access
+    future_mode = settings.effective_future_loader_access_mode
     candidates = result.sorted_candidate_evaluations if result is not None else []
     winner = candidates[0] if candidates else None
+    winning_key = winner.ranking_key(prioritize_current_access) if winner else None
     ranked_by_location = {candidate.coordinates: candidate for candidate in candidates}
     top_ranks = {candidate.coordinates: rank for rank, candidate in enumerate(candidates[:5], 1)}
     qualified = []
     for coordinates in search["candidate_coordinates"]:
         candidate = ranked_by_location[coordinates]
+        access = candidate.loader_access
         qualified.append({
             **_location(yard, coordinates),
             "selected": candidate is winner,
@@ -116,6 +121,13 @@ def _calculation(yard, search, result):
             "mass_multiplier": _number(yard.model.deltaContainerMass(candidate.delta_container_mass)),
             "distance_multiplier": _number(yard.model.equipmentDistance(candidate.distance)),
             "cluster_multiplier": _number(candidate.size_cluster_multiplier),
+            "loader_destination_accessible": access.destination_accessible if access else None,
+            "isolated_occupied_locations": len(access.isolated_occupied_locations) if access else None,
+            "isolated_future_locations": (
+                len(access.isolated_locations) if access and future_mode != "off" else None
+            ),
+            "loader_access_multiplier": candidate.loader_access_multiplier,
+            "future_loader_access_multiplier": candidate.future_loader_access_multiplier,
             "score": _number(candidate.evaluation_score),
         })
     return {
@@ -127,12 +139,16 @@ def _calculation(yard, search, result):
         ],
         "max_parameter_score": _number(search["max_parameter_score"]),
         "candidate_count": len(qualified),
-        "winning_score_ties": sum(candidate.evaluation_score == winner.evaluation_score for candidate in candidates),
+        "winning_score_ties": sum(candidate.ranking_key(prioritize_current_access) == winning_key
+                                  for candidate in candidates),
+        "prioritize_current_loader_access": prioritize_current_access,
         "enabled_multipliers": [
             name for name, enabled in (
                 ("mass_multiplier", yard.model.enable_delta_container_mass),
                 ("distance_multiplier", yard.model.enable_equipment_distance),
                 ("cluster_multiplier", yard.model.enable_size_cluster),
+                ("loader_access_multiplier", settings.effective_loader_access_mode == "heuristic"),
+                ("future_loader_access_multiplier", future_mode == "heuristic"),
             )
             if enabled
         ],

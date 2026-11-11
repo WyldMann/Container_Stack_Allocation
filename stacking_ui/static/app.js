@@ -18,6 +18,8 @@ const tomlEditors = {
   mapping: "mapping_toml"
 };
 const tomlDocuments = {};
+const loaderModes = ["off", "heuristic", "feasibility"];
+const loaderModeKeys = ["loader_access_mode", "preserve_future_loader_access_mode"];
 const standalone = globalThis.stackingStandalone === true;
 const canReadProjectTomls = typeof globalThis.readStackingTomls === "function";
 let projectTomls = typeof TOML_DEFAULTS === "undefined" ? {} : TOML_DEFAULTS;
@@ -60,6 +62,7 @@ async function action(task, report = message) {
   } finally {
     busy = false;
     controls.forEach(node => node.disabled = false);
+    updateLoaderAccess(tomlDocuments.config.loaderAccess);
     Object.keys(tomlEditors).forEach(updateTomlSave);
   }
 }
@@ -126,18 +129,92 @@ function omittedTomlPath(kind, [root, key]) {
   ));
 }
 
+function loaderAccessSwitch(access, key, prefix, value) {
+  const future = key.startsWith("preserve_future_");
+  const legacy = !key.endsWith("_mode");
+  const modeKey = legacy ? key + "_mode" : key;
+  const fallback = future ? null : "feasibility";
+  const original = value === null ? "" : prefix + value;
+  const initial = value === null || (legacy && value === "true") ? fallback :
+    legacy ? "off" : value.match(/^["']{1,3}(off|heuristic|feasibility)["']{1,3}$/)?.[1];
+  if (initial === undefined || (legacy && value !== "true" && value !== "false")) return null;
+
+  const modePrefix = legacy ? prefix.replace(/(["']?)([ \t]*=[ \t]*)$/, "_mode$1$2") : prefix;
+  const input = el("input");
+  input.type = "hidden";
+  input.value = original;
+  const row = el("div", undefined, "toml-setting");
+  const label = el("span", modeKey + ":");
+  label.id = modeKey + "-label";
+  const group = el("div", undefined, "toml-segments");
+  group.setAttribute("role", "radiogroup");
+  group.setAttribute("aria-labelledby", label.id);
+  const control = {row, group, input, mode: initial, choices: []};
+  control.select = mode => {
+    control.mode = mode;
+    input.value = mode === initial ? original :
+      modePrefix + JSON.stringify(mode) + (value === null ? "\n" : "");
+  };
+  for (const mode of loaderModes) {
+    const choice = el("input");
+    choice.type = "radio";
+    choice.name = modeKey;
+    choice.value = mode;
+    const option = el("label");
+    option.append(choice, el("span", mode[0].toUpperCase() + mode.slice(1)));
+    group.append(option);
+    control.choices.push(choice);
+    choice.addEventListener("change", () => {
+      control.select(mode);
+      updateLoaderAccess(access, !future);
+      updateTomlSave("config");
+      changed();
+    });
+  }
+  row.append(label, group);
+  access[modeKey] = control;
+  return control;
+}
+
+function updateLoaderAccess(access, currentChanged = false) {
+  const current = access.loader_access_mode;
+  const future = access.preserve_future_loader_access_mode;
+  const mode = current?.mode ?? "feasibility";
+  const limit = loaderModes.indexOf(mode);
+  if (currentChanged && future && loaderModes.indexOf(future.mode) > limit) future.select(mode);
+  for (const choice of current?.choices ?? []) {
+    choice.checked = choice.value === mode;
+    choice.disabled = busy;
+  }
+  for (const [index, choice] of (future?.choices ?? []).entries()) {
+    choice.checked = choice.value === (future.mode ?? mode);
+    choice.disabled = busy || index > limit;
+  }
+  if (access.ignoreFull) access.ignoreFull.disabled = busy || mode === "off";
+  if (access.note) {
+    access.note.textContent = mode === "heuristic" && (future.mode ?? mode) === "heuristic" ?
+      "Current loader access ranks first when both modes are Heuristic." :
+      "Future loader access can use the current mode or a weaker mode.";
+  }
+}
+
 function showToml(kind, text, loadedFrom) {
   const source = text.replace(/\r\n?/g, "\n");
   const fields = [];
   const csvPaths = new Map();
+  const loaderAccess = {};
   const editor = $(kind + "-toml");
   editor.replaceChildren();
   tomlDocuments[kind] = {
-    source, fields, csvPaths, usesProject: loadedFrom == null, projectText: projectTomls[tomlEditors[kind]]
+    source, fields, csvPaths, loaderAccess, usesProject: loadedFrom == null, projectText: projectTomls[tomlEditors[kind]]
   };
 
   let section = "";
   let statementStart = 0;
+  let feasibilityStart = 0;
+  let feasibilityHeading;
+  let inlineFeasibility = false;
+  const seenModes = new Set();
   const comments = [];
   for (let offset = 0; offset < source.length;) {
     let lineEnd = source.indexOf("\n", offset);
@@ -156,6 +233,10 @@ function showToml(kind, text, loadedFrom) {
     const path = match ? [section, match[2]].filter(Boolean).join(".") : section;
     const parts = tomlParts(path);
     const [root, key, dataset] = parts;
+    if (kind === "config" && root === "feasibility" && parts.length === 1) {
+      if (table) feasibilityStart = Math.min(lineEnd + 1, source.length);
+      else if (match) inlineFeasibility = true;
+    }
     const omitted = omittedTomlPath(kind, parts);
     const inFileCards = kind === "input" && root === "csv" && key === "files";
     const isCsvPath = inFileCards && match && parts.length === 3 && Object.hasOwn(descriptions, dataset);
@@ -173,6 +254,21 @@ function showToml(kind, text, loadedFrom) {
       if (lineEnd === -1) lineEnd = source.length;
       if (visible || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
+        if (kind === "config" && root === "feasibility" && parts.length === 2) {
+          const modeKey = key.endsWith("_mode") ? key : key + "_mode";
+          if (loaderModeKeys.includes(modeKey)) {
+            seenModes.add(modeKey);
+            const control = loaderAccessSwitch(loaderAccess, key, match[1], value);
+            if (control) {
+              const comment = source.slice(boundary, lineEnd);
+              if (comment) editor.append(el("p", comment, "toml-comment"));
+              editor.append(control.row);
+              fields.push({start: offset, end: start + value.length, input: control.input});
+              offset = statementStart = lineEnd + 1;
+              continue;
+            }
+          }
+        }
         const multiline = value.includes("\n");
         const boolean = !isCsvPath && (value === "true" || value === "false");
         const input = el(multiline ? "textarea" : "input");
@@ -186,6 +282,9 @@ function showToml(kind, text, loadedFrom) {
           input.type = "text";
         }
         input.spellcheck = false;
+        if (kind === "config" && root === "feasibility" && key === "ignore_full_stacks_for_loader_access" && boolean) {
+          loaderAccess.ignoreFull = input;
+        }
         if (!boolean) input.value = value;
         input.addEventListener("input", () => {
           updateTomlSave(kind);
@@ -212,7 +311,11 @@ function showToml(kind, text, loadedFrom) {
         fields.push({start, end: start + value.length, input});
       }
     } else if (visible) {
-      editor.append(el(table ? "h4" : "p", trimmed, table ? "toml-section" : "toml-comment"));
+      const heading = el(table ? "h4" : "p", trimmed, table ? "toml-section" : "toml-comment");
+      editor.append(heading);
+      if (kind === "config" && table && root === "feasibility" && parts.length === 1) {
+        feasibilityHeading = heading;
+      }
     }
     offset = lineEnd + 1;
     if (omitted) fields.push({start: statementStart, end: Math.min(offset, source.length)});
@@ -222,6 +325,34 @@ function showToml(kind, text, loadedFrom) {
     fields.push({start: statementStart, end: source.length});
   } else {
     for (const comment of comments) editor.append(el("p", comment, "toml-comment"));
+  }
+  if (kind === "config") {
+    if (!inlineFeasibility) {
+      const separator = feasibilityStart && source[feasibilityStart - 1] !== "\n" ? "\n" : "";
+      for (const key of loaderModeKeys.filter(key => !seenModes.has(key))) {
+        const prefix = separator + (feasibilityStart ? key : "feasibility." + key) + " = ";
+        const control = loaderAccessSwitch(loaderAccess, key, prefix, null);
+        if (key === "loader_access_mode" && loaderAccess.preserve_future_loader_access_mode) {
+          loaderAccess.preserve_future_loader_access_mode.row.before(control.row);
+        } else if (key === "preserve_future_loader_access_mode" && loaderAccess.loader_access_mode) {
+          loaderAccess.loader_access_mode.row.after(control.row);
+        } else if (feasibilityHeading) {
+          feasibilityHeading.after(control.row);
+        } else {
+          editor.prepend(control.row);
+        }
+        fields.push({start: feasibilityStart, end: feasibilityStart, input: control.input});
+      }
+      fields.sort((a, b) => a.start - b.start || a.end - b.end);
+    }
+    const future = loaderAccess.preserve_future_loader_access_mode;
+    if (future) {
+      loaderAccess.note = el("p", undefined, "note loader-access-note");
+      loaderAccess.note.id = "loader-access-note";
+      future.group.setAttribute("aria-describedby", loaderAccess.note.id);
+      future.row.after(loaderAccess.note);
+    }
+    updateLoaderAccess(loaderAccess);
   }
   const status = $(kind + "-toml-source");
   const origin = standalone ? "Loaded bundled TOML: " : projectTomlsLive ? "Loaded project TOML: " :
