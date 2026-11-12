@@ -197,7 +197,7 @@ class ScenarioTests(unittest.TestCase):
         self.rows["inbound_containers"] += [dict(container_id="NEW1", container_size="20"), dict(container_id="OLD", container_size="20")]
         preview = self.preview()
         branch, = preview["branches"]
-        self.assertFalse(preview["ready"])
+        self.assertTrue(preview["ready"])
         self.assertEqual([row["status"] for row in branch["queue"]], ["pending", "pending", "invalid", "invalid"])
         self.assertEqual([row["sources"][0]["line"] for row in branch["queue"]], [2, 3, 4, 5])
         self.assertEqual([item["sources"][0]["line"] for item in branch["issues"]], [4, 5])
@@ -289,7 +289,9 @@ class ScenarioTests(unittest.TestCase):
         problem = preview["branches"][0]["issues"][0]
         self.assertEqual(problem["field"], "move_time")
         self.assertEqual(problem["sources"], [{"file": "existing_containers.csv", "line": 2}])
-        self.assertFalse(preview["ready"])
+        self.assertEqual(problem["severity"], "warning")
+        self.assertTrue(preview["ready"])
+        self.assertEqual(preview["branches"][0]["summary"]["existing_containers"], 0)
 
     def test_map_reports_dummy_tiers_paired_footprints_and_assigned_rules(self):
         self.rows["parameters"] = [dict(parameter_id="38", parameter_name="GRADING PG",
@@ -353,18 +355,71 @@ class ScenarioTests(unittest.TestCase):
         self.rows["inbound_containers"][0]["move_time"] = "not a date"
         preview = self.preview()
         branch, = preview["branches"]
-        self.assertFalse(preview["ready"])
+        self.assertTrue(preview["ready"])
         self.assertTrue(branch["yard_map"]["blocks"])
         self.assertEqual([row["status"] for row in branch["queue"]], ["invalid", "pending"])
         issue, = branch["issues"]
+        self.assertEqual(issue["severity"], "warning")
         self.assertEqual(issue["field"], "move_time")
         self.assertEqual(issue["sources"], [{"file": "inbound_containers.csv", "line": 2}])
 
-    def test_unknown_block_dropped_by_legacy_scope_is_reported(self):
-        self.rows["existing_containers"][0]["block_code"] = "UNKNOWN"
-        preview = self.preview()
-        self.assertFalse(preview["ready"])
-        self.assertIn("Unknown block", preview["branches"][0]["issues"][0]["message"])
+    def test_unknown_block_and_out_of_bounds_containers_warn_without_blocking_simulation(self):
+        valid = self.rows["existing_containers"][0]
+        for index, coordinates in enumerate((
+            {"block_code": "UNKNOWN"}, {"row_no": "3"}, {"slot_no": "5"}, {"tier_no": "4"},
+        ), 1):
+            self.rows["existing_containers"].append(valid | coordinates | {"container_id": f"SKIPPED{index}"})
+        self.write_files()
+        scenario = prepare_scenario(self.payload)
+        preview = public_preview(scenario)
+        self.assertTrue(preview["ready"], preview)
+        branch, = preview["branches"]
+        self.assertEqual(branch["issue_counts"], {"warning": 4})
+        self.assertIn("Unknown block", branch["issues"][0]["message"])
+        self.assertEqual([item["sources"][0]["line"] for item in branch["issues"]], [3, 4, 5, 6])
+        self.assertEqual(list(scenario["branches"][0]["yard"].containers), ["OLD"])
+        simulation = Simulation(scenario)
+        self.assertEqual(simulation.step(simulation.id, "JKT74", 1)["row"]["status"], "placed")
+
+    def test_incompatible_existing_footprint_warns_without_blocking_simulation(self):
+        self.rows["existing_containers"][0]["container_size"] = "40"
+        self.write_files()
+        scenario = prepare_scenario(self.payload)
+        branch, = public_preview(scenario)["branches"]
+        self.assertEqual(branch["issue_counts"], {"warning": 1})
+        self.assertIn("incompatible footprint", branch["issues"][0]["message"])
+        self.assertIn("JKT74", Simulation(scenario).branches)
+
+    def test_skipped_records_across_datasets_leave_usable_yard_runnable(self):
+        self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {
+            "block_id": "11", "block_code": "B", "max_tier": "0",
+        })
+        self.rows["parameters"] = [dict(parameter_id="", branch_id="2", terminal_id="1")]
+        self.rows["yard_planning"] = [
+            dict(parameter_id="MISSING", block_id="10", row_no="1", slot_no="1", branch_id="2", terminal_id="1"),
+            dict(parameter_id="MISSING", block_id="10", row_no="bad", slot_no="1", branch_id="2", terminal_id="1"),
+        ]
+        self.rows["removed_slots"] = [
+            dict(block_id="10", row_no="1", slot_no="bad"),
+            dict(block_id="10", row_no="99", slot_no="1"),
+        ]
+        self.rows["equipment_history"].append(self.rows["equipment_history"][0] | {"move_time": "bad date"})
+        self.rows["inbound_containers"].append(dict(container_id="OTHER", branch_id="UNKNOWN", container_size="20"))
+        self.write_files()
+        scenario = prepare_scenario(self.payload)
+        preview = public_preview(scenario)
+        self.assertTrue(preview["ready"], preview)
+        self.assertEqual([(item["dataset"], item["severity"]) for item in preview["issues"]],
+                         [("inbound_containers", "warning")])
+        branch, = preview["branches"]
+        self.assertEqual(sorted((item["dataset"], item["sources"][0]["line"]) for item in branch["issues"]), [
+            ("equipment_history", 3), ("parameters", 2), ("removed_slots", 2), ("removed_slots", 3),
+            ("yard_blocks", 3), ("yard_planning", 2), ("yard_planning", 3),
+        ])
+        self.assertEqual(branch["issue_counts"], {"warning": 7})
+        self.assertEqual(branch["summary"]["blocks"], 1)
+        simulation = Simulation(scenario)
+        self.assertEqual(simulation.step(simulation.id, "JKT74", 1)["row"]["status"], "placed")
 
     def test_invalid_block_dimensions_use_domain_validation_and_source(self):
         self.rows["yard_blocks"][0]["max_tier"] = "0"

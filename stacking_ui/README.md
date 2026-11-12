@@ -62,6 +62,8 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    Dummy tiers count as occupied and are excluded from the yard CSV. Generate a
    fresh preview to return to the original inputs. **Input and yard issues**
    groups the other errors and warnings with their source files and row numbers.
+   Skipped records appear as warnings. You can still run a branch with a usable
+   yard and inbound queue.
    The initial
    yard can still be inspected when the inbound CSV is missing. The page also
    shows the incoming containers in a horizontal queue above the map, in CSV

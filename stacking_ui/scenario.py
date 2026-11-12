@@ -107,7 +107,7 @@ def prepare_scenario(payload):
                     identity = strGeneralize(identity)
                 if identity not in known:
                     result["issues"].append(issue(name, "Unknown or missing branch reference; record cannot be assigned to a yard.",
-                                                  sources=[origin], field="branch_id"))
+                                                  sources=[origin], field="branch_id", severity="warning"))
         for selection in branch_input_settings(input_settings):
             code = selection["filters"]["branch_code"]
             branch = {"branch_code": code, "issues": [], "queue": [], "yard": None,
@@ -115,8 +115,16 @@ def prepare_scenario(payload):
                       "container_profile": profiles["existing_containers"],
                       "inbound_available": inbound_available}
             result["branches"].append(branch)
+
+            def record_skipped_row(name, location, error):
+                filename = files[name].get("name", name + ".csv")
+                line = int(location.rsplit(", line ", 1)[1])
+                message = str(error).removeprefix(location + ": ")
+                branch["issues"].append(issue(name, f"{message} Record skipped.",
+                                              sources=[{"file": filename, "line": line}], severity="warning"))
+
             try:
-                inputs = load_yard_inputs(selection, include_shifting=False)
+                inputs = load_yard_inputs(selection, include_shifting=False, on_row_error=record_skipped_row)
                 branch["inputs"] = inputs
                 branch["branch_name"] = inputs["terminal_branches"][0]["branch_name"]
                 branch["counts"] = {name: len(value) if name != "yard_planning" else _count(value)
@@ -201,19 +209,20 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
                 unknown = row["block_id"] not in known_blocks
             if unknown:
                 branch["issues"].append(issue(name, "Unknown block reference; record was excluded by yard filtering.",
-                    sources=[origin], field="block_code" if name == "existing_containers" else "block_id"))
+                    sources=[origin], field="block_code" if name == "existing_containers" else "block_id",
+                    severity="warning"))
 
-    # Date parsing can otherwise abort Yard construction before BadYardData runs.
+    existing_containers = []
     for row in inputs["existing_containers"]:
         try:
             container = Container(**row)
-            if row["weight"].strip() and container.getWeight() is None:
-                add("existing_containers", "Invalid weight is treated as unknown by the stacking engine.", row,
-                    field="weight", severity="warning")
         except (ValueError, TypeError, OverflowError, OSError) as error:
-            add("existing_containers", str(error), row, field="move_time")
-    if any(item["field"] == "move_time" and item["severity"] == "error" for item in branch["issues"]):
-        return
+            add("existing_containers", f"{error}. Record skipped.", row, field="move_time", severity="warning")
+            continue
+        if row["weight"].strip() and container.getWeight() is None:
+            add("existing_containers", "Invalid weight is treated as unknown by the stacking engine.", row,
+                field="weight", severity="warning")
+        existing_containers.append(row)
 
     # Guard accidental enormous grids before allocating nested Stack objects.
     cells = 0
@@ -231,7 +240,7 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
         yard = Yard(
             yard_blocks_input=inputs["yard_blocks"], removed_slots_input=inputs["removed_slots"],
             parameters_input=inputs["parameters"], yard_planning_input=inputs["yard_planning"],
-            containers_input=inputs["existing_containers"], equipment_input=inputs["master_equipment"],
+            containers_input=existing_containers, equipment_input=inputs["master_equipment"],
             equipment_locations_input=inputs["equipment_history"],
             feasibility_settings=settings.feasibility, heuristic_settings=settings.heuristic,
         )
@@ -252,18 +261,20 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
             criteria = location_criteria(criteria)
         elif problem.category == "yard_planning":
             criteria = location_criteria(criteria["location"]) | {"parameter_id": criteria["parameter_id"]}
-        add(name, problem.reason, criteria, category=problem.category)
+        add(name, problem.reason, criteria, category=problem.category, severity="warning")
     for parameter, block, row, slot in bad.getYPOutOfRange():
         add("yard_planning", "Yard planning coordinates are outside the block.",
-            location_criteria((block, row, slot)) | {"parameter_id": parameter})
+            location_criteria((block, row, slot)) | {"parameter_id": parameter}, severity="warning")
+
     for containers, message in (
-        (bad.getIncompleteExistingContainers(), "Existing container has an incomplete ID, size, or coordinates."),
+        (bad.getIncompleteExistingContainers(), "Existing container has an incomplete ID, size, or coordinates; record skipped."),
         (bad.getDuplicateExistingContainerIDs(), "Duplicate existing container ID; record skipped."),
         (bad.getContainerCoordsInvalid(), "Invalid container coordinates or incompatible footprint; record skipped."),
     ):
         for container in containers:
             add("existing_containers", message, {"container_id": container.getId(),
-                **dict(zip(("branch_id", "block_code", "row_no", "slot_no", "tier_no"), container.getCoordsStr()))})
+                **dict(zip(("branch_id", "block_code", "row_no", "slot_no", "tier_no"), container.getCoordsStr()))},
+                severity="warning")
     for containers in bad.getOverlappingContainers().values():
         for container in sorted(containers, key=lambda item: item.getId()):
             retained = yard.containers.get(container.getId()) is container
@@ -285,7 +296,8 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
             container = Container(**row)
         except (ValueError, TypeError, OverflowError, OSError) as error:
             status, reason = "invalid", str(error)
-            branch["issues"].append(issue("inbound_containers", reason, sources=origin, field="move_time"))
+            branch["issues"].append(issue("inbound_containers", reason, sources=origin,
+                                          field="move_time", severity="warning"))
         else:
             if row["weight"].strip() and container.getWeight() is None:
                 branch["issues"].append(issue("inbound_containers", "Invalid weight is treated as unknown by the stacking engine.",
@@ -295,7 +307,7 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
                 seen[container.getId()] = container
             except PlacementRejected as error:
                 status, reason = "invalid", str(error)
-                branch["issues"].append(issue("inbound_containers", reason, sources=origin))
+                branch["issues"].append(issue("inbound_containers", reason, sources=origin, severity="warning"))
         branch["queue"].append({"position": index + 1, "container_id": row["container_id"],
                                 "size": row["container_size"], "status": status,
                                 "reason": reason, "sources": origin})
@@ -346,5 +358,7 @@ def public_preview(result):
     """Do not serialize mutable domain objects into the browser response."""
     preview = {key: value for key, value in result.items() if key != "branches"}
     preview["branches"] = [public_branch(branch) for branch in result["branches"]]
-    preview["ready"] = bool(preview["branches"]) and not preview["issues"] and all(branch["ready"] for branch in preview["branches"])
+    preview["ready"] = (bool(preview["branches"])
+                        and not any(item["severity"] == "error" for item in preview["issues"])
+                        and all(branch["ready"] for branch in preview["branches"]))
     return preview

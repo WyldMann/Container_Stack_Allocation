@@ -13,9 +13,12 @@ class Repository:
         self,
         loader: Loader,
         profile: CSVMappingProfile | None = None,
+        *,
+        on_row_error=None,
     ):
         self.loader = loader
         self.profile = profile
+        self.on_row_error = on_row_error
 
     def _resolve_columns(
         self, headers: Sequence[str] | None,
@@ -98,6 +101,24 @@ class Repository:
                 f"{field} must be an integer; received {value!r}."
             ) from error
 
+    def _position(self, record, location):
+        return (self._coordinate(record["row_no"], "row_no", location),
+                self._coordinate(record["slot_no"], "slot_no", location))
+
+    def _skip_row(self, location, error):
+        if self.on_row_error is None:
+            raise error
+        self.on_row_error(location, error)
+
+    def _iter_positioned_rows(self):
+        for location, record in self._iter_rows():
+            try:
+                position = self._position(record, location)
+            except InputError as error:
+                self._skip_row(location, error)
+            else:
+                yield record, position
+
     def read_records(self) -> list[dict[str, str]]:
         return [
             {key: strGeneralize(value) for key, value in record.items()}
@@ -135,12 +156,8 @@ class RemovedSlotsRepository(Repository):
 
     def read_tuples(self) -> list[tuple[str, int, int]]:
         return [
-            (
-                strGeneralize(record["block_id"]),
-                self._coordinate(record["row_no"], "row_no", location),
-                self._coordinate(record["slot_no"], "slot_no", location),
-            )
-            for location, record in self._iter_rows()
+            (strGeneralize(record["block_id"]), *position)
+            for record, position in self._iter_positioned_rows()
         ]
 
 
@@ -149,13 +166,8 @@ class YardPlanningRepository(Repository):
 
     def read_tuples(self) -> list[tuple[str, str, int, int]]:
         return [
-            (
-                strGeneralize(record["parameter_id"]),
-                strGeneralize(record["block_id"]),
-                self._coordinate(record["row_no"], "row_no", location),
-                self._coordinate(record["slot_no"], "slot_no", location),
-            )
-            for location, record in self._iter_rows()
+            (strGeneralize(record["parameter_id"]), strGeneralize(record["block_id"]), *position)
+            for record, position in self._iter_positioned_rows()
         ]
 
 
@@ -169,10 +181,16 @@ class EquipmentMoveRepository(Repository):
             try:
                 dt = parse_datetime(record["move_time"])
             except (ValueError, OverflowError, OSError) as error:
-                raise InputError(
-                    f"{location}: "
-                    f"invalid MOVE_DATE {record['move_time']!r}."
-                ) from error
+                invalid_date = InputError(f"{location}: invalid MOVE_DATE {record['move_time']!r}.")
+                if self.on_row_error is None:
+                    raise invalid_date from error
+                self.on_row_error(location, invalid_date)
+                continue
+            try:
+                position = self._position(record, location)
+            except InputError as error:
+                self._skip_row(location, error)
+                continue
 
             # Empty dates remain older than real dates. Do not silently guess
             # a timezone when a source mixes naive and aware timestamps.
@@ -186,12 +204,7 @@ class EquipmentMoveRepository(Repository):
                 if aware:
                     dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
 
-            coordinates = (
-                record["branch_id"],
-                record["block_code"],
-                self._coordinate(record["row_no"], "row_no", location),
-                self._coordinate(record["slot_no"], "slot_no", location),
-            )
+            coordinates = (record["branch_id"], record["block_code"], *position)
             equipment_code = record["equipment_code"]
             if equipment_code not in result or dt > result[equipment_code][0]:
                 result[equipment_code] = (dt, coordinates)

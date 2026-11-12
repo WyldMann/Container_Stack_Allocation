@@ -1,5 +1,7 @@
 """Load all configured datasets before interactive yard processing begins."""
 
+from functools import partial
+
 from config import ConfigurationError
 from config.application.input_filters import active_filters, mapped_filters
 from config.csv_import.mapping_loader import load_mapping
@@ -16,7 +18,7 @@ from .repository import (
 )
 
 
-def _read_datasets(make_loader, profiles, *, datasets=None):
+def _read_datasets(make_loader, profiles, *, datasets=None, on_row_error=None):
     readers = {
         "terminal_branches": (BranchRepository, "read_records"),
         "yard_blocks": (Repository, "read_records"),
@@ -37,7 +39,10 @@ def _read_datasets(make_loader, profiles, *, datasets=None):
     if missing:
         raise ConfigurationError(f"Missing mapping profiles: {sorted(missing)}")
     return {
-        name: getattr(repository(make_loader(name), profiles[name]), method)()
+        name: getattr(repository(
+            make_loader(name), profiles[name],
+            on_row_error=partial(on_row_error, name) if on_row_error is not None else None,
+        ), method)()
         for name, (repository, method) in readers.items()
     }
 
@@ -76,8 +81,8 @@ def _sql_loader(connection, name, definition, *, membership_filters=()):
     return SQLLoader(connection, query, parameters=tuple(parameters), source=name)
 
 
-def load_yard_inputs(settings, *, include_shifting=True, connection=None):
-    """Load selected sources; SQL errors propagate without a CSV fallback."""
+def load_yard_inputs(settings, *, include_shifting=True, connection=None, on_row_error=None):
+    """Load selected sources, optionally reporting and skipping invalid row values."""
     if isinstance(settings.get("filters", {}).get("branch_code"), list):
         raise ConfigurationError(
             "load_yard_inputs requires one branch; iterate branch_input_settings(settings) first."
@@ -163,6 +168,7 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None):
             selected_block_ids = tuple(sorted({row["block_id"] for row in inputs.get("yard_blocks", [])}))
         inputs.update(_read_datasets(
             make_loader, profiles, datasets=tuple(name for name in sources if name not in inputs),
+            on_row_error=on_row_error,
         ))
         for name in ("existing_containers", "inbound_containers"):
             if name in inputs and profiles[name].branch_kind == "code":
