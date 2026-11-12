@@ -75,6 +75,7 @@ class ContainerImportProtectionTests(unittest.TestCase):
                                               .getContainer(int(tier_no) - 1), container)
                             self.assertEqual(len(yard.containers), 1)
                             self.assertEqual(yard.bad_data.getTotalContainerCoordsInvalid(), 0)
+                            self.assertEqual(yard.bad_data.stacks_with_dummy_containers, [])
                             self.assertEqual(yard.bad_data.getTotalAnomalousStacks(),
                                              len(footprint) if tier_no == "3" else 0)
 

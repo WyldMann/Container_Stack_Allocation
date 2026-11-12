@@ -157,6 +157,12 @@ class BadDataPresenter(Presenter):
             self.out(toStrSlotRow(x.getCoords()), end = " ")
             self.outStackContents(x)
 
+    def printDummyContainers(self, baddata: BadYardData) -> None:
+        self.out("\nOccupied tiers with missing container records:")
+        for stack in baddata.stacks_with_dummy_containers:
+            tiers = ", ".join(str(tier + 1) for tier in stack.getDummyTiers())
+            self.out(toStrSlotRow(stack.getCoords()), "tiers", tiers)
+
     def printIncompleteExistingContainers(self, baddata: BadYardData) -> None:
         self.out("\nIncomplete Existing Containers:")
         for x in baddata.getIncompleteExistingContainers():
@@ -198,6 +204,7 @@ class BadDataPresenter(Presenter):
         if baddata.container_coords_invalid: self.printContainerCoordsInvalid(baddata)
         if baddata.overlapping_containers != {}: self.printOverlappingContainers(baddata)
         if baddata.anomalous_stacks: self.printAnomalousStacks(baddata)
+        if baddata.stacks_with_dummy_containers: self.printDummyContainers(baddata)
 
     def printInbound(self, baddata: BadYardData) -> None:
         if baddata.getIncompleteInboundContainers():
@@ -221,3 +228,4 @@ class BadDataPresenter(Presenter):
         self.out("\nIncomplete Inbound Containers:", baddata.getTotalIncompleteInbound())
         self.out("Duplicate Inbound Container IDs:", baddata.getTotalDuplicateInboundContainerIDs())
         self.out("\nAnomalous Stacks:", baddata.getTotalAnomalousStacks())
+        self.out("Stacks with missing container records:", len(baddata.stacks_with_dummy_containers))

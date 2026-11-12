@@ -92,7 +92,7 @@ class UnplannedStackSelectionTests(unittest.TestCase):
 
 
 class AnomalousStackSelectionTests(unittest.TestCase):
-    def make_yard(self, container_size='20', *, slots=4, floating=True, settings=None):
+    def make_yard(self, container_size='20', *, slots=4, tiers=3, floating=True, settings=None):
         record = dict(
             container_id='FLOATING', principal='', container_condition='',
             container_fill='', container_size=container_size, container_grade='',
@@ -103,7 +103,7 @@ class AnomalousStackSelectionTests(unittest.TestCase):
         yard = Yard(
             yard_blocks_input=[dict(
                 branch_id='BR', block_id='A', block_code='A',
-                row_count='1', slot_count=str(slots), max_tier='3',
+                row_count='1', slot_count=str(slots), max_tier=str(tiers),
                 pos_x='0', pos_y='0',
             )],
             containers_input=[record] if floating else [],
@@ -129,18 +129,20 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                   for row in block.getSlots() for stack in row),
             tuple((loader, loader.getCoords()) for loader in yard.master_loaders),
             tuple(yard.bad_data.getAnomalousStacks()),
+            tuple(yard.bad_data.stacks_with_dummy_containers),
             yard.bad_data.getImportErrors(),
         )
 
-    def test_assignment_uses_valid_alternative_and_keeps_imported_anomalies(self):
+    def test_assignment_uses_valid_alternative_when_repaired_footprint_is_full(self):
         for container_size in ('20', '40'):
             with self.subTest(container_size=container_size):
                 yard, incoming, _ = self.make_yard(container_size)
+                yard.fillDummyContainer()
+                yard.anomalyCheck()
                 before = self.snapshot(yard)
                 floating = yard.containers['FLOATING']
                 floating_coords = floating.getCoordsStrTuple()
-                anomaly_count = 2 if container_size == '40' else 1
-                self.assertEqual(yard.bad_data.getTotalAnomalousStacks(), anomaly_count)
+                self.assertEqual(yard.bad_data.getTotalAnomalousStacks(), 0)
 
                 result = yard.assignContainer(incoming)
 
@@ -151,12 +153,13 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                 yard.placeContainerWithAssignResult(result)
                 self.assertIs(yard.containers['NEW'], incoming)
                 self.assertEqual(floating.getCoordsStrTuple(), floating_coords)
-                self.assertEqual(yard.bad_data.getTotalAnomalousStacks(), anomaly_count)
                 for slot in ((0, 1) if container_size == '40' else (0,)):
                     self.assertIs(yard.getStack('A', 0, slot).getContainer(2), floating)
 
     def test_anomaly_rescan_refreshes_the_report(self):
-        yard, _, record = self.make_yard('40')
+        yard, _, record = self.make_yard('40', floating=False)
+        yard.addContainerInput(Container(**record))
+        yard.anomalyCheck()
         initial = yard.bad_data.getAnomalousStacks().copy()
         self.assertEqual(len(initial), 2)
 
@@ -170,8 +173,9 @@ class AnomalousStackSelectionTests(unittest.TestCase):
         yard.anomalyCheck()
         self.assertEqual(yard.bad_data.getAnomalousStacks(), [])
 
-    def test_anomalous_high_scoring_stack_does_not_exclude_valid_lower_score(self):
+    def test_full_repaired_high_scoring_stack_does_not_exclude_valid_lower_score(self):
         yard, incoming, _ = self.make_yard()
+        yard.fillDummyContainer()
         for slot_index, score in ((0, 10), (1, 1)):
             parameter = Mock()
             parameter.getId.return_value = f'P{slot_index}'
@@ -186,10 +190,11 @@ class AnomalousStackSelectionTests(unittest.TestCase):
         self.assertEqual(result.getBestCoordinate(), ('A', 0, 1, 0))
         self.assertIs(yard.containers['NEW'], incoming)
 
-    def test_only_anomalous_destinations_return_no_assignment_without_mutation(self):
+    def test_full_repaired_yard_returns_no_assignment_without_mutation(self):
         for container_size, slots in (('20', 1), ('40', 2)):
             with self.subTest(container_size=container_size):
                 yard, incoming, _ = self.make_yard(container_size, slots=slots)
+                yard.fillDummyContainer()
                 before = self.snapshot(yard)
 
                 self.assertIsNone(yard.assign_and_place(incoming))
@@ -197,11 +202,12 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                 self.assertEqual(self.snapshot(yard), before)
                 self.assertEqual(yard.bad_data.getIncompleteInboundContainers(), [])
 
-    def test_direct_placement_rejects_anomalies_with_optional_rules_disabled(self):
+    def test_direct_placement_rejects_unrepaired_anomalies_with_optional_rules_disabled(self):
         settings = FeasibilitySettings(stacking_safety=False, loader_access=False)
         for container_size in ('20', '40'):
             with self.subTest(container_size=container_size):
-                yard, incoming, _ = self.make_yard(container_size, settings=settings)
+                yard, incoming, record = self.make_yard(container_size, floating=False, settings=settings)
+                yard.addContainerInput(Container(**record))
                 coordinates = ('A', 0, 1 if container_size == '40' else 0, 0)
                 before = self.snapshot(yard)
                 incoming_coords = incoming.getCoordsStrTuple()
@@ -229,6 +235,103 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                     yard.placeContainerWithAssignResult(result)
 
                 self.assertEqual(self.snapshot(yard), before)
+
+    def test_assignment_above_repaired_tiers_preserves_dummies(self):
+        settings = FeasibilitySettings(stacking_safety=False, loader_access_mode='feasibility')
+        for size, slot_count in (('20', 1), ('40', 2)):
+            with self.subTest(size=size):
+                yard, incoming, _ = self.make_yard(size, slots=slot_count, tiers=4, settings=settings)
+                yard.fillDummyContainer()
+                block = yard.getBlockByID('A')
+                stacks = block.getSlots()[0]
+                dummy = stacks[0].getContainer(0)
+                for stack in stacks:
+                    self.assertIs(stack.getContainer(0), dummy)
+                    self.assertEqual(stack.getDummyTiers(), [0, 1])
+                    self.assertEqual(stack.getMode(), size)
+                    self.assertEqual(stack.occupancy(), 3)
+                context = yard.feasibility.prepare_loader_context(block)
+                self.assertIn((0, slot_count - 1, size), {
+                    (location.row_index, location.slot_index, location.container_size)
+                    for location in context.accessible_occupied_locations
+                })
+                before = self.snapshot(yard)
+                yard.fillDummyContainer()
+                self.assertEqual(self.snapshot(yard), before)
+
+                dummy_coords = ('A', 0, slot_count - 1, 0)
+                with self.assertRaises(PlacementRejected):
+                    yard.addContainerByCoords(incoming, dummy_coords)
+                with self.assertRaises(PlacementRejected):
+                    yard.placeContainer(incoming, dummy_coords, yard.master_loaders[0])
+                self.assertEqual(self.snapshot(yard), before)
+
+                result = yard.assign_and_place(incoming)
+                self.assertEqual(result.getBestCoordinate(), ('A', 0, slot_count - 1, 3))
+                self.assertEqual(set(yard.containers), {'FLOATING', 'NEW'})
+                for stack in stacks:
+                    self.assertIs(stack.getContainer(3), incoming)
+                    self.assertIs(stack.getContainer(0), dummy)
+                    self.assertEqual(stack.getDummyTiers(), [0, 1])
+
+    def test_existing_data_correction_replaces_dummy_in_both_slots(self):
+        yard, _, record = self.make_yard('40', slots=2)
+        yard.fillDummyContainer()
+        stacks = yard.getBlockByID('A').getSlots()[0]
+        before = self.snapshot(yard)
+        yard.addContainerInput(Container(**(record | {
+            'container_id': 'WRONG-SIZE', 'container_size': '20', 'tier_no': '1',
+        })))
+        self.assertEqual(self.snapshot(yard)[:-1], before[:-1])
+        self.assertEqual(yard.bad_data.getTotalContainerCoordsInvalid(), 1)
+
+        for tier in ('1', '2'):
+            real = Container(**(record | {'container_id': f'FOUND-{tier}', 'tier_no': tier}))
+            yard.addContainerInput(real)
+            for stack in stacks:
+                self.assertIs(stack.getContainer(int(tier) - 1), real)
+            self.assertIs(yard.containers[real.getId()], real)
+            expected = stacks if tier == '1' else []
+            self.assertEqual(yard.bad_data.stacks_with_dummy_containers, expected)
+        self.assertEqual(yard.bad_data.getTotalOverlapping(), 0)
+
+    def test_repair_fills_an_internal_gap_and_leaves_open_tiers_above_it(self):
+        yard, _, record = self.make_yard(slots=1, tiers=4, floating=False)
+        base = Container(**(record | {'container_id': 'BASE', 'tier_no': '1'}))
+        top = Container(**record)
+        yard.addContainerInput(base)
+        yard.addContainerInput(top)
+        stack = yard.getStack('A', 0, 0)
+
+        yard.fillDummyContainer()
+        self.assertIsNone(stack.getContainer(1))
+
+        yard.anomalyCheck()
+        self.assertEqual(yard.bad_data.getAnomalousStacks(), [stack])
+        self.assertIsNone(stack.getContainer(1))
+
+        yard.fillDummyContainer()
+        self.assertEqual(stack.getDummyTiers(), [1])
+        self.assertIs(stack.getContainer(0), base)
+        self.assertIs(stack.getContainer(2), top)
+        self.assertEqual(stack.availableTierInt(), 3)
+        self.assertEqual(yard.bad_data.getAnomalousStacks(), [stack])
+
+        yard.anomalyCheck()
+        self.assertEqual(yard.bad_data.getAnomalousStacks(), [])
+        self.assertEqual(yard.bad_data.stacks_with_dummy_containers, [stack])
+
+    def test_repair_leaves_an_inconsistent_forty_foot_footprint_unrepaired(self):
+        yard, _, record = self.make_yard('40', slots=2, floating=False)
+        yard.addContainerInput(Container(**record))
+        yard.getStack('A', 0, 0).removeContainer(2)
+        yard.anomalyCheck()
+        before = self.snapshot(yard)
+
+        yard.fillDummyContainer()
+
+        self.assertEqual(self.snapshot(yard), before)
+        self.assertEqual(yard.bad_data.getTotalAnomalousStacks(), 1)
 
     def test_every_returned_candidate_passes_the_same_placement_validation(self):
         for container_size in ('20', '40'):

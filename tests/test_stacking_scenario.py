@@ -264,7 +264,7 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual(problem["sources"], [{"file": "existing_containers.csv", "line": 2}])
         self.assertFalse(preview["ready"])
 
-    def test_map_preserves_tier_gaps_paired_footprints_and_assigned_rules(self):
+    def test_map_reports_dummy_tiers_paired_footprints_and_assigned_rules(self):
         self.rows["parameters"] = [dict(parameter_id="38", parameter_name="GRADING PG",
                                          container_grade="PG", container_grade_score="2",
                                          terminal_id="1", branch_id="2")]
@@ -276,14 +276,28 @@ class ScenarioTests(unittest.TestCase):
             row_no="2", slot_no="2", tier_no="2",
         ))
 
-        view = self.preview()["branches"][0]["yard_map"]
+        self.write_files()
+        scenario = prepare_scenario(self.payload)
+        preview = public_preview(scenario)
+        self.assertTrue(preview["ready"])
+        branch, = preview["branches"]
+        self.assertEqual(branch["summary"]["anomalous_stacks"], 2)
+        self.assertEqual(branch["summary"]["stacks_with_dummy_containers"], 0)
+        self.assertEqual([issue["category"] for issue in branch["issues"]], ["anomaly"] * 2)
+        raw_block, = branch["yard_map"]["blocks"]
+        self.assertEqual(raw_block["occupied_tiers"], 3)
+        self.assertTrue(all(stack["anomaly"] for stack in raw_block["stacks"][4:6]))
+
+        scenario["branches"][0]["yard"].fillDummyContainer()
+        view = public_preview(scenario)["branches"][0]["yard_map"]
         block, = view["blocks"]
         self.assertEqual((block["x"], block["y"], block["rows"], block["slots"]), (0, 0, 2, 4))
-        self.assertEqual((block["container_count"], block["occupied_tiers"], block["tier_capacity"]), (2, 3, 21))
+        self.assertEqual((block["container_count"], block["occupied_tiers"], block["tier_capacity"]), (2, 5, 21))
         left, right = block["stacks"][4:6]
-        self.assertTrue(left["anomaly"] and right["anomaly"])
+        self.assertFalse(left["anomaly"] or right["anomaly"])
         self.assertEqual(left["tiers"], right["tiers"])
-        self.assertEqual((right["tiers"][0]["tier"], right["tiers"][0]["anchor_slot"]), (2, 2))
+        self.assertEqual(right["tiers"][0], {"tier": 1, "dummy": True})
+        self.assertEqual((right["tiers"][1]["tier"], right["tiers"][1]["anchor_slot"]), (2, 2))
         self.assertEqual(right["parameters"], ["38"])
         self.assertTrue(block["stacks"][-1]["removed"])
         self.assertEqual(view["parameters"]["38"]["criteria"], [{"label": "Grade", "value": "PG", "points": 2}])

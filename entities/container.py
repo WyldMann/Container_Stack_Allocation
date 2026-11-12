@@ -156,10 +156,8 @@ class Container:
         return self.container_id
 
 
-# special container to be filled in gaps of anomalous stacks
 class DummyContainer(Container):
-    #[(block_id,row,slot,tier),...]
-    coordinates_list: set[tuple[str, str, str, str]]
+    """An occupied tier whose container record is missing."""
 
     def __init__(self):
         super().__init__(
@@ -167,16 +165,3 @@ class DummyContainer(Container):
             container_fill="", container_size="", container_grade="",
             pol="", pod="", vessel="", voyage="", weight="", move_time="",
         )
-        self.coordinates_list = set()
-
-    # Disabled: coordinate helpers belonged to the unused dummy-repair path.
-    # def addCoordList(self, coordinates: tuple[str, int, int], tier_index: int):
-    #     self.coordinates_list.add((coordinates[0], str(coordinates[1] + 1), str(coordinates[2] + 1), str(tier_index + 1)))
-
-    # def removeCoordList(self, coordinates: tuple[str, str, str, str]): self.coordinates_list.remove(coordinates)
-
-    # def replaceDummy(self, container: Container, block_id: str):
-    #     container_coords = container.getCoordsStr()
-    #     self.removeCoordList((block_id, container_coords[2], container_coords[3], container_coords[4]))
-
-    # def getCoordsList(self) -> set[tuple[str, str, str, str]]: return self.coordinates_list

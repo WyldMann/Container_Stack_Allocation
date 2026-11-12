@@ -8,6 +8,7 @@ from collections import deque
 from dataclasses import dataclass
 
 from entities.block import Block
+from entities.container import DummyContainer
 from entities.feasibility.placement_proposal import PlacementProposal
 from entities.feasibility.placement_feasibility import PlacementFeasibility
 
@@ -87,10 +88,13 @@ class LoaderAccessRule:
         isolated_occupied = []
         for row_index, row in enumerate(block.getSlots()):
             for slot_index, stack in enumerate(row):
-                container = next((item for item in stack.getContainers() if item is not None), None)
-                if container is None or stack.getMode() == "X":
+                if stack.occupancy() == 0 or stack.getMode() == "X":
                     continue
-                size = container.getContSize()
+                container = next((item for item in stack.getContainers()
+                                  if item is not None and not isinstance(item, DummyContainer)), None)
+                size = stack.getMode() if container is None else container.getContSize()
+                if size not in ("20", "40"):
+                    continue
                 if size == "40" and slot_index % 2 == 0:
                     continue
                 location = ReceivingLocation(row_index, slot_index, size)

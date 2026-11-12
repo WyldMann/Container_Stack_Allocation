@@ -35,6 +35,7 @@ class ImportIssue:
 class BadYardData:
     overlapping_containers: dict[tuple[str,str,str,str,str],set[Container]]
     anomalous_stacks: list[Stack]
+    stacks_with_dummy_containers: list[Stack]
     incomplete_existing_container: IncompleteExistingContainers
     incomplete_inbound_container: IncompleteInboundContainers
     duplicate_existing_container_i_ds: list[Container]
@@ -48,6 +49,7 @@ class BadYardData:
     def __init__(self, total_params: int, total_containers: int):
         self.overlapping_containers = {}
         self.anomalous_stacks = []
+        self.stacks_with_dummy_containers = []
         self.incomplete_existing_container = IncompleteExistingContainers()
         self.incomplete_inbound_container = IncompleteInboundContainers()
         self.duplicate_existing_container_i_ds = []
@@ -422,8 +424,6 @@ class BadYardData:
     def addContainerCoordsInvalid(self,container:Container):
         self.container_coords_invalid.append(container)
     def addAnomalousStack(self,stack: Stack): self.anomalous_stacks.append(stack)
-    # Disabled: only anomaly repair consumed recorded stacks.
-    # def popAnomalousStack(self) -> Stack: return self.anomalous_stacks.pop()
 
     def anyBadData(self) -> bool:
         return bool(
@@ -434,6 +434,7 @@ class BadYardData:
             or self.duplicate_existing_container_i_ds
             or self.duplicate_inbound_container_i_ds
             or self.anomalous_stacks
+            or self.stacks_with_dummy_containers
             or self.container_coords_invalid
             or self.overlapping_containers
         )

@@ -2,6 +2,8 @@
 
 from math import isfinite
 
+from entities.container import DummyContainer
+
 
 def _parameter_view(parameter):
     criteria = []
@@ -36,6 +38,9 @@ def stack_view(stack, row, slot):
     for tier_no, container in enumerate(stack.getContainers(), 1):
         if container is None:
             continue
+        if isinstance(container, DummyContainer):
+            tiers.append({"tier": tier_no, "dummy": True})
+            continue
         weight = container.getWeight()
         tiers.append({
             "tier": tier_no,
@@ -69,7 +74,7 @@ def yard_view(yard):
                     if key not in parameters:
                         parameters[key] = _parameter_view(parameter)
                 view = stack_view(stack, row_no, slot_no)
-                containers.update(tier["container_id"] for tier in view["tiers"])
+                containers.update(tier["container_id"] for tier in view["tiers"] if not tier.get("dummy"))
                 stacks.append(view)
         blocks.append({
             "code": block.getCode(), "x": block.getPosX(), "y": block.getPosY(),

@@ -274,6 +274,14 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
         add("existing_containers", f"Floating contents in {block.getCode()}, row {row + 1}, slot {slot + 1}.",
             {"branch_id": branch_id, "block_code": block.getCode(), "row_no": str(row + 1)},
             severity="warning", category="anomaly")
+    for stack in bad.stacks_with_dummy_containers:
+        block_id, row, slot = stack.getCoords()
+        block = yard.getBlockByID(block_id)
+        tiers = ", ".join(str(tier + 1) for tier in stack.getDummyTiers())
+        add("existing_containers", f"Missing container records in {block.getCode()}, row {row + 1}, "
+            f"slot {slot + 1}, tiers {tiers}. These tiers are treated as occupied.",
+            {"branch_id": branch_id, "block_code": block.getCode(), "row_no": str(row + 1)},
+            severity="warning", category="dummy_container")
 
     # Queue validation uses a separate collector and never places anything.
     validator = BadYardData(0, 0)
@@ -314,7 +322,8 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
             add("master_equipment", "Equipment has no selected location and is not registered in the yard.",
                 row, severity="warning")
     branch["summary"] = {"blocks": len(yard.blocks_by_id), "existing_containers": len(yard.containers),
-                         "anomalous_stacks": len(bad.getAnomalousStacks())}
+                         "anomalous_stacks": len(bad.getAnomalousStacks()),
+                         "stacks_with_dummy_containers": len(bad.stacks_with_dummy_containers)}
     if branch["inbound_available"]:
         branch["summary"].update(inbound_containers=len(branch["queue"]),
                                  valid_inbound=sum(row["status"] == "pending" for row in branch["queue"]))

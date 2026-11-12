@@ -22,7 +22,6 @@ class Yard:
     parameters: dict[str,Parameter]
     bad_data: BadYardData
     containers: dict[str,Container]
-    dummy: DummyContainer
     master_loaders: list[Loader]
     model: HeuristicModel
 
@@ -55,7 +54,6 @@ class Yard:
         )
 
         self.bad_data = BadYardData(sum(len(yp) for yp in yard_planning_input.values()),len(containers_input))
-        self.dummy = DummyContainer()
 
         # initialize blocks and constructs 2 dict attributes to keep track
         self.blocks_by_id = {}
@@ -115,6 +113,7 @@ class Yard:
             self.addContainerInput(container)
 
         self.anomalyCheck()
+        # self.fillDummyContainer()
 
     def inputEquipment(self,
                        equipment_input: list[dict[str,str]],
@@ -231,7 +230,8 @@ class Yard:
                 # Floating containers may exist in a stack whose mode
                 # is still "0", so inspect its contents as well.
                 if any(
-                    item is not None and item.getContSize() != container_size
+                    item is not None and not isinstance(item, DummyContainer)
+                    and item.getContSize() != container_size
                     for item in stack.getContainers()
                 ):
                     reject()
@@ -246,6 +246,18 @@ class Yard:
             occupant = stack.getContainer(tier_index)
             if occupant is not None:
                 occupants.append(occupant)
+
+        dummy = next((item for item in occupants if isinstance(item, DummyContainer)), None)
+        if dummy is not None:
+            # A correction must match the entire footprint of the placeholder.
+            if len(occupants) != len(stacks) or any(item is not dummy for item in occupants):
+                reject()
+                return
+            for stack in stacks:
+                stack.replaceContainer(container, tier_index)
+            self.containers[container.getId()] = container
+            self.anomalyCheck()
+            return
 
         if occupants:
             if container_size == "40":
@@ -348,19 +360,70 @@ class Yard:
         self.containers[container.getId()] = container
 
     def anomalyCheck(self) -> None:
-        self.bad_data.anomalous_stacks[:] = [
-            stack for block in self.blocks_by_id.values() for stack in block.anomalies()
-        ]
+        anomalous_stacks = []
+        stacks_with_dummy_containers = []
+        for block in self.blocks_by_id.values():
+            for row in block.getSlots():
+                for stack in row:
+                    if stack.anomaly():
+                        anomalous_stacks.append(stack)
+                    if stack.getDummyTiers():
+                        stacks_with_dummy_containers.append(stack)
+        self.bad_data.anomalous_stacks[:] = anomalous_stacks
+        self.bad_data.stacks_with_dummy_containers[:] = stacks_with_dummy_containers
 
     # Disabled: unused repair leaves stack modes inconsistent with contents.
     # def fixAnomalies(self):
     #     while len(self.bad_data.getAnomalousStacks()) != 0:
     #         self.bad_data.popAnomalousStack().normalize()
 
-    # Disabled: dummy repair leaves stack modes inconsistent with contents.
-    # def fillDummyContainer(self) -> None:
-    #     while len(self.bad_data.getAnomalousStacks()) != 0:
-    #         self.bad_data.popAnomalousStack().anomalyDummyFill(self.dummy)
+    def fillDummyContainer(self) -> None:
+        """Repair stacks recorded by the latest anomaly check.
+
+        Run another anomaly check to refresh the report after repair.
+        """
+        for stack in self.bad_data.getAnomalousStacks():
+            block_id, _, _ = stack.getCoords()
+            self._fillStackGaps(self.getBlockByID(block_id), stack)
+
+    def _fillStackGaps(self, block: Block, stack: Stack) -> None:
+        contents = stack.getContainers()
+        real_tiers = [(tier, item) for tier, item in enumerate(contents)
+                      if item is not None and not isinstance(item, DummyContainer)]
+        if not real_tiers:
+            return
+        top_tier, top = real_tiers[-1]
+        gaps = [tier for tier in range(top_tier) if stack.isTierEmpty(tier)]
+        if not gaps:
+            return
+        size = top.getContSize()
+        if size not in ("20", "40") or any(item.getContSize() != size for _, item in real_tiers):
+            return
+
+        _, row, slot = stack.getCoords()
+        anchor = slot
+        footprint = [stack]
+        if size == "40":
+            anchor = slot + 1 if stack.getEven() else slot
+            partner_slot = anchor if stack.getEven() else anchor - 1
+            slots = block.getSlots()[row]
+            if partner_slot >= len(slots):
+                return
+            partner = slots[partner_slot]
+            # Both slots must already share the same records at each occupied tier.
+            if partner.getContainers() != contents:
+                return
+            footprint.append(partner)
+        if any(member.getMode() not in ("0", size) for member in footprint):
+            return
+
+        for tier in gaps:
+            dummy = DummyContainer()
+            dummy.setCoordsInt((block.getBranch(), block.getCode(), row, anchor, tier))
+            for member in footprint:
+                member.replaceContainer(dummy, tier)
+        for member in footprint:
+            member.setMode(size)
 
     def distanceBetweenBlock(self, first_block_id: str, second_block_id: str) -> float:
         block1 = self.blocks_by_id[first_block_id]

@@ -1,4 +1,4 @@
-from .container import Container
+from .container import Container, DummyContainer
 from .parameter import Parameter
 
 class Stack:
@@ -97,16 +97,9 @@ class Stack:
             else: done_stacking = True
         return False
 
-    # Disabled: dummy repair leaves stack modes inconsistent with contents.
-    # def anomalyDummyFill(self,dummy: DummyContainer):
-    #     start_stacking = False
-    #     for x in reversed(range(len(self.containers))):
-    #         if self.containers[x] is not None:
-    #             start_stacking = True
-    #         else:
-    #             if start_stacking:
-    #                 self.containers[x] = dummy
-    #                 dummy.addCoordList(self.coordinates,x)
+    def getDummyTiers(self) -> list[int]:
+        return [tier for tier, container in enumerate(self.containers)
+                if isinstance(container, DummyContainer)]
 
     # use this instead if return type is definitely a container and not None
     def getContainerOrRaise(self,tier_index:int) -> Container:

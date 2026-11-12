@@ -110,9 +110,10 @@ class LoaderAccessRule:
             for slot_index, stack in enumerate(slots):
                 if (row_index, slot_index) in ground:
                     continue
-                # Inspect contents so imported floating containers are included.
-                container = next(item for item in stack.getContainers() if item is not None)
-                size = container.getContSize()
+                size = stack.getMode()
+                if size == "0":
+                    # An unrepaired floating stack may still have an unset mode.
+                    size = next(item.getContSize() for item in stack.getContainers() if item is not None)
                 if size == "20" or (size == "40" and slot_index % 2 == 1):
                     yield ReceivingLocation(row_index, slot_index, size)
 
