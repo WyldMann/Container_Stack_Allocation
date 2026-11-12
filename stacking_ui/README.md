@@ -82,6 +82,10 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    tile for the score breakdown and tier. Earlier traces overlay the current
    yard. The map
    becomes the final yard after the last row. Generate a fresh preview to restart.
+5. After a branch finishes, use **Compare yard** to load a CSV in the same
+   format as `containers.csv`. Select a block and then a slot in the linked
+   placement maps to compare tier contents. Compare placements by container ID
+   and review occupancy and parameter compliance for the yard and each block.
 
 Existing draft JSON files work from the project root for batch use.
 

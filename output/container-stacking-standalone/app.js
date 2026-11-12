@@ -139,13 +139,13 @@ async function readText(file) {
   return new TextDecoder("utf-8", {fatal: true}).decode(await file.arrayBuffer());
 }
 
-function onFile(input, handler) {
+function onFile(input, handler, report) {
   input.addEventListener("change", () => action(async () => {
     const file = input.files[0];
     if (!file) return;
     input.value = "";
     await handler(file);
-  }));
+  }, report));
 }
 
 function tomlValueEnd(source, start) {
@@ -668,7 +668,12 @@ function table(headers, rows) {
   const body = el("tbody");
   for (const row of rows) {
     const tr = el("tr");
-    for (const value of row) tr.append(el("td", String(value ?? "")));
+    for (const value of row) {
+      const cell = el("td");
+      if (value instanceof Node) cell.append(value);
+      else cell.textContent = String(value ?? "");
+      tr.append(cell);
+    }
     body.append(tr);
   }
   grid.append(head, body);

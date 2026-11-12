@@ -88,7 +88,8 @@ def build(runtime, destination):
         archive.writestr("index.html", page)
         archive.writestr("defaults.js", "const TOML_DEFAULTS = " + json.dumps(documents) + ";\n")
         archive.writestr("runtime-assets.js", "let STACKING_RUNTIME = " + json.dumps(assets) + ";\n")
-        for name in ("style.css", "yard-map.css", "yard-map.js", "simulation.js", "app.js", "standalone.js"):
+        for name in ("style.css", "yard-map.css", "yard-map.js", "yard-comparison-map.js",
+                     "simulation.js", "app.js", "standalone.js"):
             archive.write(STATIC / name, name)
         for name, content in licenses.items():
             archive.writestr("licenses/" + name, content)

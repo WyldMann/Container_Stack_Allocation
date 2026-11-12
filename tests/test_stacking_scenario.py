@@ -16,6 +16,7 @@ import zipfile
 from config.application.config_loader import ConfigurationError, parse_config
 from config.csv_import.mapping_loader import parse_mapping
 from filewriter import ContainerFileWriter
+from stacking_ui.comparison import compare_yard
 from stacking_ui.configuration import defaults, dump_toml
 from stacking_ui.scenario import prepare_scenario, public_preview
 from stacking_ui.session import SimulationSession
@@ -160,6 +161,12 @@ class ScenarioTests(unittest.TestCase):
                 exported = export_yard_csv(scenario["branches"])
                 records = list(csv.DictReader(io.StringIO(exported)))
                 self.assertEqual(len(records), 3)  # Includes the 40-foot container once.
+                comparison = compare_yard(branch, "export.csv", exported)
+                self.assertEqual(comparison["counts"],
+                                 {"same": 3, "moved": 0, "simulated_only": 0, "reference_only": 0})
+                self.assertEqual(comparison["simulated"], comparison["reference"])
+                for item in comparison["blocks"]:
+                    self.assertEqual(item["layout"]["simulated"], item["layout"]["reference"])
                 self.assertEqual(records[0][profile["columns"]["branch_id"]],
                                  "2" if branch_kind == "id" else "JKT74")
                 if branch_kind == "id":
@@ -192,6 +199,51 @@ class ScenarioTests(unittest.TestCase):
         self.assertTrue(public_preview(reimported)["ready"], public_preview(reimported))
         self.assertEqual([list(branch["yard"].containers) for branch in reimported["branches"]],
                          [["OLD"], ["OTHER"]])
+
+    def test_completed_yard_comparison_reports_changes_without_mutating_simulation(self):
+        session = SimulationSession()
+        result = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": result["simulation"]["id"], "branch": "JKT74"}
+        comparison = {"op": "compare_yard", **request, "name": "reference.csv"}
+        with self.assertRaisesRegex(SimulationError, "Finish the inbound queue"):
+            session.request(comparison)
+        for position in (1, 2):
+            session.request({"op": "step", **request, "position": position})
+        original_csv = session.request({"op": "yard_csv"})
+        valid = self.rows["existing_containers"][0]
+        self.rows["existing_containers"] = [
+            valid | {"row_no": "2", "slot_no": "3"},
+            valid | {"container_id": "EXTRA", "row_no": "2", "slot_no": "4"},
+            valid | {"container_id": "INVALID", "row_no": "99"},
+            valid | {"container_id": "FOREIGN", "branch_id": "OTHER"},
+        ]
+        self.write_files()
+        report = session.request(comparison | {"text": self.payload["files"]["existing_containers"]["content"]})
+        self.assertEqual(report["counts"],
+                         {"same": 0, "moved": 1, "simulated_only": 2, "reference_only": 1})
+        self.assertEqual(report["excluded"], 1)
+        self.assertEqual([(item["line"], item["container"]) for item in report["issues"]], [(4, "INVALID")])
+        moved, = [item for item in report["differences"] if item["status"] == "moved"]
+        self.assertEqual(moved["container"], "OLD")
+        self.assertEqual((moved["simulated"]["row"], moved["reference"]["row"]), (1, 2))
+        self.assertEqual(report["simulated"]["occupied_tiers"], 4)
+        self.assertEqual(report["reference"]["occupied_tiers"], 2)
+        self.assertEqual(report["blocks"][0]["reference"]["occupancy_rate"], 2 / 24)
+        layout = report["blocks"][0]["layout"]
+        self.assertEqual((layout["rows"], layout["slots"]), (2, 4))
+        pair_slots = [slot for slot in layout["simulated"]
+                      if any(tier.get("container") == "NEW2" for tier in slot["tiers"])]
+        self.assertEqual(len(pair_slots), 2)
+        left, right = pair_slots
+        self.assertEqual((left["row"], left["slot"] + 1), (right["row"], right["slot"]))
+        self.assertEqual(left["tiers"], right["tiers"])
+        self.assertEqual([(slot["row"], slot["slot"]) for slot in layout["reference"]], [(2, 3), (2, 4)])
+        self.assertEqual(session.request({"op": "yard_csv"}), original_csv)
+
+        self.rows["existing_containers"] = [valid | {"branch_id": "OTHER"}]
+        self.write_files()
+        with self.assertRaisesRegex(ValueError, "no container records for branch JKT74"):
+            session.request(comparison | {"text": self.payload["files"]["existing_containers"]["content"]})
 
     def test_duplicate_queue_ids_are_not_removed_and_link_to_source(self):
         self.rows["inbound_containers"] += [dict(container_id="NEW1", container_size="20"), dict(container_id="OLD", container_size="20")]

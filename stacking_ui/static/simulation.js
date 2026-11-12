@@ -15,8 +15,14 @@ function simulationView(run, branches, id, onStart) {
   runToEnd.type = "button";
   const viewTrace = el("button", "View trace", "secondary");
   viewTrace.type = "button";
+  const compare = el("button", "Compare yard", "secondary");
+  compare.type = "button";
+  const snapshotPicker = el("input");
+  snapshotPicker.type = "file";
+  snapshotPicker.accept = ".csv";
+  snapshotPicker.hidden = true;
   const buttons = el("div", undefined, "actions");
-  buttons.append(next, runToEnd, viewTrace);
+  buttons.append(next, runToEnd, viewTrace, compare);
   controls.append(progress, buttons);
   const outcome = el("div", undefined, "simulation-outcome");
   const traceLabel = el("label", undefined, "simulation-trace-picker");
@@ -26,7 +32,32 @@ function simulationView(run, branches, id, onStart) {
   status.setAttribute("role", "status");
   const details = el("div");
   outcome.append(traceLabel, status, details);
-  root.append(queue, controls, outcome, map.element);
+  const comparison = el("div", undefined, "yard-comparison");
+  const comparisonStatus = el("p");
+  comparisonStatus.setAttribute("role", "status");
+  const comparisonResult = el("div");
+  comparison.append(el("h3", "Yard comparison"), comparisonStatus, comparisonResult);
+  comparison.hidden = !run.comparison;
+  if (run.comparison) comparisonResult.append(yardComparisonResults(run.comparison));
+  root.append(queue, controls, outcome, snapshotPicker, comparison, map.element);
+
+  function reportComparison(text, error = false) {
+    comparison.hidden = false;
+    comparisonStatus.textContent = text;
+    comparisonStatus.classList.toggle("not-ready", error);
+  }
+
+  compare.addEventListener("click", () => snapshotPicker.click());
+  onFile(snapshotPicker, async file => {
+    reportComparison("Comparing yards…");
+    comparison.scrollIntoView({block: "start"});
+    const result = await globalThis.compareStackingYard({
+      id, branch: branch.branch_code, name: file.name, text: await readText(file)
+    });
+    run.comparison = result;
+    comparisonResult.replaceChildren(yardComparisonResults(result));
+    reportComparison("");
+  }, reportComparison);
 
   const finished = () => run.processed === branch.queue.length;
 
@@ -65,6 +96,7 @@ function simulationView(run, branches, id, onStart) {
     updateProgress();
     next.textContent = run.processed ? "Next container" : "Start simulation";
     next.hidden = runToEnd.hidden = done;
+    compare.hidden = !done || typeof globalThis.compareStackingYard !== "function";
     map.element.querySelector("h3").textContent = done ? "Final yard map" : "Yard map";
     const card = track.children[done ? run.processed - 1 : run.processed];
     if (card) {
@@ -133,6 +165,152 @@ function simulationView(run, branches, id, onStart) {
   update();
   if (run.last?.placement) map.markPlacement(run.last.placement);
   return root;
+}
+
+const comparisonStatuses = {
+  moved: "Different placement",
+  simulated_only: "Simulation only",
+  reference_only: "CSV only"
+};
+const comparisonPercent = new Intl.NumberFormat(undefined, {style: "percent", maximumFractionDigits: 1});
+const comparisonDelta = new Intl.NumberFormat(undefined, {signDisplay: "exceptZero", maximumFractionDigits: 1});
+const comparisonMetrics = [
+  ["Containers", "containers"],
+  ["Occupied tier positions", "occupied_tiers"],
+  ["Tier capacity", "tier_capacity"],
+  ["Occupancy rate", "occupancy_rate", true],
+  ["Parameter compliance", "parameter_compliance", true],
+  ["Stack slots with tier gaps", "anomalous_stacks"],
+  ["Dummy tier positions", "dummy_tiers"]
+];
+
+function comparisonValue(value, isPercent) {
+  if (value == null) return "—";
+  return isPercent ? comparisonPercent.format(value) : value.toLocaleString();
+}
+
+function comparisonRate(value, side) {
+  if (value == null) return comparisonValue(value, true);
+  const rate = el("div", undefined, "comparison-rate comparison-rate-" + side);
+  const meter = el("meter");
+  meter.min = 0;
+  meter.max = 1;
+  meter.value = value;
+  meter.setAttribute("aria-hidden", "true");
+  rate.append(meter, el("span", comparisonValue(value, true)));
+  return rate;
+}
+
+function comparisonPlacement(location) {
+  if (!location) return "—";
+  const slots = location.size === "40" ? (location.slot - 1) + "–" + location.slot : location.slot;
+  return "Block " + location.block + " · Row " + location.row + " · Slot " + slots +
+    " · Tier " + location.tier + " · " + location.size + " ft";
+}
+
+function comparisonOccupancy(metrics) {
+  return comparisonValue(metrics.occupied_tiers) + " / " + comparisonValue(metrics.tier_capacity) +
+    " · " + comparisonValue(metrics.occupancy_rate, true);
+}
+
+function placementDifferences(differences) {
+  const panel = el("div");
+  if (!differences.length) {
+    panel.append(el("p", "All container placements match."));
+    return panel;
+  }
+  const filters = el("div", undefined, "actions comparison-filters");
+  const search = el("input");
+  search.type = "search";
+  search.placeholder = "Find a container ID";
+  search.setAttribute("aria-label", "Find a container ID");
+  const status = el("select");
+  status.setAttribute("aria-label", "Placement difference type");
+  for (const [value, text] of [["", "All differences"], ...Object.entries(comparisonStatuses)]) {
+    const option = el("option", text);
+    option.value = value;
+    status.append(option);
+  }
+  filters.append(search, status);
+  const results = el("div");
+  const pages = el("div", undefined, "actions comparison-pages");
+  const previous = el("button", "Previous", "secondary");
+  const next = el("button", "Next", "secondary");
+  previous.type = next.type = "button";
+  const position = el("span");
+  position.setAttribute("role", "status");
+  pages.append(previous, position, next);
+  panel.append(filters, results, pages);
+
+  const pageSize = 100;
+  let offset = 0;
+  function render() {
+    const query = search.value.trim().toUpperCase();
+    const matches = differences.filter(item => (!status.value || item.status === status.value) &&
+      item.container.includes(query));
+    results.replaceChildren(matches.length ?
+      table(["Container", "Difference", "Simulation placement", "CSV placement"],
+        matches.slice(offset, offset + pageSize).map(item => [
+          item.container, comparisonStatuses[item.status], comparisonPlacement(item.simulated),
+          comparisonPlacement(item.reference)
+        ])) : el("p", "No matching placement differences."));
+    pages.hidden = matches.length <= pageSize;
+    position.textContent = (offset + 1) + "–" + Math.min(offset + pageSize, matches.length) + " of " + matches.length;
+    previous.disabled = offset === 0;
+    next.disabled = offset + pageSize >= matches.length;
+  }
+  function filter() {
+    offset = 0;
+    render();
+  }
+  search.addEventListener("input", filter);
+  status.addEventListener("change", filter);
+  previous.addEventListener("click", () => { offset -= pageSize; render(); });
+  next.addEventListener("click", () => { offset += pageSize; render(); });
+  render();
+  return panel;
+}
+
+function yardComparisonResults(result) {
+  const panel = el("div");
+  panel.append(el("p", result.branch + " · " + result.file));
+  if (result.excluded) panel.append(el("p", "CSV rows outside the selected branch: " + result.excluded, "note"));
+  if (result.issues.length) {
+    const details = el("details");
+    details.append(el("summary", "Skipped CSV records (" + result.issues.length + ")"),
+      table(["CSV line", "Container", "Reason"], result.issues.map(item => [
+        item.line, item.container || "—", item.message
+      ])));
+    panel.append(details);
+  }
+  panel.append(el("h4", "Yard overview"),
+    table(["Metric", "Simulation", "Imported CSV", "Simulation − CSV"],
+      comparisonMetrics.map(([label, key, percent]) => {
+        const actual = result.simulated[key];
+        const reference = result.reference[key];
+        const delta = actual == null || reference == null ? "—" :
+          comparisonDelta.format((actual - reference) * (percent ? 100 : 1)) + (percent ? " pp" : "");
+        return [label,
+          percent ? comparisonRate(actual, "simulated") : comparisonValue(actual),
+          percent ? comparisonRate(reference, "reference") : comparisonValue(reference),
+          delta];
+      })));
+  if (result.simulated.dummy_tiers) {
+    panel.append(el("p", "Simulation occupancy includes temporary dummy tiers. CSV occupancy counts the imported containers.", "note"));
+  }
+  const blocks = el("details");
+  blocks.append(el("summary", "Overview by block"),
+    table(["Block", "Simulation containers", "CSV containers", "Simulation occupancy", "CSV occupancy",
+      "Simulation compliance", "CSV compliance"], result.blocks.map(({block, simulated, reference}) => [
+      block, simulated.containers, reference.containers,
+      comparisonOccupancy(simulated), comparisonOccupancy(reference),
+      comparisonValue(simulated.parameter_compliance, true), comparisonValue(reference.parameter_compliance, true)
+    ])));
+  panel.append(blocks, yardComparisonMap(result.blocks), el("h4", "Container placements"),
+    el("p", result.counts.same + " matching · " + result.counts.moved + " different · " +
+      result.counts.simulated_only + " simulation only · " + result.counts.reference_only + " CSV only"),
+    placementDifferences(result.differences));
+  return panel;
 }
 
 function placementLocation(placement) {

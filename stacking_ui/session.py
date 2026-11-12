@@ -6,6 +6,7 @@ import sys
 
 from config.application.config_loader import ConfigurationError
 
+from .comparison import compare_yard
 from .configuration import read_project_tomls, save_project_toml, validate_project_toml
 from .scenario import prepare_scenario, public_branch, public_preview
 from .simulation import Simulation, SimulationError, export_yard_csv, save_yard_csv
@@ -53,6 +54,8 @@ class SimulationSession:
             return self.simulation.step(request.get("id"), request.get("branch"), request.get("position"))
         if operation == "repair_tier_gaps":
             return self.repair_tier_gaps(request.get("id"), request.get("branch"))
+        if operation == "compare_yard":
+            return self.compare_completed_yard(request)
         raise SimulationError("Generate a preview before running the simulation.")
 
     def repair_tier_gaps(self, simulation_id, branch_code):
@@ -69,6 +72,19 @@ class SimulationSession:
             yard.anomalyCheck()
             branch["tier_gap_repair_attempted"] = True
         return public_branch(branch)
+
+    def compare_completed_yard(self, request):
+        simulation = self.simulation
+        branch_code = request.get("branch")
+        if simulation is None or request.get("id") != simulation.id:
+            raise SimulationError("Finish the current simulation before comparing yards.")
+        if not isinstance(branch_code, str) or branch_code not in simulation.branches:
+            raise SimulationError("Select a branch with a completed simulation.")
+        branch = simulation.branches[branch_code]
+        last_step = simulation.last_steps.get(branch_code)
+        if last_step is None or last_step["row"]["position"] != len(branch["queue"]):
+            raise SimulationError("Finish the inbound queue before comparing yards.")
+        return compare_yard(branch, request.get("name"), request.get("text"))
 
     def handle_json(self, text):
         try:
