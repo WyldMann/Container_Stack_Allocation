@@ -48,7 +48,7 @@ const placementGroups = [
     ...Object.fromEntries(loaderScoringOptions.map(({key, label, description}) =>
       ["heuristic." + key, [label, description]]))
   }},
-  {title: "Weight compatibility", toggle: "heuristic.enable_delta_container_mass", options: {
+  {title: "Weight compatibility", fallbackLayout: "factor", toggle: "heuristic.enable_delta_container_mass", options: {
     "heuristic.enable_delta_container_mass": ["Score weight compatibility",
       "Use the weight difference between the incoming container and its support to rank placements."],
     "heuristic.w_delta_container_mass": ["Maximum weight score",
@@ -58,13 +58,17 @@ const placementGroups = [
     "heuristic.no_delta_container_mass_value": ["Unknown weight score",
       "Use this score when either container's weight is unavailable."]
   }},
-  {title: "Equipment distance", toggle: "heuristic.enable_equipment_distance", options: {
+  {title: "Equipment distance", fallbackLayout: "factor", toggle: "heuristic.enable_equipment_distance", options: {
     "heuristic.enable_equipment_distance": ["Score equipment distance",
       "Use the distance from the serving equipment to rank placements."],
     "heuristic.w_equipment_distance": ["Maximum distance score",
       "Score when the equipment is already at the placement location."],
     "heuristic.hl_equipment_distance": ["Distance for half score",
       "The distance score halves at this distance, measured in yard grid units."]
+  }},
+  {title: "Weight and distance fallback", fallbackLayout: "shared", options: {
+    "heuristic.min_value": ["Fallback score",
+      "Weight compatibility uses this score when the incoming container is heavier than its support. Equipment distance uses it when the serving equipment is outside the block."]
   }},
   {title: "Container size clustering", toggle: "heuristic.enable_size_cluster", options: {
     "heuristic.enable_size_cluster": ["Score nearby container sizes",
@@ -77,10 +81,6 @@ const placementGroups = [
       "Higher values reduce the influence of nearby container sizes."],
     "heuristic.size_cluster_bias": ["Clustering strength",
       "Controls the reward for matching sizes and penalty for different sizes. Zero turns off the clustering effect."]
-  }},
-  {title: "Scoring fallback", options: {
-    "heuristic.min_value": ["Fallback score",
-      "Use this score when the incoming container is heavier than its support or serving equipment is outside the block."]
   }}
 ];
 const placementOptions = Object.assign({}, ...placementGroups.map(group => group.options));
@@ -213,7 +213,8 @@ function addPlacementOption(rows, path, row, control) {
 
 function showPlacementGroups(editor, rows) {
   const groups = el("div", undefined, "placement-groups");
-  for (const {title, description, options} of placementGroups) {
+  const weightAndDistance = el("div", undefined, "placement-weight-distance");
+  for (const {title, description, options, fallbackLayout} of placementGroups) {
     const entries = Object.keys(options).flatMap(path => rows.get(path) ?? []);
     if (!entries.length) continue;
     const group = el("fieldset", undefined, "placement-group");
@@ -222,7 +223,13 @@ function showPlacementGroups(editor, rows) {
     const list = el("div", undefined, "placement-options");
     list.append(...entries);
     group.append(list);
-    groups.append(group);
+    if (fallbackLayout) {
+      if (!weightAndDistance.parentNode) groups.append(weightAndDistance);
+      if (fallbackLayout === "shared") group.classList.add("placement-shared-fallback");
+      weightAndDistance.append(group);
+    } else {
+      groups.append(group);
+    }
   }
   if (editor.childElementCount) {
     const other = el("fieldset", undefined, "placement-group");
@@ -669,14 +676,38 @@ function table(headers, rows) {
   return wrap;
 }
 
-function issues(items) {
-  if (!items.length) return el("p", "No issues detected.", "ready");
-  return table(["Severity", "Dataset / field", "Source", "Issue"], items.map(item => [
-    item.severity,
-    item.dataset + (item.field ? " / " + item.field : ""),
-    item.sources.map(source => source.file + ":" + source.line).join(", ") || "Dataset-level check",
-    item.message
-  ]));
+function issueCounts(items) {
+  const counts = new Map();
+  for (const {severity} of items) counts.set(severity, (counts.get(severity) ?? 0) + 1);
+  return ["error", "warning"].filter(severity => counts.has(severity)).map(severity => {
+    const count = counts.get(severity);
+    return count + " " + severity + (count === 1 ? "" : "s");
+  }).join(" · ");
+}
+
+function issueOverview(items) {
+  if (!items.length) return null;
+  const groups = new Map();
+  for (const item of items) {
+    const title = item.category === "overlap" ? "Overlapping containers" :
+      descriptions[item.dataset]?.[0] ?? (item.dataset === "scenario" ? "Scenario setup" : item.dataset);
+    if (!groups.has(title)) groups.set(title, []);
+    groups.get(title).push(item);
+  }
+  const panel = el("div", undefined, "preview-diagnostics preview-issues");
+  panel.append(el("h3", "Input and yard issues"), el("p", issueCounts(items)));
+  for (const [title, group] of groups) {
+    const details = el("details");
+    details.append(el("summary", title + " · " + issueCounts(group)),
+      table(["Severity", "Field", "Source", "Issue"], group.map(item => [
+        item.severity,
+        item.field?.replaceAll("_", " ") || "—",
+        item.sources.map(source => source.file + ":" + source.line).join(", ") || "Dataset-level check",
+        item.message
+      ])));
+    panel.append(details);
+  }
+  return panel;
 }
 
 function previewStatus(text, error = false) {
@@ -690,14 +721,14 @@ function renderInboundCard(card, row) {
   card.replaceChildren(el("span", "#" + row.position, "inbound-position"),
     el("strong", row.container_id || "Missing container ID"),
     el("span", (row.size ? row.size + " ft · " : "") + row.status, "inbound-meta"));
-  if (row.reason) card.append(el("span", row.reason, "inbound-reason"));
+  if (row.reason && row.status !== "invalid") card.append(el("span", row.reason, "inbound-reason"));
 }
 
 function inboundQueue(branch) {
   const panel = el("div", undefined, "inbound-queue");
   panel.append(el("h3", "Inbound queue"));
   if (branch.inbound_available === false) {
-    panel.append(el("p", "Inbound queue unavailable. Review the inbound CSV issue below."));
+    panel.append(el("p", "Inbound queue unavailable."));
     return panel;
   }
   if (!branch.queue.length) {
@@ -722,7 +753,7 @@ function tierGapOverview(branch, repair) {
   if (!gaps.length) return null;
   const open = branch.summary.anomalous_stacks;
   const filled = branch.summary.stacks_with_dummy_containers;
-  const panel = el("div", undefined, "tier-gap-overview");
+  const panel = el("div", undefined, "preview-diagnostics tier-gap-overview");
   panel.append(el("h3", "Yard tier gaps"), el("p",
     "Stack slots with open gaps: " + open + " · Stack slots with dummy tiers: " + filled));
   if (open && repair && !branch.tier_gap_repair_attempted) {
@@ -745,7 +776,7 @@ function tierGapOverview(branch, repair) {
   return panel;
 }
 
-function previewOverview(branches, simulation) {
+function previewOverview(branches, simulation, sharedIssues) {
   const overview = el("div");
   const selectedView = el("div");
   const runs = new Map();
@@ -765,17 +796,19 @@ function previewOverview(branches, simulation) {
       gapPanel.replaceChildren(...(panel ? [panel] : []));
     }
     renderGaps();
+    const branchIssues = issueOverview([...sharedIssues, ...branch.issues]);
+    const diagnostics = branchIssues ? [gapPanel, branchIssues] : [gapPanel];
     if (simulation?.branches.includes(branch.branch_code)) {
       if (!runs.has(branch)) {
         runs.set(branch, {branch: structuredClone(branch), processed: 0, placed: 0, invalid: 0, last: null, traces: []});
       }
-      selectedView.replaceChildren(gapPanel, simulationView(runs.get(branch), branches, simulation.id, renderGaps));
+      selectedView.replaceChildren(...diagnostics, simulationView(runs.get(branch), branches, simulation.id, renderGaps));
       return;
     }
     const map = createYardMap(branch, branches);
-    selectedView.replaceChildren(gapPanel, inboundQueue(branch), ...(map ? [map.element] : []));
+    selectedView.replaceChildren(...diagnostics, inboundQueue(branch), ...(map ? [map.element] : []));
     if (map && branch.queue.length && branch.inbound_available !== false) {
-      const hint = simulation ? "Resolve the yard input errors below before running this branch." :
+      const hint = simulation ? "Resolve the input errors above before running this branch." :
         "Generate a fresh preview in the setup launcher to run the simulation.";
       selectedView.append(el("p", hint, "note"));
     }
@@ -785,7 +818,8 @@ function previewOverview(branches, simulation) {
     const select = el("select");
     for (const [index, branch] of branches.entries()) {
       const name = branch.branch_name ? " · " + branch.branch_name : "";
-      const option = el("option", branch.branch_code + name);
+      const issues = issueCounts(branch.issues);
+      const option = el("option", branch.branch_code + name + (issues ? " · " + issues : ""));
       option.value = index;
       select.append(option);
     }
@@ -807,11 +841,15 @@ function showPreview(result, simulation) {
   const content = [
     el("h3", heading, result.ready ? "ready" : "not-ready"),
   ];
-  if (result.branches.length) content.push(previewOverview(result.branches, simulation));
+  if (result.branches.length) {
+    content.push(previewOverview(result.branches, simulation, result.issues));
+  } else {
+    const inputIssues = issueOverview(result.issues);
+    if (inputIssues) content.push(inputIssues);
+  }
   content.push(table(["Dataset", "File", "Source rows"], Object.entries(result.datasets).map(([name, data]) => [
       descriptions[name]?.[0] ?? name, data.file, data.rows
     ])));
-  if (result.issues.length) content.push(issues(result.issues));
 
   for (const branch of result.branches) {
     const section = el("div", undefined, "branch-result");
@@ -824,7 +862,6 @@ function showPreview(result, simulation) {
       metrics.append(metric);
     }
     section.append(metrics);
-    if (branch.issues.length || !branch.tier_gaps?.length) section.append(issues(branch.issues));
     if (Object.keys(branch.counts).length) {
       const detail = el("details");
       detail.append(el("summary", "Loaded records after branch filtering"),

@@ -60,7 +60,9 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    gaps** lists affected slots. Before starting a branch, **Fill gaps with dummy
    containers** can temporarily fill gaps the simulator can repair safely.
    Dummy tiers count as occupied and are excluded from the yard CSV. Generate a
-   fresh preview to return to the original inputs. The initial
+   fresh preview to return to the original inputs. **Input and yard issues**
+   groups the other errors and warnings with their source files and row numbers.
+   The initial
    yard can still be inspected when the inbound CSV is missing. The page also
    shows the incoming containers in a horizontal queue above the map, in CSV
    order. **Save yard CSV** opens a Save As dialog for `containers.csv` with

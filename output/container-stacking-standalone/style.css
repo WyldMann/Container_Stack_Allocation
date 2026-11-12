@@ -15,17 +15,18 @@
 .actions button[hidden] { display: none; }
 #preview-status:empty { display: none; }
 .preview-branch { display: block; margin-bottom: 10px; }
-.tier-gap-overview {
+.preview-diagnostics {
   margin: 12px 0;
   padding: 12px 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #f8faf9;
 }
-.tier-gap-overview h3 { margin: 0; }
-.tier-gap-overview p { margin: 6px 0 10px; }
-.tier-gap-overview details { padding-top: 8px; }
-.tier-gap-overview .table-scroll { max-height: 15rem; margin-bottom: 0; }
+.preview-diagnostics h3 { margin: 0; }
+.preview-diagnostics p { margin: 6px 0 10px; }
+.preview-diagnostics details { padding-top: 8px; }
+.preview-diagnostics details + details { margin-top: 8px; }
+.preview-diagnostics .table-scroll { max-height: 15rem; margin-bottom: 0; }
 .inbound-queue {
   padding: 12px 14px;
   margin: 12px 0;
@@ -233,6 +234,14 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px 20px;
 }
+.placement-weight-distance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.placement-weight-distance > .placement-group { flex: 1 1 min(100%, 360px); }
+.placement-weight-distance > .placement-shared-fallback { flex-basis: 100%; }
+.placement-weight-distance .placement-options { grid-template-columns: 1fr; }
 .placement-option .toml-setting {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px 12px;
