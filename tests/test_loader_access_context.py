@@ -9,6 +9,7 @@ from config import FeasibilitySettings
 from entities.block import Block
 from entities.equipment import RTG
 from entities.feasibility.loader_access import LoaderAccessRule, LoaderBorderAccessPolicy
+from entities.feasibility.placement_feasibility import PlacementFeasibility
 from entities.feasibility.placement_proposal import PlacementProposal
 from entities.yard import Yard
 from tests.loader_access_reference import (
@@ -119,6 +120,34 @@ class LoaderAccessContextTests(unittest.TestCase):
         self.assertEqual(result_signature(actual), result_signature(
             ReferenceAccessRule().evaluate(self.block, proposal, self.policy),
         ))
+
+    def test_floating_stack_is_occupied_but_excluded_from_receiving_footprints(self):
+        container = SimpleNamespace(getContSize=lambda: '20')
+        for slot_index in (0, 1):
+            with self.subTest(slot_index=slot_index):
+                block = Block(**block_input())
+                block.getStack(1, slot_index).addContainer(container, 2)
+                context = self.rule.prepare_context(block, self.policy)
+
+                self.assertNotIn((1, slot_index), context.ground)
+                self.assertIn((1, slot_index, '20'), locations(context.accessible_occupied_locations))
+                self.assertNotIn((1, slot_index, '20'), locations(context.receiving_locations))
+                self.assertNotIn((1, 1, '40'), locations(context.receiving_locations))
+                self.assertIn((1, 3, '40'), locations(context.receiving_locations))
+
+    def test_future_loader_access_does_not_protect_an_unusable_destination(self):
+        fill(self.block, 0, 0)
+        container = SimpleNamespace(getContSize=lambda: '20')
+        self.block.getStack(1, 0).addContainer(container, 2)
+        for mode in ('feasibility', 'heuristic'):
+            with self.subTest(mode=mode):
+                feasibility = PlacementFeasibility(FeasibilitySettings(
+                    loader_access_mode=mode, preserve_future_loader_access_mode=mode,
+                ))
+                result = feasibility.evaluate(container, self.block, 2, 1)
+
+                self.assertEqual(result.coordinates, ('A', 2, 1, 0))
+                self.assertEqual(result.loader_access.isolated_locations, ())
 
     def test_ground_placement_runs_one_search_and_no_whole_block_receiving_scan(self):
         context = self.rule.prepare_context(self.block, self.policy)

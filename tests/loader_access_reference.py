@@ -214,13 +214,15 @@ class LoaderAccessRule:
     ) -> set[ReceivingLocation]:
         locations: set[ReceivingLocation] = set()
         for row_index, slots in enumerate(block.getSlots()):
-            for slot_index in range(len(slots)):
+            for slot_index, stack in enumerate(slots):
+                if stack.anomaly():
+                    continue
                 mode, tier_index = self._stack_state(block, row_index, slot_index, proposal)
                 if tier_index is None:
                     continue
                 if mode in ("0", "20"):
                     locations.add(ReceivingLocation(row_index, slot_index, "20"))
-                if slot_index % 2 == 1 and mode in ("0", "40"):
+                if slot_index % 2 == 1 and mode in ("0", "40") and not slots[slot_index - 1].anomaly():
                     partner_mode, partner_tier = self._stack_state(
                         block, row_index, slot_index - 1, proposal
                     )

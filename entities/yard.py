@@ -347,10 +347,10 @@ class Yard:
     def addContainer(self,container):
         self.containers[container.getId()] = container
 
-    def anomalyCheck(self):
-        for block in self.blocks_by_id.values():
-            for stack in block.anomalies():
-                self.bad_data.addAnomalousStack(stack)
+    def anomalyCheck(self) -> None:
+        self.bad_data.anomalous_stacks[:] = [
+            stack for block in self.blocks_by_id.values() for stack in block.anomalies()
+        ]
 
     # Disabled: unused repair leaves stack modes inconsistent with contents.
     # def fixAnomalies(self):

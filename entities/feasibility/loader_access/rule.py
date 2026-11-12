@@ -203,6 +203,8 @@ class LoaderAccessRule:
         block: Block, row_index: int, slot_index: int, proposal: PlacementProposal | None,
     ) -> tuple[str, int | None]:
         stack = block.getStack(row_index, slot_index)
+        if stack.anomaly():
+            return stack.getMode(), None
         if proposal is not None and proposal.occupies((block.getId(), row_index, slot_index)):
             next_tier = proposal.resulting_height
             if next_tier >= stack.getMaxTier():

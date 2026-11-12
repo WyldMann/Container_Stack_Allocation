@@ -155,6 +155,21 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                 for slot in ((0, 1) if container_size == '40' else (0,)):
                     self.assertIs(yard.getStack('A', 0, slot).getContainer(2), floating)
 
+    def test_anomaly_rescan_refreshes_the_report(self):
+        yard, _, record = self.make_yard('40')
+        initial = yard.bad_data.getAnomalousStacks().copy()
+        self.assertEqual(len(initial), 2)
+
+        yard.anomalyCheck()
+        self.assertEqual(yard.bad_data.getAnomalousStacks(), initial)
+
+        for tier in ('1', '2'):
+            yard.addContainerInput(Container(**(record | {
+                'container_id': f'SUPPORT-{tier}', 'tier_no': tier,
+            })))
+        yard.anomalyCheck()
+        self.assertEqual(yard.bad_data.getAnomalousStacks(), [])
+
     def test_anomalous_high_scoring_stack_does_not_exclude_valid_lower_score(self):
         yard, incoming, _ = self.make_yard()
         for slot_index, score in ((0, 10), (1, 1)):
