@@ -100,6 +100,32 @@ class ScenarioTests(unittest.TestCase):
                 self.assertEqual(len(second["queue"]), 3)
                 self.assertEqual(second["queue"][-1]["sources"][0]["line"], 4)
 
+    def test_existing_container_import_and_diagnostics_use_selected_branches(self):
+        self.rows["terminal_branches"].append(dict(
+            branch_id="3", terminal_id="1", branch_code="JKT64", branch_name="Other yard"))
+        mapping = tomllib.loads(self.payload["mapping_toml"])
+        for kind, selected, other, unknown in (
+            ("code", " jkt74 ", "JKT64", "UNKNOWN"), ("id", "002", "3", "999"),
+        ):
+            with self.subTest(branch_kind=kind):
+                mapping["csv"]["existing_containers"]["branch_kind"] = kind
+                self.payload["mapping_toml"] = dump_toml(mapping)
+                self.profiles = parse_mapping(mapping)
+                existing = self.rows["existing_containers"][0] | {"branch_id": selected}
+                self.rows["existing_containers"] = [existing, *(
+                    existing | {"container_id": f"EXCLUDED{index}", "branch_id": branch_id,
+                                "block_code": "UNKNOWN", "move_time": "not a date"}
+                    for index, branch_id in enumerate((other, unknown, ""), 1)
+                )]
+                self.write_files()
+                scenario = prepare_scenario(self.payload)
+                preview = public_preview(scenario)
+                self.assertTrue(preview["ready"], preview)
+                self.assertEqual(list(scenario["branches"][0]["yard"].containers), ["OLD"])
+                self.assertEqual(preview["issues"], [])
+                self.assertEqual(preview["branches"][0]["issues"], [])
+                self.assertIn("JKT74", Simulation(scenario).branches)
+
     def test_yard_export_round_trips_active_mapping_and_placed_containers(self):
         for custom_headers, branch_kind in ((False, "code"), (True, "code"), (True, "id")):
             with self.subTest(custom_headers=custom_headers, branch_kind=branch_kind):

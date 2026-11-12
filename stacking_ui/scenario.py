@@ -95,7 +95,9 @@ def prepare_scenario(payload):
             source_records["inbound_containers"] = []
         known_codes = {row["branch_code"].strip().upper() for _, row, _ in source_records["terminal_branches"]}
         known_ids = {strGeneralize(row["branch_id"].strip()) for _, row, _ in source_records["terminal_branches"]}
-        for name in ("existing_containers", "inbound_containers", "equipment_history"):
+        # Existing containers are validated in the selected branches. Rows in
+        # a shared yard snapshot with other branch values are outside that scope.
+        for name in ("inbound_containers", "equipment_history"):
             for origin, row, _ in source_records[name]:
                 identity = row["branch_id"].strip().upper()
                 if name == "inbound_containers" and not identity:
