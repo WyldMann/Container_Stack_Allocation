@@ -56,7 +56,11 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    `POS_X` and `POS_Y` coordinates. Use **Fit yard** to see all blocks or
    **100%** to read the stack grids at full size. Select any stack to inspect
    its tiers and assigned parameters. Stack colors show
-   the yard plan, and the numbers show occupied tiers over capacity. The initial
+   the yard plan, and the numbers show occupied tiers over capacity. **Yard tier
+   gaps** lists affected slots. Before starting a branch, **Fill gaps with dummy
+   containers** can temporarily fill gaps the simulator can repair safely.
+   Dummy tiers count as occupied and are excluded from the yard CSV. Generate a
+   fresh preview to return to the original inputs. The initial
    yard can still be inspected when the inbound CSV is missing. The page also
    shows the incoming containers in a horizontal queue above the map, in CSV
    order. **Save yard CSV** opens a Save As dialog for `containers.csv` with

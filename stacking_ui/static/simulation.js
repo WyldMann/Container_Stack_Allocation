@@ -1,6 +1,6 @@
 "use strict";
 
-function simulationView(run, branches, id) {
+function simulationView(run, branches, id, onStart) {
   const {branch} = run;
   const root = el("div");
   const queue = inboundQueue(branch);
@@ -92,6 +92,7 @@ function simulationView(run, branches, id) {
     renderInboundCard(card, step.row);
     branch.queue[run.processed] = step.row;
     run.processed++;
+    if (run.processed === 1) onStart();
     run.placed += Number(step.row.status === "placed");
     run.invalid += Number(step.row.status === "invalid");
     run.last = step;

@@ -101,6 +101,7 @@
   globalThis.stackingStandalone = true;
   globalThis.generateStackingPreview = draft => request({op: "preview", draft});
   globalThis.stepStackingSimulation = step => request({...step, op: "step"});
+  globalThis.repairStackingTierGaps = repair => request({...repair, op: "repair_tier_gaps"});
   const defaultStorageKey = key => "container-stacking:default:" + key;
   globalThis.readStackingTomlDefault = key => {
     try {

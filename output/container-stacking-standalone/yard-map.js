@@ -118,6 +118,9 @@ function createYardMap(branch, branches = [branch]) {
       }
     }
     if (stack.anomaly) panel.append(el("p", "Tier gap below an occupied position.", "yard-gap-note"));
+    if (stack.tiers.some(tier => tier.dummy)) {
+      panel.append(el("p", "Occupied tiers with missing container records.", "yard-gap-note"));
+    }
     const footprint = stack.tiers.find(tier => tier.size === "40");
     if (partner) panel.append(el("p", "40 ft stack", "yard-caption"));
     else if (footprint) panel.append(el("p", "40 ft footprint · Slots " +
@@ -152,10 +155,14 @@ function createYardMap(branch, branches = [branch]) {
     const rows = [];
     for (let number = stack.capacity; number >= 1; number--) {
       const tier = tiers.get(number);
-      rows.push(tier ? [
+      if (!tier || tier.dummy) {
+        rows.push([number, tier ? "Occupied · Missing record" : "Empty", "—", "—", "—", "—"]);
+        continue;
+      }
+      rows.push([
         number, tier.container_id, tier.size + " ft", {F: "Full", E: "Empty"}[tier.fill] ?? tier.fill,
         tier.grade, tier.weight == null ? "—" : tier.weight.toLocaleString(),
-      ] : [number, "Empty", "—", "—", "—", "—"]);
+      ]);
     }
     const contents = table(["Tier", "Container", "Size", "Fill", "Grade", "Weight"], rows);
     contents.classList.add("yard-tier-table");
@@ -206,7 +213,8 @@ function createYardMap(branch, branches = [branch]) {
     legend.append(item);
   }
   for (const [label, style, mark] of [
-    ["Unassigned", "yard-swatch"], ["Removed slot", "yard-swatch yard-removed"], ["Tier gap", "yard-gap", "!"],
+    ["Unassigned", "yard-swatch"], ["Removed slot", "yard-swatch yard-removed"],
+    ["Tier gap or missing record", "yard-gap", "!"],
   ]) {
     const item = el("div");
     item.append(el("span", mark, style), el("span", label));
@@ -228,11 +236,13 @@ function createYardMap(branch, branches = [branch]) {
     const anchor = block.stacks[index];
     const partner = block.stacks[index - 1];
     if (pairPartner(view, index)) return partner;
-    if (!anchor.tiers.length || anchor.removed || partner.removed || anchor.capacity !== partner.capacity ||
+    if (!anchor.tiers.some(tier => tier.size === "40") || anchor.removed || partner.removed || anchor.capacity !== partner.capacity ||
         anchor.tiers.length !== partner.tiers.length || !anchor.tiers.every((tier, i) => {
           const other = partner.tiers[i];
+          if (tier.tier !== other.tier) return false;
+          if (tier.dummy || other.dummy) return tier.dummy && other.dummy;
           return tier.size === "40" && other.size === "40" && tier.anchor_slot === anchor.slot &&
-            other.anchor_slot === anchor.slot && tier.tier === other.tier && tier.container_id === other.container_id;
+            other.anchor_slot === anchor.slot && tier.container_id === other.container_id;
         })) return null;
 
     const tile = tiles[index];
@@ -270,6 +280,7 @@ function createYardMap(branch, branches = [branch]) {
 
   function paintStack(tile, block, stack, partner) {
     const occupied = stack.tiers.length;
+    const missingRecords = stack.tiers.some(tier => tier.dummy);
     const occupancy = occupied + "/" + stack.capacity;
     const assigned = assignedParameters(stack, partner);
     const names = assigned.map(id => "P" + id);
@@ -277,7 +288,8 @@ function createYardMap(branch, branches = [branch]) {
       (partner ? "40 ft, " : "") +
       (stack.removed ? "removed" : occupancy + " tiers occupied") +
       (names.length ? ", " + names.join(", ") : ", unassigned") +
-      (stack.anomaly ? ", tier gap" : ""));
+      (stack.anomaly ? ", tier gap" : "") +
+      (missingRecords ? ", missing container records" : ""));
     tile.replaceChildren();
     if (stack.removed) {
       tile.append(el("strong", "x"));
@@ -288,7 +300,7 @@ function createYardMap(branch, branches = [branch]) {
       const code = names[0] ? names[0] + (names.length > 1 ? " +" + (names.length - 1) : "") : "-";
       tile.append(count, el("small", code));
     }
-    if (stack.anomaly) tile.append(el("span", "!", "yard-gap"));
+    if (stack.anomaly || missingRecords) tile.append(el("span", "!", "yard-gap"));
     if (stack.tiers.some(tier => tier.size === "40")) tile.append(el("span", "40 ft", "yard-pair"));
   }
 

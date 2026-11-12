@@ -268,21 +268,6 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
             add("existing_containers", f"Overlapping container {container.getId()}: "
                 + ("retained" if retained else "excluded") + " by existing import rules.",
                 {"container_id": container.getId()}, severity="warning", category="overlap")
-    for stack in bad.getAnomalousStacks():
-        block_id, row, slot = stack.getCoords()
-        block = yard.getBlockByID(block_id)
-        add("existing_containers", f"Floating contents in {block.getCode()}, row {row + 1}, slot {slot + 1}.",
-            {"branch_id": branch_id, "block_code": block.getCode(), "row_no": str(row + 1)},
-            severity="warning", category="anomaly")
-    for stack in bad.stacks_with_dummy_containers:
-        block_id, row, slot = stack.getCoords()
-        block = yard.getBlockByID(block_id)
-        tiers = ", ".join(str(tier + 1) for tier in stack.getDummyTiers())
-        add("existing_containers", f"Missing container records in {block.getCode()}, row {row + 1}, "
-            f"slot {slot + 1}, tiers {tiers}. These tiers are treated as occupied.",
-            {"branch_id": branch_id, "block_code": block.getCode(), "row_no": str(row + 1)},
-            severity="warning", category="dummy_container")
-
     # Queue validation uses a separate collector and never places anything.
     validator = BadYardData(0, 0)
     seen = dict(yard.containers)
@@ -321,26 +306,43 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
         if row["equipment_code"] not in inputs["equipment_history"]:
             add("master_equipment", "Equipment has no selected location and is not registered in the yard.",
                 row, severity="warning")
-    branch["summary"] = {"blocks": len(yard.blocks_by_id), "existing_containers": len(yard.containers),
-                         "anomalous_stacks": len(bad.getAnomalousStacks()),
-                         "stacks_with_dummy_containers": len(bad.stacks_with_dummy_containers)}
+    branch["summary"] = {"blocks": len(yard.blocks_by_id), "existing_containers": len(yard.containers)}
     if branch["inbound_available"]:
         branch["summary"].update(inbound_containers=len(branch["queue"]),
                                  valid_inbound=sum(row["status"] == "pending" for row in branch["queue"]))
 
 
+def public_branch(branch):
+    entry = {key: value for key, value in branch.items()
+             if key not in ("yard", "inputs", "container_profile")}
+    yard = branch["yard"]
+    entry["yard_map"] = yard_view(yard) if yard is not None else None
+    entry["ready"] = (yard is not None and branch["inbound_available"]
+                      and not any(item["severity"] == "error" for item in branch["issues"]))
+    entry["issue_counts"] = dict(Counter(item["severity"] for item in branch["issues"]))
+    entry["tier_gaps"] = []
+    if yard is not None:
+        anomalies = yard.bad_data.getAnomalousStacks()
+        dummy_stacks = yard.bad_data.stacks_with_dummy_containers
+        entry["summary"] = dict(branch["summary"], anomalous_stacks=len(anomalies),
+                                stacks_with_dummy_containers=len(dummy_stacks))
+        for stack in set(anomalies).union(dummy_stacks):
+            block_id, row, slot = stack.getCoords()
+            contents = stack.getContainers()
+            top = max((tier for tier, item in enumerate(contents) if item is not None), default=0)
+            entry["tier_gaps"].append({
+                "block": yard.getBlockByID(block_id).getCode(),
+                "row": row + 1, "slot": slot + 1,
+                "missing_tiers": [tier + 1 for tier in range(top) if contents[tier] is None],
+                "dummy_tiers": [tier + 1 for tier in stack.getDummyTiers()],
+            })
+        entry["tier_gaps"].sort(key=lambda item: (item["block"], item["row"], item["slot"]))
+    return entry
+
+
 def public_preview(result):
     """Do not serialize mutable domain objects into the browser response."""
     preview = {key: value for key, value in result.items() if key != "branches"}
-    preview["branches"] = []
-    for branch in result["branches"]:
-        entry = {key: value for key, value in branch.items()
-                 if key not in ("yard", "inputs", "container_profile")}
-        yard = branch["yard"]
-        entry["yard_map"] = yard_view(yard) if yard is not None else None
-        entry["ready"] = (yard is not None and branch["inbound_available"]
-                          and not any(item["severity"] == "error" for item in branch["issues"]))
-        entry["issue_counts"] = dict(Counter(item["severity"] for item in branch["issues"]))
-        preview["branches"].append(entry)
+    preview["branches"] = [public_branch(branch) for branch in result["branches"]]
     preview["ready"] = bool(preview["branches"]) and not preview["issues"] and all(branch["ready"] for branch in preview["branches"])
     return preview

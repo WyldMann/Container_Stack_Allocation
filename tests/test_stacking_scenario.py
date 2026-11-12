@@ -18,6 +18,7 @@ from config.csv_import.mapping_loader import parse_mapping
 from filewriter import ContainerFileWriter
 from stacking_ui.configuration import defaults, dump_toml
 from stacking_ui.scenario import prepare_scenario, public_preview
+from stacking_ui.session import SimulationSession
 from stacking_ui.simulation import Simulation, SimulationError, export_yard_csv
 from stacking_ui.__main__ import main
 
@@ -277,19 +278,34 @@ class ScenarioTests(unittest.TestCase):
         ))
 
         self.write_files()
-        scenario = prepare_scenario(self.payload)
-        preview = public_preview(scenario)
+        session = SimulationSession()
+        result = session.request({"op": "preview", "draft": self.payload})
+        preview = result["preview"]
         self.assertTrue(preview["ready"])
         branch, = preview["branches"]
         self.assertEqual(branch["summary"]["anomalous_stacks"], 2)
         self.assertEqual(branch["summary"]["stacks_with_dummy_containers"], 0)
-        self.assertEqual([issue["category"] for issue in branch["issues"]], ["anomaly"] * 2)
+        self.assertEqual(branch["issues"], [])
+        self.assertEqual(branch["tier_gaps"], [
+            {"block": "A", "row": 2, "slot": slot, "missing_tiers": [1], "dummy_tiers": []}
+            for slot in (1, 2)
+        ])
         raw_block, = branch["yard_map"]["blocks"]
         self.assertEqual(raw_block["occupied_tiers"], 3)
         self.assertTrue(all(stack["anomaly"] for stack in raw_block["stacks"][4:6]))
 
-        scenario["branches"][0]["yard"].fillDummyContainer()
-        view = public_preview(scenario)["branches"][0]["yard_map"]
+        request = {"id": result["simulation"]["id"], "branch": branch["branch_code"]}
+        original_csv = session.request({"op": "yard_csv"})
+        repaired = session.request({"op": "repair_tier_gaps", **request})
+        self.assertTrue(repaired["tier_gap_repair_attempted"])
+        self.assertEqual(repaired["summary"]["anomalous_stacks"], 0)
+        self.assertEqual(repaired["summary"]["stacks_with_dummy_containers"], 2)
+        self.assertEqual(repaired["tier_gaps"], [
+            {"block": "A", "row": 2, "slot": slot, "missing_tiers": [], "dummy_tiers": [1]}
+            for slot in (1, 2)
+        ])
+        self.assertEqual(session.request({"op": "yard_csv"}), original_csv)
+        view = repaired["yard_map"]
         block, = view["blocks"]
         self.assertEqual((block["x"], block["y"], block["rows"], block["slots"]), (0, 0, 2, 4))
         self.assertEqual((block["container_count"], block["occupied_tiers"], block["tier_capacity"]), (2, 5, 21))
@@ -301,6 +317,11 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual(right["parameters"], ["38"])
         self.assertTrue(block["stacks"][-1]["removed"])
         self.assertEqual(view["parameters"]["38"]["criteria"], [{"label": "Grade", "value": "PG", "points": 2}])
+        session.request({"op": "step", "position": 1, **request})
+        with self.assertRaisesRegex(SimulationError, "before running"):
+            session.request({"op": "repair_tier_gaps", **request})
+        fresh = session.request({"op": "preview", "draft": self.payload})["preview"]["branches"][0]
+        self.assertEqual(fresh["tier_gaps"], branch["tier_gaps"])
 
     def test_invalid_inbound_date_keeps_yard_map_and_reports_queue_row(self):
         self.rows["inbound_containers"][0]["move_time"] = "not a date"

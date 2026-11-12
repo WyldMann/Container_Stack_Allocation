@@ -15,6 +15,17 @@
 .actions button[hidden] { display: none; }
 #preview-status:empty { display: none; }
 .preview-branch { display: block; margin-bottom: 10px; }
+.tier-gap-overview {
+  margin: 12px 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8faf9;
+}
+.tier-gap-overview h3 { margin: 0; }
+.tier-gap-overview p { margin: 6px 0 10px; }
+.tier-gap-overview details { padding-top: 8px; }
+.tier-gap-overview .table-scroll { max-height: 15rem; margin-bottom: 0; }
 .inbound-queue {
   padding: 12px 14px;
   margin: 12px 0;

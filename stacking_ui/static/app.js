@@ -717,20 +717,63 @@ function inboundQueue(branch) {
   return panel;
 }
 
+function tierGapOverview(branch, repair) {
+  const gaps = branch.tier_gaps ?? [];
+  if (!gaps.length) return null;
+  const open = branch.summary.anomalous_stacks;
+  const filled = branch.summary.stacks_with_dummy_containers;
+  const panel = el("div", undefined, "tier-gap-overview");
+  panel.append(el("h3", "Yard tier gaps"), el("p",
+    "Stack slots with open gaps: " + open + " · Stack slots with dummy tiers: " + filled));
+  if (open && repair && !branch.tier_gap_repair_attempted) {
+    const button = el("button", "Fill gaps with dummy containers", "secondary");
+    button.type = "button";
+    button.addEventListener("click", repair);
+    panel.append(button);
+  } else if (open) {
+    panel.append(el("p", branch.tier_gap_repair_attempted ? "Some gaps could not be filled safely." :
+      "Generate a fresh preview to fill gaps before starting this branch.", "note"));
+  }
+  panel.append(el("p", "Dummy containers count as occupied for this preview and are excluded from exported CSVs. " +
+    "Generate a new preview to clear them.", "note"));
+  const details = el("details");
+  details.append(el("summary", "View affected stack slots"),
+    table(["Block", "Row", "Slot", "Open tiers", "Dummy-filled tiers"], gaps.map(gap => [
+      gap.block, gap.row, gap.slot, gap.missing_tiers.join(", ") || "—", gap.dummy_tiers.join(", ") || "—"
+    ])));
+  panel.append(details);
+  return panel;
+}
+
 function previewOverview(branches, simulation) {
   const overview = el("div");
   const selectedView = el("div");
   const runs = new Map();
   function showBranch(branch) {
+    const gapPanel = el("div");
+    function renderGaps() {
+      const canRepair = simulation && !runs.get(branch)?.processed &&
+        typeof globalThis.repairStackingTierGaps === "function";
+      const repair = canRepair ? () => action(async () => {
+        const repaired = await globalThis.repairStackingTierGaps({id: simulation.id, branch: branch.branch_code});
+        Object.assign(branch, repaired);
+        runs.delete(branch);
+        showBranch(branch);
+        previewStatus("Updated tier gaps for " + branch.branch_code + ".");
+      }, previewStatus) : null;
+      const panel = tierGapOverview(branch, repair);
+      gapPanel.replaceChildren(...(panel ? [panel] : []));
+    }
+    renderGaps();
     if (simulation?.branches.includes(branch.branch_code)) {
       if (!runs.has(branch)) {
         runs.set(branch, {branch: structuredClone(branch), processed: 0, placed: 0, invalid: 0, last: null, traces: []});
       }
-      selectedView.replaceChildren(simulationView(runs.get(branch), branches, simulation.id));
+      selectedView.replaceChildren(gapPanel, simulationView(runs.get(branch), branches, simulation.id, renderGaps));
       return;
     }
     const map = createYardMap(branch, branches);
-    selectedView.replaceChildren(inboundQueue(branch), ...(map ? [map.element] : []));
+    selectedView.replaceChildren(gapPanel, inboundQueue(branch), ...(map ? [map.element] : []));
     if (map && branch.queue.length && branch.inbound_available !== false) {
       const hint = simulation ? "Resolve the yard input errors below before running this branch." :
         "Generate a fresh preview in the setup launcher to run the simulation.";
@@ -775,11 +818,13 @@ function showPreview(result, simulation) {
     section.append(el("h3", branch.branch_code + (branch.branch_name ? " | " + branch.branch_name : "")));
     const metrics = el("div", undefined, "metrics");
     for (const [key, value] of Object.entries(branch.summary)) {
+      if (key === "anomalous_stacks" || key === "stacks_with_dummy_containers") continue;
       const metric = el("div", undefined, "metric");
       metric.append(el("strong", value), el("span", key.replaceAll("_", " ")));
       metrics.append(metric);
     }
-    section.append(metrics, issues(branch.issues));
+    section.append(metrics);
+    if (branch.issues.length || !branch.tier_gaps?.length) section.append(issues(branch.issues));
     if (Object.keys(branch.counts).length) {
       const detail = el("details");
       detail.append(el("summary", "Loaded records after branch filtering"),
