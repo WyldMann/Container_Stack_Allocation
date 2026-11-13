@@ -41,8 +41,8 @@ const loaderScoringOptions = [
 ];
 const placementGroups = [
   {title: "Stack capacity", options: {
-    "feasibility.stack_capacity_mode": ["Nominal stack capacity",
-      "Off allows extra tiers. Heuristic allows extra tiers with a score penalty. Feasibility rejects them."],
+    "feasibility.stack_capacity_mode": ["Enforce stack height limit",
+      "Feasibility enforces the tier limit. Heuristic allows overcapacity with a score penalty. Off allows overcapacity without a capacity penalty."],
     "heuristic.overcapacity_tier_multiplier": [capacityScoringOption.label, capacityScoringOption.description]
   }},
   {title: "Stacking safety", options: {
