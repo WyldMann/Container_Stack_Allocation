@@ -36,6 +36,9 @@ w_delta_container_mass = 10.0
 # Uses the same units as the container data's weight field.
 hl_delta_container_mass = 5000.0
 
+# Score when the incoming container is heavier than the one beneath it.
+heavier_container_fallback_score = 0.001
+
 # Maximum equipment-distance score, reached at zero distance.
 w_equipment_distance = 10.0
 
@@ -43,10 +46,8 @@ w_equipment_distance = 10.0
 # Uses the grid-distance units calculated by the equipment model.
 hl_equipment_distance = 5.0
 
-# Fallback score when the incoming container is heavier than its
-# support, or equipment distance is infinite. This is not a general
-# lower bound on all scores.
-min_value = 0.001
+# Score when the serving equipment is outside the block.
+equipment_outside_block_fallback_score = 0.001
 
 # Mass-compatibility score when either container's mass is unknown.
 no_delta_container_mass_value = 0.1

@@ -319,7 +319,6 @@
   gap: 14px;
 }
 .placement-weight-distance > .placement-group { flex: 1 1 min(100%, 360px); }
-.placement-weight-distance > .placement-shared-fallback { flex-basis: 100%; }
 .placement-weight-distance .placement-options { grid-template-columns: 1fr; }
 .placement-option .toml-setting {
   grid-template-columns: minmax(0, 1fr) auto;

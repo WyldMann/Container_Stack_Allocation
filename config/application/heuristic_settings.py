@@ -23,6 +23,8 @@ class HeuristicSettings:
     loader_future_access_loss_weight: float = 1.0
     unsafe_stacking_multiplier: float = 0.25
     overcapacity_tier_multiplier: float = 0.01
+    heavier_container_fallback_score: float | None = None
+    equipment_outside_block_fallback_score: float | None = None
 
     def __post_init__(self) -> None:
         radius = self.size_cluster_radius
@@ -34,6 +36,10 @@ class HeuristicSettings:
         for field in fields(self):
             name = field.name
             value = getattr(self, name)
+            if value is None and name in (
+                "heavier_container_fallback_score", "equipment_outside_block_fallback_score",
+            ):
+                continue
             if field.type is bool:
                 if type(value) is not bool:
                     raise TypeError(f"{name} must be a boolean.")

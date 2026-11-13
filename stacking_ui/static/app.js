@@ -28,6 +28,7 @@ const capacityScoringOption = {key: "overcapacity_tier_multiplier", mode: "capac
   label: "Per extra tier multiplier",
   description: "Apply this multiplier (0–1) once per tier above nominal capacity. One removes the penalty."};
 const boundedRuleWeights = [stackingScoringOption, capacityScoringOption];
+const fallbackScoreKeys = ["heavier_container_fallback_score", "equipment_outside_block_fallback_score"];
 const loaderScoringOptions = [
   {key: "loader_inaccessible_destination_multiplier", mode: "destination", defaultValue: "0.25",
     label: "Unreachable destination multiplier",
@@ -70,27 +71,27 @@ const placementGroups = [
     ...Object.fromEntries(loaderScoringOptions.map(({key, label, description}) =>
       ["heuristic." + key, [label, description]]))
   }},
-  {title: "Weight compatibility", fallbackLayout: "factor", toggle: "heuristic.enable_delta_container_mass", options: {
-    "heuristic.enable_delta_container_mass": ["Score weight compatibility",
-      "Use the weight difference between the incoming container and its support to rank placements."],
+  {title: "Container weight difference", sideBySide: true, toggle: "heuristic.enable_delta_container_mass", options: {
+    "heuristic.enable_delta_container_mass": ["Score container weight difference",
+      "Subtract the incoming container's weight from the weight of the container directly beneath it to score the placement."],
     "heuristic.w_delta_container_mass": ["Maximum weight score",
       "Score for placing a container on one of the same weight."],
     "heuristic.hl_delta_container_mass": ["Weight difference for half score",
       "The score halves when the supporting container is heavier by this amount. Uses the CSV weight units."],
     "heuristic.no_delta_container_mass_value": ["Unknown weight score",
-      "Use this score when either container's weight is unavailable."]
+      "Use this score when either container's weight is unavailable."],
+    "heuristic.heavier_container_fallback_score": ["Heavier incoming container score",
+      "Use this score when the incoming container is heavier than the one beneath it."]
   }},
-  {title: "Equipment distance", fallbackLayout: "factor", toggle: "heuristic.enable_equipment_distance", options: {
+  {title: "Equipment distance", sideBySide: true, toggle: "heuristic.enable_equipment_distance", options: {
     "heuristic.enable_equipment_distance": ["Score equipment distance",
       "Use the distance from the serving equipment to rank placements."],
     "heuristic.w_equipment_distance": ["Maximum distance score",
       "Score when the equipment is already at the placement location."],
     "heuristic.hl_equipment_distance": ["Distance for half score",
-      "The distance score halves at this distance, measured in yard grid units."]
-  }},
-  {title: "Weight and distance fallback", fallbackLayout: "shared", options: {
-    "heuristic.min_value": ["Fallback score",
-      "Weight compatibility uses this score when the incoming container is heavier than its support. Equipment distance uses it when the serving equipment is outside the block."]
+      "The distance score halves at this distance, measured in yard grid units."],
+    "heuristic.equipment_outside_block_fallback_score": ["Equipment outside block score",
+      "Use this score when the serving equipment is outside the block."]
   }},
   {title: "Container size clustering", toggle: "heuristic.enable_size_cluster", options: {
     "heuristic.enable_size_cluster": ["Score nearby container sizes",
@@ -236,7 +237,7 @@ function addPlacementOption(rows, path, row, control) {
 function showPlacementGroups(editor, rows) {
   const groups = el("div", undefined, "placement-groups");
   const weightAndDistance = el("div", undefined, "placement-weight-distance");
-  for (const {title, description, options, optionRows, fallbackLayout} of placementGroups) {
+  for (const {title, description, options, optionRows, sideBySide} of placementGroups) {
     const entries = Object.keys(options).flatMap(path => rows.get(path) ?? []);
     if (!entries.length) continue;
     const group = el("fieldset", undefined, "placement-group");
@@ -255,9 +256,8 @@ function showPlacementGroups(editor, rows) {
       list.append(...entries);
       group.append(list);
     }
-    if (fallbackLayout) {
+    if (sideBySide) {
       if (!weightAndDistance.parentNode) groups.append(weightAndDistance);
-      if (fallbackLayout === "shared") group.classList.add("placement-shared-fallback");
       weightAndDistance.append(group);
     } else {
       groups.append(group);
@@ -281,9 +281,6 @@ function updatePlacementDependencies(rows) {
       for (const option of rows.get(path) ?? []) setPlacementInactive(option, inactive);
     }
   }
-  const fallbackInactive = isOff("heuristic.enable_delta_container_mass") &&
-    isOff("heuristic.enable_equipment_distance");
-  for (const option of rows.get("heuristic.min_value") ?? []) setPlacementInactive(option, fallbackInactive);
 }
 
 function ruleModeSwitch(controls, rows, key, prefix, value, fallback = "feasibility") {
@@ -425,9 +422,10 @@ function addBoundedRuleWeight(rows, fields, start, end, value, {key, defaultValu
   }});
 }
 
-function addMissingRuleWeights(rows, fields, source, offset) {
+function addMissingHeuristicScores(rows, fields, source, offset, legacyFallbackScore) {
   const separator = offset && source[offset - 1] !== "\n" ? "\n" : "";
-  for (const setting of [...boundedRuleWeights, ...loaderScoringOptions]) {
+  const fallbacks = fallbackScoreKeys.map(key => ({key, defaultValue: legacyFallbackScore}));
+  for (const setting of [...boundedRuleWeights, ...loaderScoringOptions, ...fallbacks]) {
     const {key, defaultValue} = setting;
     const path = "heuristic." + key;
     if (rows.has(path)) continue;
@@ -473,6 +471,7 @@ function showToml(kind, text, loadedFrom) {
   let inlineFeasibility = false;
   let inlineHeuristic = false;
   let legacyLoaderMode = "feasibility";
+  let legacyFallbackScore = "0.001";
   const seenModes = new Set();
   const comments = [];
   for (let offset = 0; offset < source.length;) {
@@ -498,6 +497,7 @@ function showToml(kind, text, loadedFrom) {
     const knownOption = kind === "config" && parts.length === 2 && Object.hasOwn(placementOptions, optionPath);
     const legacyLoaderOption = kind === "config" && root === "feasibility" && parts.length === 2 &&
       (key === "loader_access" || key === "loader_access_mode");
+    const legacyFallbackOption = kind === "config" && parts.length === 2 && optionPath === "heuristic.min_value";
     if (kind === "config" && root === "feasibility" && parts.length === 1) {
       if (table) feasibilityStart = Math.min(lineEnd + 1, source.length);
       else if (match) inlineFeasibility = true;
@@ -521,8 +521,13 @@ function showToml(kind, text, loadedFrom) {
       const boundary = tomlValueEnd(source, start);
       lineEnd = source.indexOf("\n", boundary);
       if (lineEnd === -1) lineEnd = source.length;
-      if ((visible && (kind !== "config" || knownOption || legacyLoaderOption)) || isCsvPath) {
+      if ((visible && (kind !== "config" || knownOption || legacyLoaderOption || legacyFallbackOption)) || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
+        if (legacyFallbackOption) {
+          legacyFallbackScore = value;
+          offset = statementStart = lineEnd + 1;
+          continue;
+        }
         if (legacyLoaderOption) {
           const legacy = key === "loader_access" ?
             (value === "true" ? "feasibility" : value === "false" ? "off" : null) :
@@ -619,7 +624,7 @@ function showToml(kind, text, loadedFrom) {
         fields.push({start: feasibilityStart, end: feasibilityStart, input: control.input});
       }
     }
-    if (!inlineHeuristic) addMissingRuleWeights(placementRows, fields, source, heuristicStart);
+    if (!inlineHeuristic) addMissingHeuristicScores(placementRows, fields, source, heuristicStart, legacyFallbackScore);
     fields.sort((a, b) => a.start - b.start || a.end - b.end);
     showPlacementGroups(editor, placementRows);
     updateRuleControls(ruleControls, placementRows);

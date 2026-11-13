@@ -25,5 +25,5 @@ class ApplicationSettings:
                 "preserve_future_loader_access_mode": settings.effective_future_loader_access_mode,
                 "ignore_full_stacks_for_loader_access": settings.ignore_full_stacks_for_loader_access,
             },
-            "heuristic": asdict(self.heuristic),
+            "heuristic": {name: value for name, value in asdict(self.heuristic).items() if value is not None},
         }

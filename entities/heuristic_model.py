@@ -21,7 +21,12 @@ class HeuristicModel:
         self.w_equipment_distance = settings.w_equipment_distance
         self.hl_equipment_distance = settings.hl_equipment_distance
         self.lambda_equipment_distance = math.log(2) / self.hl_equipment_distance
-        self.min_value = settings.min_value
+        self.heavier_container_fallback_score = (
+            settings.heavier_container_fallback_score or settings.min_value
+        )
+        self.equipment_outside_block_fallback_score = (
+            settings.equipment_outside_block_fallback_score or settings.min_value
+        )
         self.no_delta_container_mass_value = settings.no_delta_container_mass_value
         self.size_cluster_radius = settings.size_cluster_radius
         self.hl_size_cluster_distance = settings.hl_size_cluster_distance
@@ -98,7 +103,7 @@ class HeuristicModel:
         if delta_container_mass is None:
             return self.no_delta_container_mass_value
         if delta_container_mass < 0:
-            return self.min_value
+            return self.heavier_container_fallback_score
 
         else:
             return self.w_delta_container_mass * self.decayFormula(
@@ -110,7 +115,7 @@ class HeuristicModel:
             return 1.0
 
         if equipment_distance == float('inf'):
-            return self.min_value
+            return self.equipment_outside_block_fallback_score
         else:
             return self.w_equipment_distance * self.decayFormula(self.lambda_equipment_distance,equipment_distance)
 

@@ -1,5 +1,6 @@
 import math
 import tempfile
+import tomllib
 import unittest
 from dataclasses import fields, FrozenInstanceError
 from itertools import product
@@ -15,6 +16,7 @@ from config import (
 from entities.block import Block
 from entities.heuristic_model import HeuristicModel
 from entities.yard import Yard
+from config.application.config_loader import parse_config
 
 
 class HeuristicConfigTests(unittest.TestCase):
@@ -238,6 +240,21 @@ class ConfiguredHeuristicModelTests(unittest.TestCase):
         self.assertEqual(model.deltaContainerMass(None), 0.4)
         self.assertEqual(model.deltaContainerMass(-1), 0.02)
         self.assertEqual(model.equipmentDistance(math.inf), 0.02)
+
+    def test_fallback_scores_can_override_the_legacy_value_independently(self):
+        cases = (
+            ("", 0.02, 0.02),
+            ("heavier_container_fallback_score = 0.03\n", 0.03, 0.02),
+            ("equipment_outside_block_fallback_score = 0.04\n", 0.02, 0.04),
+        )
+        for overrides, weight_score, distance_score in cases:
+            with self.subTest(overrides=overrides):
+                settings = parse_config(tomllib.loads("[heuristic]\nmin_value = 0.02\n" + overrides))
+                model = HeuristicModel(settings.heuristic)
+                self.assertEqual(model.deltaContainerMass(-1), weight_score)
+                self.assertEqual(model.equipmentDistance(math.inf), distance_score)
+                document = settings.to_document()["heuristic"]
+                self.assertEqual(HeuristicSettings(**document), settings.heuristic)
 
     def test_custom_clustering_constants_and_zero_controls(self):
         block = Block(
