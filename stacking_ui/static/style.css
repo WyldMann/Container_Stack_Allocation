@@ -190,6 +190,7 @@
   overflow-wrap: anywhere;
 }
 .toml-choose { margin-top: 10px; }
+.toml-choose button[id^="default-"]:disabled { cursor: default; }
 .toml-save:disabled {
   background: #edf0ee;
   color: #65716b;
