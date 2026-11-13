@@ -1,27 +1,21 @@
 # Placement settings for main.py.
 [feasibility]
-# Pyramid stacking modes: "feasibility" rejects, "heuristic" scores, and "off" skips.
-stacking_safety_mode = "feasibility"
+loader_destination_access_mode = "feasibility"
+# Enforce the existing pyramid stacking safety rule.
+stacking_safety = true
 
-# Stack capacity modes: "feasibility" rejects overflow, "heuristic" scores it, and "off" allows it.
-stack_capacity_mode = "feasibility"
-
-# Loader modes: "feasibility" rejects, "heuristic" scores, and "off" skips. RTGs are exempt.
-# Check whether a loader can reach the destination before placement.
-loader_destination_access_mode = "heuristic"
-# Protect existing containers and future receiving locations from losing access.
-preserve_occupied_loader_access_mode = "heuristic"
+# Loader modes: "feasibility" rejects, "heuristic" scores, and "off" skips.
+# Current access covers the destination and occupied stacks. RTGs are exempt.
+# Future access covers receiving options and must use the same or a weaker
+# mode (off < heuristic < feasibility). Omit it to inherit the current mode.
+loader_access_mode = "heuristic"
 preserve_future_loader_access_mode = "heuristic"
-# Exclude fully occupied stacks from occupied access protection.
+# Exclude fully occupied stacks from current access protection.
 ignore_full_stacks_for_loader_access = true
 
 
 [heuristic]
-# Score multiplier (0 to 1) for failing the pyramid check in heuristic mode.
-unsafe_stacking_multiplier = 0.25
-# Score multiplier (0 to 1) applied once per tier above nominal capacity.
-overcapacity_tier_multiplier = 0.01
-
+loader_future_access_loss_weight = 0.25
 # Disabled factors skip scoring and contribute a neutral multiplier of 1.
 enable_delta_container_mass = true
 enable_equipment_distance = false
@@ -36,9 +30,6 @@ w_delta_container_mass = 10.0
 # Uses the same units as the container data's weight field.
 hl_delta_container_mass = 5000.0
 
-# Score when the incoming container is heavier than the one beneath it.
-heavier_container_fallback_score = 0.001
-
 # Maximum equipment-distance score, reached at zero distance.
 w_equipment_distance = 10.0
 
@@ -46,8 +37,10 @@ w_equipment_distance = 10.0
 # Uses the grid-distance units calculated by the equipment model.
 hl_equipment_distance = 5.0
 
-# Score when the serving equipment is outside the block.
-equipment_outside_block_fallback_score = 0.001
+# Fallback score when the incoming container is heavier than its
+# support, or equipment distance is infinite. This is not a general
+# lower bound on all scores.
+min_value = 0.001
 
 # Mass-compatibility score when either container's mass is unknown.
 no_delta_container_mass_value = 0.1
@@ -67,12 +60,3 @@ size_cluster_prior = 2.0
 # Strength of the clustering reward for matching sizes and penalty
 # for different sizes. Zero produces a neutral multiplier of 1.
 size_cluster_bias = 2.0
-
-# Destination reachability score multiplier for an unreachable destination (0 to 1).
-loader_inaccessible_destination_multiplier = 0.25
-
-# Occupied access score divides by 1 plus this weight per occupied location losing access.
-loader_occupied_access_loss_weight = 1.0
-
-# Future access score divides by 1 plus this weight per receiving option losing access.
-loader_future_access_loss_weight = 1.0
