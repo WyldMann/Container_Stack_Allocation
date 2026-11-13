@@ -71,8 +71,7 @@ def _snapshot_yard(inputs, records):
             issues.append({"line": line, "container": record["container_id"], "message": str(error)})
             continue
         candidates.append((line, container))
-        if yard.bad_data.incomplete_existing_container.validateExistingAndRecord(container):
-            yard.addContainerInput(container)
+    yard.addContainerInputs(container for _, container in candidates)
 
     bad = yard.bad_data
     incomplete = set(bad.getIncompleteExistingContainers())

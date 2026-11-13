@@ -154,6 +154,49 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                         yard.addContainerByCoords(incoming, unsafe)
                         self.assertIs(yard.getStack(*unsafe[:3]).getContainer(2), incoming)
 
+    def test_stack_capacity_modes_with_loader_access_and_paired_placement(self):
+        for size, anchor in (('20', 0), ('40', 1)):
+            for mode in ('feasibility', 'heuristic', 'off'):
+                with self.subTest(size=size, mode=mode):
+                    yard, incoming, record = self.make_yard(
+                        size, slots=2, tiers=1, floating=False,
+                        settings=FeasibilitySettings(
+                            stack_capacity_mode=mode, stacking_safety=False,
+                        ),
+                        heuristic=HeuristicSettings(
+                            enable_delta_container_mass=False, enable_equipment_distance=False,
+                            enable_size_cluster=False, overcapacity_tier_multiplier=0.5,
+                        ),
+                    )
+                    yard.addContainerInput(Container(**(record | {'tier_no': '1'})))
+                    stack = yard.getStack('A', 0, anchor)
+                    coordinates = ('A', 0, anchor, 1)
+                    result = yard.assignContainer(incoming)
+                    context = yard.feasibility.prepare_loader_context(yard.getBlockByID('A'))
+                    self.assertEqual(any(location.slot_index == anchor and location.container_size == size
+                                         for location in context.receiving_locations), mode != 'feasibility')
+                    self.assertEqual(stack.occupancy(), 1)
+                    if mode == 'feasibility':
+                        self.assertNotIn(coordinates, result.getCoords() if result else [])
+                        with self.assertRaises(PlacementRejected):
+                            yard.placeContainer(incoming, coordinates, yard.master_loaders[0])
+                        continue
+
+                    candidates = {candidate.coordinates: candidate for candidate in result.sorted_candidate_evaluations}
+                    self.assertEqual(candidates[coordinates].evaluation_score, 0.5 if mode == 'heuristic' else 1)
+                    if size == '20' and mode == 'heuristic':
+                        self.assertEqual(result.getBestCoordinate(), ('A', 0, 1, 0))
+                    yard.placeContainer(incoming, coordinates, yard.master_loaders[0])
+                    self.assertEqual(stack.getMaxTier(), 1)
+                    self.assertEqual(stack.occupancy(), 2)
+                    if size == '40':
+                        self.assertIs(yard.getStack('A', 0, 0).getContainer(1), incoming)
+                    next_container = Container(**(record | {'container_id': 'NEXT'}))
+                    next_result = yard.assignContainer(next_container)
+                    next_candidate = next(candidate for candidate in next_result.sorted_candidate_evaluations
+                                          if candidate.coordinates == ('A', 0, anchor, 2))
+                    self.assertEqual(next_candidate.capacity_multiplier, 0.25 if mode == 'heuristic' else 1)
+
     @staticmethod
     def snapshot(yard):
         return (

@@ -45,7 +45,7 @@ class ContainerImportProtectionTests(unittest.TestCase):
 
     def test_invalid_coordinate_values_do_not_wrap_or_change_stacks(self):
         for container_size in ("20", "40"):
-            for field, upper in (("row_no", "3"), ("slot_no", "5"), ("tier_no", "4")):
+            for field, upper in (("row_no", "3"), ("slot_no", "5"), ("tier_no", "5")):
                 for value in ("0", "-1", "-100", upper, "abc", "1.5"):
                     with self.subTest(container_size=container_size, field=field, value=value):
                         yard = self.make_yard([self.record | {"container_id": "OLD"}])

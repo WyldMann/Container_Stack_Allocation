@@ -92,7 +92,7 @@ class Block:
     def safeMaxima(self,row_index:int,slot_index:int) -> bool:
         max_maxima = 2
         stack = self.slots[row_index][slot_index]
-        tier_index = stack.availableTierInt()
+        tier_index = stack.occupiedHeight()
         mode = stack.getMode()
 
         if tier_index < max_maxima: return True
@@ -128,21 +128,9 @@ class Block:
 
     #row1,slot1 must exist, row2,slot2 doesn't need to
     def compareTier(self,first_row_index:int,first_slot_index:int,second_row_index:int,second_slot_index:int) -> int:
-        first_tier_index = self.slots[first_row_index][first_slot_index].availableTierInt()
+        first_tier_index = self.slots[first_row_index][first_slot_index].occupiedHeight()
         # Negative indices are outside the block, not opposite-edge neighbors.
         if not 0 <= second_row_index < len(self.slots): return first_tier_index + 1
         if not 0 <= second_slot_index < len(self.slots[second_row_index]): return first_tier_index + 1
-        try:
-            second_tier_index = self.slots[second_row_index][second_slot_index].availableTierInt()
-
-            # stack2 is full or is removed_slot
-            if second_tier_index is None:
-                return first_tier_index - self.slots[second_row_index][second_slot_index].getMaxTier()
-            # tier1 and tier2 is available
-            elif first_tier_index is not None and second_tier_index is not None:
-                return first_tier_index - second_tier_index
-
-        #stack2 is out of range
-        except IndexError:
-            pass
-        return first_tier_index + 1
+        neighbor = self.slots[second_row_index][second_slot_index]
+        return first_tier_index - neighbor.occupiedHeight()

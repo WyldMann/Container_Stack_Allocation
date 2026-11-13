@@ -50,7 +50,9 @@ class PlacementFeasibility:
 
     def __init__(self, settings: FeasibilitySettings | None = None) -> None:
         self.settings = settings if settings is not None else FeasibilitySettings()
-        self.loader_access = LoaderAccessRule()
+        self.loader_access = LoaderAccessRule(
+            allow_overcapacity=self.settings.stack_capacity_mode != "feasibility",
+        )
 
     def prepare_loader_context(
         self,
@@ -94,7 +96,8 @@ class PlacementFeasibility:
             )
 
         stack = slots[slot_index]
-        tier_index = stack.availableTierInt()
+        allow_overcapacity = self.settings.stack_capacity_mode != "feasibility"
+        tier_index = stack.availableTierInt(allow_overcapacity=allow_overcapacity)
         if tier_index is None:
             return FeasibilityResult(
                 rejection_reason=RejectionReason.STACK_UNAVAILABLE
@@ -105,7 +108,7 @@ class PlacementFeasibility:
             return FeasibilityResult(rejection_reason=reason)
 
         if container_size == "40":
-            reason = self._check_forty_foot_pair(slots, stack, slot_index, tier_index)
+            reason = self._check_forty_foot_pair(slots, stack, slot_index, tier_index, allow_overcapacity)
             if reason is not None:
                 return FeasibilityResult(rejection_reason=reason)
 
@@ -199,6 +202,7 @@ class PlacementFeasibility:
             stack: Stack,
             slot_index: int,
             tier_index: int,
+            allow_overcapacity: bool,
     ) -> RejectionReason | None:
         if stack.getEven() or slot_index == 0:
             return RejectionReason.INVALID_FORTY_FOOT_ANCHOR
@@ -207,7 +211,7 @@ class PlacementFeasibility:
         if partner.getMode() not in ("0", "40"):
             return RejectionReason.PARTNER_SIZE_CONFLICT
 
-        if partner.availableTierInt() != tier_index:
+        if partner.availableTierInt(allow_overcapacity=allow_overcapacity) != tier_index:
             return RejectionReason.PARTNER_TIER_MISMATCH
 
         return None

@@ -180,6 +180,27 @@ class ScenarioTests(unittest.TestCase):
                 self.assertEqual(ContainerFileWriter("unused.csv").buildRows(
                     reimported["branches"][0]["yard"]), expected)
 
+    def test_overcapacity_csv_roundtrip_preserves_tiers_and_nominal_capacity(self):
+        self.rows["yard_blocks"][0].update(row_count="1", slot_count="2", max_tier="1")
+        record = self.rows["existing_containers"][0] | {"container_size": "40", "slot_no": "2"}
+        self.rows["existing_containers"] = [
+            record | {"container_id": f"TIER-{tier}", "tier_no": str(tier)} for tier in (3, 1, 2)
+        ]
+        self.write_files()
+        scenario = prepare_scenario(self.payload)
+        branch, = scenario["branches"]
+        preview = public_preview(scenario)
+        block, = preview["branches"][0]["yard_map"]["blocks"]
+        self.assertEqual((block["occupied_tiers"], block["tier_capacity"]), (6, 2))
+        self.assertEqual([tier["tier"] for tier in block["stacks"][1]["tiers"]], [1, 2, 3])
+        exported = export_yard_csv([branch])
+        comparison = compare_yard(branch, "export.csv", exported)
+        self.assertEqual(comparison["simulated"], comparison["reference"])
+        self.assertEqual(comparison["reference"]["occupancy_rate"], 3.0)
+        self.payload["files"]["existing_containers"]["content"] = exported
+        reopened, = prepare_scenario(self.payload)["branches"]
+        self.assertEqual(reopened["yard"].containers["TIER-3"].getCoordsInt()[-1], 2)
+
     def test_yard_export_preserves_each_branch_scope(self):
         self.rows["terminal_branches"].append(dict(
             branch_id="3", terminal_id="1", branch_code="JKT64", branch_name="Second yard"))
@@ -418,7 +439,7 @@ class ScenarioTests(unittest.TestCase):
     def test_unknown_block_and_out_of_bounds_containers_warn_without_blocking_simulation(self):
         valid = self.rows["existing_containers"][0]
         for index, coordinates in enumerate((
-            {"block_code": "UNKNOWN"}, {"row_no": "3"}, {"slot_no": "5"}, {"tier_no": "4"},
+            {"block_code": "UNKNOWN"}, {"row_no": "3"}, {"slot_no": "5"}, {"tier_no": "5"},
         ), 1):
             self.rows["existing_containers"].append(valid | coordinates | {"container_id": f"SKIPPED{index}"})
         self.write_files()

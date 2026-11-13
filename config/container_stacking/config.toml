@@ -3,6 +3,9 @@
 # Pyramid stacking modes: "feasibility" rejects, "heuristic" scores, and "off" skips.
 stacking_safety_mode = "feasibility"
 
+# Stack capacity modes: "feasibility" rejects overflow, "heuristic" scores it, and "off" allows it.
+stack_capacity_mode = "feasibility"
+
 # Loader modes: "feasibility" rejects, "heuristic" scores, and "off" skips.
 # Current access covers the destination and occupied stacks. RTGs are exempt.
 # Future access covers receiving options and must use the same or a weaker
@@ -16,6 +19,8 @@ ignore_full_stacks_for_loader_access = true
 [heuristic]
 # Score multiplier (0 to 1) for failing the pyramid check in heuristic mode.
 unsafe_stacking_multiplier = 0.25
+# Score multiplier (0 to 1) applied once per tier above nominal capacity.
+overcapacity_tier_multiplier = 0.01
 
 # Disabled factors skip scoring and contribute a neutral multiplier of 1.
 enable_delta_container_mass = true

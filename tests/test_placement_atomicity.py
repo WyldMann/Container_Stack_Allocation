@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch
 
+from config import FeasibilitySettings
 from entities import Container, Yard
 from entities.bad_yard_data import PlacementRejected
 from entities.equipment import Equipment, Loader, RTG
@@ -14,13 +15,13 @@ class PlacementAtomicityTests(unittest.TestCase):
             voyage="", weight="", move_time="",
         )
 
-    def make_yard(self, container_size="20"):
+    def make_yard(self, container_size="20", *, settings=None):
         yard = Yard([
             dict(branch_id="BR", block_id=block_id, block_code=block_id,
                  slot_count="4", row_count="2", max_tier="3",
                  pos_x="0", pos_y="0")
             for block_id in ("A", "B")
-        ])
+        ], feasibility_settings=settings)
         loader = Loader("L", ("A", 0, 0))
         yard.master_loaders.append(loader)
         yard.getBlockByID("A").addLoader(loader)
@@ -166,6 +167,27 @@ class PlacementAtomicityTests(unittest.TestCase):
             self.assert_unchanged_on_failure(
                 yard, container, equipment,
                 lambda: yard.placeContainer(container, ("B", 0, 1, 0), equipment),
+                RuntimeError,
+            )
+
+    def test_failure_after_second_overcapacity_write_restores_both_slot_heights(self):
+        yard, equipment, container = self.make_yard(
+            "40", settings=FeasibilitySettings(stack_capacity_mode="off", stacking_safety=False),
+        )
+        for tier in range(3):
+            existing = Container(**(self.record | {"container_id": f"BASE-{tier}", "container_size": "40"}))
+            yard.addContainerByCoords(existing, ("A", 0, 1, tier))
+        stack = yard.getStack("A", 0, 1)
+        original = stack.addContainer
+
+        def fail_after_write(item, tier_index, *, allow_overcapacity):
+            original(item, tier_index, allow_overcapacity=allow_overcapacity)
+            raise RuntimeError("Injected failure after overflow write")
+
+        with patch.object(stack, "addContainer", side_effect=fail_after_write):
+            self.assert_unchanged_on_failure(
+                yard, container, equipment,
+                lambda: yard.placeContainer(container, ("A", 0, 1, 3), equipment),
                 RuntimeError,
             )
 

@@ -58,7 +58,7 @@ class HeuristicConfigTests(unittest.TestCase):
                 if field.name not in (
                     'size_cluster_bias', 'loader_inaccessible_destination_multiplier',
                     'loader_occupied_access_loss_weight', 'loader_future_access_loss_weight',
-                    'unsafe_stacking_multiplier',
+                    'unsafe_stacking_multiplier', 'overcapacity_tier_multiplier',
                 ):
                     values += ('0',)
             for value in values:

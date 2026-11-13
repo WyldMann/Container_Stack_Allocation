@@ -104,8 +104,11 @@ function createYardMap(branch, branches = [branch]) {
 
   function renderInspector(panel, block, stack, partner, placed, traceEntries) {
     const heading = el("div", undefined, "yard-inspector-heading");
-    heading.append(el("h4", "Stack details"), el("span", stack.removed ? "Removed" :
-      stack.tiers.length + " of " + stack.capacity + " occupied", "yard-occupancy"));
+    const extra = Math.max(0, stack.tiers.length - stack.capacity);
+    const occupancy = el("span", stack.removed ? "Removed" :
+      stack.tiers.length + " of " + stack.capacity + " occupied", "yard-occupancy");
+    occupancy.classList.toggle("yard-overcapacity", extra > 0);
+    heading.append(el("h4", "Stack details"), occupancy);
     panel.replaceChildren(heading, el("p", block.code + " · Row " + two(stack.row) + " · " +
       slotLabel(stack, partner), "yard-caption"));
     if (placed) {
@@ -118,6 +121,8 @@ function createYardMap(branch, branches = [branch]) {
       }
     }
     if (stack.anomaly) panel.append(el("p", "Tier gap below an occupied position.", "yard-gap-note"));
+    if (extra) panel.append(el("p", "Over capacity by " + extra + (extra === 1 ? " tier." : " tiers."),
+      "yard-overcapacity"));
     if (stack.tiers.some(tier => tier.dummy)) {
       panel.append(el("p", "Occupied tiers with missing container records.", "yard-gap-note"));
     }
@@ -152,8 +157,9 @@ function createYardMap(branch, branches = [branch]) {
 
     panel.append(el("h4", "Tier contents"));
     const tiers = new Map(stack.tiers.map(tier => [tier.tier, tier]));
+    const highestTier = stack.tiers.reduce((highest, tier) => Math.max(highest, tier.tier), stack.capacity);
     const rows = [];
-    for (let number = stack.capacity; number >= 1; number--) {
+    for (let number = highestTier; number >= 1; number--) {
       const tier = tiers.get(number);
       if (!tier || tier.dummy) {
         rows.push([number, tier ? "Occupied · Missing record" : "Empty", "—", "—", "—", "—"]);
@@ -166,7 +172,7 @@ function createYardMap(branch, branches = [branch]) {
     }
     const contents = table(["Tier", "Container", "Size", "Fill", "Grade", "Weight"], rows);
     contents.classList.add("yard-tier-table");
-    if (placed) contents.querySelectorAll("tbody tr")[stack.capacity - placed.tier].classList.add("yard-placed-tier");
+    if (placed) contents.querySelectorAll("tbody tr")[highestTier - placed.tier].classList.add("yard-placed-tier");
     panel.append(contents);
     if (stack.tiers.some(tier => tier.weight != null)) {
       panel.append(el("p", "Weight values use the source units.", "yard-caption"));
@@ -280,6 +286,7 @@ function createYardMap(branch, branches = [branch]) {
 
   function paintStack(tile, block, stack, partner) {
     const occupied = stack.tiers.length;
+    const overcapacity = occupied > stack.capacity;
     const missingRecords = stack.tiers.some(tier => tier.dummy);
     const occupancy = occupied + "/" + stack.capacity;
     const assigned = assignedParameters(stack, partner);
@@ -287,6 +294,7 @@ function createYardMap(branch, branches = [branch]) {
     tile.setAttribute("aria-label", "Block " + block.code + ", row " + stack.row + ", " + slotLabel(stack, partner) + ", " +
       (partner ? "40 ft, " : "") +
       (stack.removed ? "removed" : occupancy + " tiers occupied") +
+      (overcapacity ? ", over capacity" : "") +
       (names.length ? ", " + names.join(", ") : ", unassigned") +
       (stack.anomaly ? ", tier gap" : "") +
       (missingRecords ? ", missing container records" : ""));
@@ -296,7 +304,8 @@ function createYardMap(branch, branches = [branch]) {
     } else {
       paint(tile, assigned);
       const count = el("strong", occupancy, occupied ? "yard-count" : "yard-count yard-count-empty");
-      if (occupied) count.style.color = occupancyColor(occupied / stack.capacity);
+      if (overcapacity) count.classList.add("yard-overcapacity");
+      else if (occupied) count.style.color = occupancyColor(occupied / stack.capacity);
       const code = names[0] ? names[0] + (names.length > 1 ? " +" + (names.length - 1) : "") : "-";
       tile.append(count, el("small", code));
     }

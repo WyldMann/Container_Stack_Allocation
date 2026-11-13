@@ -102,15 +102,7 @@ class Yard:
 
         # input containers already in the batabase
         self.containers = {}
-        for inp in containers_input:
-            container = Container(**({"container_size": ""} | inp))
-
-            if not self.bad_data.incomplete_existing_container.validateExistingAndRecord(
-                container
-            ):
-                continue
-
-            self.addContainerInput(container)
+        self.addContainerInputs(Container(**({"container_size": ""} | inp)) for inp in containers_input)
 
         self.anomalyCheck()
         # self.fillDummyContainer()
@@ -178,6 +170,28 @@ class Yard:
     def getBlockIDbyCode(self, branch_id:str,block_code:str) -> str:
         return self.blocks_by_code[(branch_id,block_code)].getId()
 
+    def addContainerInputs(self, containers) -> None:
+        """Import nominal tiers first, then restore overflow tiers from bottom to top."""
+        overflow = []
+        for container in containers:
+            if not self.bad_data.incomplete_existing_container.validateExistingAndRecord(container):
+                continue
+            try:
+                branch, code, row, slot, tier = container.getCoordsInt()
+                block = self.getBlockByCode(branch, code)
+                if row < 0 or slot < 0:
+                    raise IndexError
+                stack = block.getStack(row, slot)
+            except (KeyError, IndexError, TypeError, ValueError):
+                self.addContainerInput(container)
+                continue
+            if tier >= stack.getMaxTier() and stack.getMode() != "X":
+                overflow.append((tier, container))
+            else:
+                self.addContainerInput(container)
+        for _, container in sorted(overflow, key=lambda item: item[0]):
+            self.addContainerInput(container)
+
     def addContainerInput(self, container: Container):
         def reject():
             self.bad_data.addContainerCoordsInvalid(container)
@@ -219,7 +233,7 @@ class Yard:
             stacks = [block.getStack(row_index, index) for index in slots]
 
             for stack in stacks:
-                if not 0 <= tier_index < stack.getMaxTier():
+                if not 0 <= tier_index <= len(stack.getContainers()):
                     reject()
                     return
 
@@ -243,6 +257,8 @@ class Yard:
 
         occupants: list[Container] = []
         for stack in stacks:
+            if tier_index == len(stack.getContainers()):
+                continue
             occupant = stack.getContainer(tier_index)
             if occupant is not None:
                 occupants.append(occupant)
@@ -282,7 +298,10 @@ class Yard:
 
         # Every destination has passed validation and is empty.
         for stack in stacks:
-            stack.addContainer(container, tier_index)
+            if tier_index >= stack.getMaxTier():
+                stack.addContainer(container, tier_index, allow_overcapacity=True)
+            else:
+                stack.addContainer(container, tier_index)
 
         self.containers[container.getId()] = container
 
@@ -317,7 +336,10 @@ class Yard:
 
         try:
             for stack in stacks:
-                stack.addContainer(container, proposal.tier_index)
+                if proposal.tier_index >= stack.getMaxTier():
+                    stack.addContainer(container, proposal.tier_index, allow_overcapacity=True)
+                else:
+                    stack.addContainer(container, proposal.tier_index)
             container.setCoordsInt(
                 self.getBlockBranchCodebyID(proposal.block_id)
                 + (proposal.row_index, proposal.slot_index, proposal.tier_index)
@@ -598,16 +620,18 @@ class Yard:
         score_current = settings.effective_loader_access_mode == "heuristic"
         score_future = settings.effective_future_loader_access_mode == "heuristic"
         score_stacking_safety = settings.effective_stacking_safety_mode == "heuristic"
+        score_capacity = settings.stack_capacity_mode == "heuristic"
         prioritize_current_access = settings.prioritize_current_loader_access
         candidates = []
         for coordinate in candidate_coordinates:
-            block_id, row, slot, _ = coordinate
+            block_id, row, slot, tier = coordinate
+            block = self.getBlockByID(block_id)
             if loader_access_results is not None:
                 access = loader_access_results.get(coordinate)
             elif score_current or score_future:
                 # Direct callers can supply coordinates without a prior search.
                 access = self.feasibility.evaluate(
-                    container, self.getBlockByID(block_id), row, slot,
+                    container, block, row, slot,
                     loader_policy=self.loader_access_policies.get(block_id),
                 ).loader_access
             else:
@@ -617,14 +641,23 @@ class Yard:
             )
             mass, equipment, distance, cluster, score = self.modelEval(container, coordinate)
             stacking_safety = 1.0
-            if score_stacking_safety and not self.getBlockByID(block_id).safeMaxima(row, slot):
+            if score_stacking_safety and not block.safeMaxima(row, slot):
                 stacking_safety = self.model.settings.unsafe_stacking_multiplier
+            overcapacity_tiers = 0
+            capacity_multiplier = 1.0
+            if score_capacity:
+                proposal = PlacementProposal(block_id, row, slot, tier, container.getContSize())
+                overcapacity_tiers = max(0, tier + 1 - min(
+                    block.getStack(r, s).getMaxTier() for _, r, s in proposal.footprint
+                ))
+                capacity_multiplier = self.model.settings.overcapacity_tier_multiplier ** overcapacity_tiers
             candidates.append(CandidateEvaluation(
                 coordinate, self.getStack(block_id, row, slot).getParameters(),
-                mass, equipment, distance, cluster, score * current * future * stacking_safety,
+                mass, equipment, distance, cluster, score * current * future * stacking_safety * capacity_multiplier,
                 loader_access=access, loader_access_multiplier=current,
                 future_loader_access_multiplier=future,
                 stacking_safety_multiplier=stacking_safety,
+                capacity_multiplier=capacity_multiplier, overcapacity_tiers=overcapacity_tiers,
             ))
         return sorted(
             candidates,

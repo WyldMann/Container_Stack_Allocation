@@ -19,10 +19,14 @@ const tomlEditors = {
 };
 const tomlDocuments = {};
 const ruleModes = ["off", "heuristic", "feasibility"];
-const ruleModeKeys = ["stacking_safety_mode", "loader_access_mode", "preserve_future_loader_access_mode"];
+const ruleModeKeys = ["stacking_safety_mode", "stack_capacity_mode", "loader_access_mode", "preserve_future_loader_access_mode"];
 const stackingScoringOption = {key: "unsafe_stacking_multiplier", mode: "stacking", defaultValue: "0.25",
   label: "Pyramid violation multiplier",
   description: "Multiply the placement score by this value (0–1) when the pyramid check fails. One removes the penalty."};
+const capacityScoringOption = {key: "overcapacity_tier_multiplier", mode: "capacity", defaultValue: "0.01",
+  label: "Per extra tier multiplier",
+  description: "Apply this multiplier (0–1) once per tier above nominal capacity. One removes the penalty."};
+const boundedRuleWeights = [stackingScoringOption, capacityScoringOption];
 const loaderScoringOptions = [
   {key: "loader_inaccessible_destination_multiplier", mode: "current", defaultValue: "0.25",
     label: "Unreachable destination multiplier",
@@ -40,6 +44,11 @@ const placementGroups = [
       "Off skips the check. Heuristic lowers the score for placements that fail it. Feasibility rejects those placements."],
     "heuristic.unsafe_stacking_multiplier": [stackingScoringOption.label, stackingScoringOption.description]
   }},
+  {title: "Stack capacity", options: {
+    "feasibility.stack_capacity_mode": ["Nominal stack capacity",
+      "Off allows extra tiers. Heuristic allows extra tiers with a score penalty. Feasibility rejects them."],
+    "heuristic.overcapacity_tier_multiplier": [capacityScoringOption.label, capacityScoringOption.description]
+  }},
   {title: "Loader access", description:
     "Off skips the check. Heuristic uses access to rank placements. Feasibility rejects placements that block access. These checks apply to loader-served blocks.",
   options: {
@@ -48,7 +57,7 @@ const placementGroups = [
     "feasibility.preserve_future_loader_access_mode": ["Future loader access",
       "Keep locations with room for more containers reachable."],
     "feasibility.ignore_full_stacks_for_loader_access": ["Ignore full stacks",
-      "Exclude fully occupied stacks from the current access check."],
+      "Exclude stacks at or above nominal capacity from the current access check."],
     ...Object.fromEntries(loaderScoringOptions.map(({key, label, description}) =>
       ["heuristic." + key, [label, description]]))
   }},
@@ -312,28 +321,27 @@ function ruleModeSwitch(controls, rows, key, prefix, value) {
 
 function updateRuleControls(controls, rows, currentChanged = false) {
   const stacking = controls.stacking_safety_mode;
+  const capacity = controls.stack_capacity_mode;
   const current = controls.loader_access_mode;
   const future = controls.preserve_future_loader_access_mode;
   const mode = current?.mode ?? "feasibility";
   const limit = ruleModes.indexOf(mode);
   if (currentChanged && future && ruleModes.indexOf(future.mode) > limit) future.select(mode);
-  for (const choice of stacking?.choices ?? []) {
-    choice.checked = choice.value === stacking.mode;
-    choice.disabled = busy;
+  for (const control of [stacking, capacity, current]) {
+    for (const choice of control?.choices ?? []) {
+      choice.checked = choice.value === control.mode;
+      choice.disabled = busy;
+    }
   }
   const futureInactive = mode === "off" && (future?.mode ?? mode) === "off";
-  for (const choice of current?.choices ?? []) {
-    choice.checked = choice.value === mode;
-    choice.disabled = busy;
-  }
   for (const [index, choice] of (future?.choices ?? []).entries()) {
     choice.checked = choice.value === (future.mode ?? mode);
     choice.disabled = busy || futureInactive || index > limit;
   }
   future?.option.classList.toggle("is-inactive", futureInactive);
   if (controls.ignoreFull) setPlacementInactive(controls.ignoreFull, mode === "off");
-  const effectiveModes = {stacking: stacking?.mode, current: mode, future: future?.mode ?? mode};
-  for (const {key, mode: scoringMode} of [stackingScoringOption, ...loaderScoringOptions]) {
+  const effectiveModes = {stacking: stacking?.mode, capacity: capacity?.mode, current: mode, future: future?.mode ?? mode};
+  for (const {key, mode: scoringMode} of [...boundedRuleWeights, ...loaderScoringOptions]) {
     for (const option of rows.get("heuristic." + key) ?? []) {
       setPlacementInactive(option, effectiveModes[scoringMode] !== "heuristic");
     }
@@ -345,19 +353,18 @@ function updateRuleControls(controls, rows, currentChanged = false) {
   }
 }
 
-function addPyramidMultiplier(rows, fields, start, end, value, prefix = "") {
-  const {key, defaultValue} = stackingScoringOption;
+function addBoundedRuleWeight(rows, fields, start, end, value, {key, defaultValue, label}, prefix = "") {
   const slider = el("input");
   slider.type = "range";
   slider.min = "0";
   slider.max = "1";
-  slider.setAttribute("aria-label", stackingScoringOption.label);
+  slider.setAttribute("aria-label", label);
   const number = el("input");
   number.type = "number";
   number.min = slider.min;
   number.max = slider.max;
   number.step = "any";
-  number.setAttribute("aria-label", stackingScoringOption.label);
+  number.setAttribute("aria-label", label);
 
   function syncValue(next) {
     slider.step = Number(next.toFixed(2)) === next ? "0.01" : "any";
@@ -415,12 +422,13 @@ function addPyramidMultiplier(rows, fields, start, end, value, prefix = "") {
 
 function addMissingRuleWeights(rows, fields, source, offset) {
   const separator = offset && source[offset - 1] !== "\n" ? "\n" : "";
-  for (const {key, defaultValue} of [stackingScoringOption, ...loaderScoringOptions]) {
+  for (const setting of [...boundedRuleWeights, ...loaderScoringOptions]) {
+    const {key, defaultValue} = setting;
     const path = "heuristic." + key;
     if (rows.has(path)) continue;
     const prefix = separator + (offset ? key : path) + " = ";
-    if (key === stackingScoringOption.key) {
-      addPyramidMultiplier(rows, fields, offset, offset, null, prefix);
+    if (boundedRuleWeights.includes(setting)) {
+      addBoundedRuleWeight(rows, fields, offset, offset, null, setting, prefix);
       continue;
     }
     const input = el("input");
@@ -509,8 +517,10 @@ function showToml(kind, text, loadedFrom) {
       if (lineEnd === -1) lineEnd = source.length;
       if (visible || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
-        if (knownOption && optionPath === "heuristic." + stackingScoringOption.key) {
-          addPyramidMultiplier(placementRows, fields, start, start + value.length, value);
+        const boundedWeight = knownOption && root === "heuristic" &&
+          boundedRuleWeights.find(setting => setting.key === key);
+        if (boundedWeight) {
+          addBoundedRuleWeight(placementRows, fields, start, start + value.length, value, boundedWeight);
           offset = statementStart = lineEnd + 1;
           continue;
         }

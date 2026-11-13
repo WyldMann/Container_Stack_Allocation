@@ -14,6 +14,7 @@ class FeasibilitySettings:
     loader_access_mode: str | None = None
     preserve_future_loader_access_mode: str | None = None
     stacking_safety_mode: str | None = None
+    stack_capacity_mode: str = "feasibility"
 
     def __post_init__(self) -> None:
         for name in (
@@ -22,9 +23,11 @@ class FeasibilitySettings:
         ):
             if type(getattr(self, name)) is not bool:
                 raise TypeError(f"{name} must be a boolean.")
-        for name in ("stacking_safety_mode", "loader_access_mode", "preserve_future_loader_access_mode"):
+        for name in ("stack_capacity_mode", "stacking_safety_mode", "loader_access_mode", "preserve_future_loader_access_mode"):
             value = getattr(self, name)
-            if value is not None and (not isinstance(value, str) or value not in _ACCESS_STRENGTH):
+            if value is None and name != "stack_capacity_mode":
+                continue
+            if not isinstance(value, str) or value not in _ACCESS_STRENGTH:
                 raise ValueError(f"{name} must be 'off', 'heuristic', or 'feasibility'.")
         current = self.effective_loader_access_mode
         future = self.effective_future_loader_access_mode

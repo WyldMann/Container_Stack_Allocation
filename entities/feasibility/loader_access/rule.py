@@ -20,6 +20,9 @@ class LoaderAccessRule:
     vehicle dimensions and turning clearance are not modeled.
     """
 
+    def __init__(self, *, allow_overcapacity: bool = False) -> None:
+        self.allow_overcapacity = allow_overcapacity
+
     def prepare_context(
         self, block: Block, policy: LoaderBorderAccessPolicy,
     ) -> LoaderAccessContext:
@@ -44,7 +47,7 @@ class LoaderAccessRule:
         )
         return LoaderAccessContext(
             block, policy, row_lengths, ground, reachable, receiving, accessible,
-            accessible_occupied,
+            accessible_occupied, self.allow_overcapacity,
         )
 
     def evaluate(
@@ -60,7 +63,8 @@ class LoaderAccessRule:
         self._validate_proposal(block, proposal)
         if context is None:
             context = self.prepare_context(block, policy)
-        elif context.block is not block or context.policy != policy:
+        elif (context.block is not block or context.policy != policy
+              or context.allow_overcapacity != self.allow_overcapacity):
             raise ValueError("Loader access context belongs to a different block or policy.")
 
         destination = ReceivingLocation(proposal.row_index, proposal.slot_index, proposal.container_size)
@@ -117,8 +121,7 @@ class LoaderAccessRule:
                 if size == "20" or (size == "40" and slot_index % 2 == 1):
                     yield ReceivingLocation(row_index, slot_index, size)
 
-    @staticmethod
-    def _validate_proposal(block: Block, proposal: PlacementProposal) -> None:
+    def _validate_proposal(self, block: Block, proposal: PlacementProposal) -> None:
         if proposal.block_id != block.getId():
             raise ValueError("Proposal belongs to a different block.")
         rows = block.getSlots()
@@ -130,7 +133,7 @@ class LoaderAccessRule:
             stack = rows[row_index][slot_index]
             if stack.getMode() not in ("0", proposal.container_size):
                 raise ValueError("Proposal conflicts with stack mode.")
-            if stack.availableTierInt() != proposal.tier_index:
+            if stack.availableTierInt(allow_overcapacity=self.allow_overcapacity) != proposal.tier_index:
                 raise ValueError("Proposal tier must be the next available tier.")
 
     @staticmethod
@@ -199,19 +202,18 @@ class LoaderAccessRule:
         )
         return set(self._search_ground(tuple(map(len, rows)), ground, policy))
 
-    @staticmethod
     def _stack_state(
-        block: Block, row_index: int, slot_index: int, proposal: PlacementProposal | None,
+        self, block: Block, row_index: int, slot_index: int, proposal: PlacementProposal | None,
     ) -> tuple[str, int | None]:
         stack = block.getStack(row_index, slot_index)
         if stack.anomaly():
             return stack.getMode(), None
         if proposal is not None and proposal.occupies((block.getId(), row_index, slot_index)):
             next_tier = proposal.resulting_height
-            if next_tier >= stack.getMaxTier():
+            if not self.allow_overcapacity and next_tier >= stack.getMaxTier():
                 next_tier = None
             return proposal.container_size, next_tier
-        return stack.getMode(), stack.availableTierInt()
+        return stack.getMode(), stack.availableTierInt(allow_overcapacity=self.allow_overcapacity)
 
     def _receiving_at(
         self, block: Block, row_index: int, slot_index: int,

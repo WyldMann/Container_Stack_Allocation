@@ -21,3 +21,4 @@ class LoaderAccessContext:
     receiving_locations: frozenset[ReceivingLocation]
     accessible_locations: frozenset[ReceivingLocation]
     accessible_occupied_locations: frozenset[ReceivingLocation]
+    allow_overcapacity: bool = False

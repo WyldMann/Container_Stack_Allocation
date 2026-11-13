@@ -35,13 +35,26 @@ class Stack:
     def setMode(self, mode: str): self.mode = mode
 
     def isTierEmpty(self, tier_index: int) -> bool:
+        if self.mode != "X" and self.max_tier > 0 and tier_index == len(self.containers):
+            return True
         return self.containers[tier_index] is None
 
-    def availableTierInt(self) -> int | None:
+    def availableTierInt(self, *, allow_overcapacity: bool = False) -> int | None:
+        if self.mode == "X" or self.max_tier <= 0:
+            return None
+        limit = len(self.containers) if allow_overcapacity else self.max_tier
         for tier_index, container in enumerate(self.containers):
+            if tier_index >= limit:
+                break
             if container is None:
                 return tier_index
-        return None
+        return limit if allow_overcapacity else None
+
+    def occupiedHeight(self) -> int:
+        for tier in range(len(self.containers) - 1, -1, -1):
+            if self.containers[tier] is not None:
+                return tier + 1
+        return 0
 
     #returns the highest container object, None if there's no container object
     def getTopContainer(self) -> Container | None:
@@ -52,10 +65,11 @@ class Stack:
             prev_container = container
         return prev_container
 
-    def addContainer(self, container: Container, tier_index: int):
+    def addContainer(self, container: Container, tier_index: int, *, allow_overcapacity: bool = False):
         if type(tier_index) is not int:
             raise TypeError("Tier must be an integer.")
-        if self.mode == "X" or not 0 <= tier_index < len(self.containers):
+        limit = len(self.containers) + 1 if allow_overcapacity else self.max_tier
+        if self.mode == "X" or self.max_tier <= 0 or not 0 <= tier_index < limit:
             raise ValueError("Tier is outside an available stack.")
 
         container_size = container.getContSize()
@@ -64,7 +78,10 @@ class Stack:
         if not self.isTierEmpty(tier_index):
             raise ValueError("Tier is already occupied.")
 
-        self.containers[tier_index] = container
+        if tier_index == len(self.containers):
+            self.containers.append(container)
+        else:
+            self.containers[tier_index] = container
         if tier_index == 0:
             self.setMode(container_size)
     def replaceContainer(self, container: Container, tier_index: int):
@@ -86,7 +103,7 @@ class Stack:
         return self.containers.count(None)
 
     def occupancy(self):
-        return self.max_tier - self.containers.count(None)
+        return len(self.containers) - self.containers.count(None)
 
     # returns true if there's floating containers
     def anomaly(self):

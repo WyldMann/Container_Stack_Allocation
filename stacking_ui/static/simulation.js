@@ -327,7 +327,8 @@ const multiplierLabels = {
   cluster_multiplier: "Size cluster multiplier",
   loader_access_multiplier: "Current loader access multiplier",
   future_loader_access_multiplier: "Future loader access multiplier",
-  stacking_safety_multiplier: "Pyramid stacking multiplier"
+  stacking_safety_multiplier: "Pyramid stacking multiplier",
+  capacity_multiplier: "Stack capacity multiplier"
 };
 
 const loaderAccessLabels = ["Loader can serve destination", "Occupied stacks losing access",
@@ -346,6 +347,7 @@ function heuristicRows(candidate, multipliers = Object.keys(multiplierLabels)) {
   return [
     ...(candidate.loader_destination_accessible == null ? [] :
       loaderAccessValues(candidate).map((value, i) => [loaderAccessLabels[i], value])),
+    ...(candidate.overcapacity_tiers ? [["Tiers above capacity", candidate.overcapacity_tiers]] : []),
     ...multipliers.map(key => [multiplierLabels[key], traceNumber(candidate[key])]),
     ["Heuristic score", traceNumber(candidate.score)]
   ];
