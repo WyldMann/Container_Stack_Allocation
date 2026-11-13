@@ -52,6 +52,12 @@ const placementGroups = [
   }},
   {title: "Loader reachability and access preservation", description:
     "Off skips the rule. Heuristic scores it. Feasibility rejects placements that fail it. These rules apply to loader-served blocks.",
+  optionRows: [
+    ["feasibility.loader_destination_access_mode", "heuristic.loader_inaccessible_destination_multiplier"],
+    ["feasibility.preserve_occupied_loader_access_mode", "heuristic.loader_occupied_access_loss_weight",
+      "feasibility.ignore_full_stacks_for_loader_access"],
+    ["feasibility.preserve_future_loader_access_mode", "heuristic.loader_future_access_loss_weight"]
+  ],
   options: {
     "feasibility.loader_destination_access_mode": ["Currently loader accessible",
       "Check whether the loader can reach this placement location before placing the container."],
@@ -60,7 +66,7 @@ const placementGroups = [
     "feasibility.preserve_future_loader_access_mode": ["Preserve access to future receiving locations",
       "Check whether this placement cuts off access to locations with room for more containers."],
     "feasibility.ignore_full_stacks_for_loader_access": ["Ignore full stacks",
-      "Exclude stacks at or above nominal capacity from the current access check."],
+      "Exclude stacks at or above capacity from occupied-stack access preservation."],
     ...Object.fromEntries(loaderScoringOptions.map(({key, label, description}) =>
       ["heuristic." + key, [label, description]]))
   }},
@@ -230,15 +236,25 @@ function addPlacementOption(rows, path, row, control) {
 function showPlacementGroups(editor, rows) {
   const groups = el("div", undefined, "placement-groups");
   const weightAndDistance = el("div", undefined, "placement-weight-distance");
-  for (const {title, description, options, fallbackLayout} of placementGroups) {
+  for (const {title, description, options, optionRows, fallbackLayout} of placementGroups) {
     const entries = Object.keys(options).flatMap(path => rows.get(path) ?? []);
     if (!entries.length) continue;
     const group = el("fieldset", undefined, "placement-group");
     group.append(el("legend", title));
     if (description) group.append(el("p", description, "placement-help"));
-    const list = el("div", undefined, "placement-options");
-    list.append(...entries);
-    group.append(list);
+    if (optionRows) {
+      for (const paths of optionRows) {
+        const related = paths.flatMap(path => rows.get(path) ?? []);
+        if (!related.length) continue;
+        const list = el("div", undefined, "placement-options placement-related-options");
+        list.append(...related);
+        group.append(list);
+      }
+    } else {
+      const list = el("div", undefined, "placement-options");
+      list.append(...entries);
+      group.append(list);
+    }
     if (fallbackLayout) {
       if (!weightAndDistance.parentNode) groups.append(weightAndDistance);
       if (fallbackLayout === "shared") group.classList.add("placement-shared-fallback");
