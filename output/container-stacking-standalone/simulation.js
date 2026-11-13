@@ -326,7 +326,8 @@ const multiplierLabels = {
   distance_multiplier: "Equipment distance multiplier",
   cluster_multiplier: "Size cluster multiplier",
   loader_access_multiplier: "Current loader access multiplier",
-  future_loader_access_multiplier: "Future loader access multiplier"
+  future_loader_access_multiplier: "Future loader access multiplier",
+  stacking_safety_multiplier: "Pyramid stacking multiplier"
 };
 
 const loaderAccessLabels = ["Loader can serve destination", "Occupied stacks losing access",

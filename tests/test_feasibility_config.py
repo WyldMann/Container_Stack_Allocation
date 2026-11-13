@@ -94,6 +94,23 @@ loader_acess = false
                     with self.assertRaisesRegex(ConfigurationError, key + "_mode"):
                         parse_config({"feasibility": {key + "_mode": value}})
 
+    def test_stacking_safety_mode_round_trips_and_accepts_legacy_booleans(self):
+        for options, mode in (
+            ({"stacking_safety": True}, "feasibility"),
+            ({"stacking_safety": False}, "off"),
+            ({"stacking_safety_mode": "heuristic"}, "heuristic"),
+        ):
+            with self.subTest(options=options):
+                settings = parse_config({"feasibility": options})
+                self.assertEqual(settings.feasibility.effective_stacking_safety_mode, mode)
+                document = settings.to_document()
+                self.assertEqual(document["feasibility"]["stacking_safety_mode"], mode)
+                self.assertEqual(parse_config(document).to_document(), document)
+        with self.assertRaisesRegex(ConfigurationError, "stacking_safety_mode"):
+            parse_config({"feasibility": {"stacking_safety_mode": "invalid"}})
+        with self.assertRaisesRegex(ConfigurationError, "Set either"):
+            parse_config({"feasibility": {"stacking_safety": True, "stacking_safety_mode": "off"}})
+
     def test_non_boolean_options_are_rejected(self):
         for option in (
             "stacking_safety", "loader_access", "preserve_future_loader_access",

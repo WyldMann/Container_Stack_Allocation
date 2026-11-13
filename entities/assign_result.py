@@ -17,6 +17,7 @@ class CandidateEvaluation:
     loader_access: LoaderAccessResult | None = None
     loader_access_multiplier: float = 1.0
     future_loader_access_multiplier: float = 1.0
+    stacking_safety_multiplier: float = 1.0
 
     def ranking_key(self, prioritize_current_access: bool) -> tuple[bool, int, float]:
         access = self.loader_access if prioritize_current_access else None

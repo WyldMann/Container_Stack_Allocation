@@ -324,11 +324,29 @@
   width: 8rem;
   font-variant-numeric: tabular-nums;
 }
+.toml-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.toml-range input[type="range"] {
+  width: clamp(4rem, 14vw, 9rem);
+  margin: 0;
+  padding: 0;
+  accent-color: var(--green);
+}
+.toml-range input[type="number"] {
+  width: 5.5rem;
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .placement-help { margin: 0; font-size: 13px; }
 .placement-option.is-inactive, .placement-option.is-inactive .placement-help {
   color: #64716c;
 }
 .placement-option.is-inactive input[type="text"],
+.placement-option.is-inactive input[type="number"],
 .placement-option.is-inactive textarea,
 .placement-option.is-inactive .toml-segments {
   background: #e9eeeb;

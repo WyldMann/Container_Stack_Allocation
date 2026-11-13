@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from config import FeasibilitySettings
+from config import FeasibilitySettings, HeuristicSettings
 from entities import Container
 from entities.bad_yard_data import PlacementRejected
 from entities.yard import Yard
@@ -92,7 +92,7 @@ class UnplannedStackSelectionTests(unittest.TestCase):
 
 
 class AnomalousStackSelectionTests(unittest.TestCase):
-    def make_yard(self, container_size='20', *, slots=4, tiers=3, floating=True, settings=None):
+    def make_yard(self, container_size='20', *, slots=4, tiers=3, floating=True, settings=None, heuristic=None):
         record = dict(
             container_id='FLOATING', principal='', container_condition='',
             container_fill='', container_size=container_size, container_grade='',
@@ -110,12 +110,49 @@ class AnomalousStackSelectionTests(unittest.TestCase):
             equipment_input=[dict(equipment_code='L', equipment_type='SL')],
             equipment_locations_input={'L': ('BR', 'A', 0, 0)},
             feasibility_settings=settings,
+            heuristic_settings=heuristic,
         )
         incoming = Container(**(record | {
             'container_id': 'NEW', 'branch_id': '', 'block_code': '',
             'row_no': '', 'slot_no': '', 'tier_no': '',
         }))
         return yard, incoming, record
+
+    def test_pyramid_modes_reject_penalize_or_ignore_the_same_placement(self):
+        for size, unsafe_slot, safe_slot in (('20', 1, 0), ('40', 1, 3)):
+            for mode in ('feasibility', 'heuristic', 'off'):
+                with self.subTest(size=size, mode=mode):
+                    yard, incoming, record = self.make_yard(
+                        size, floating=False,
+                        settings=FeasibilitySettings(stacking_safety_mode=mode, loader_access=False),
+                        heuristic=HeuristicSettings(
+                            enable_delta_container_mass=False, enable_equipment_distance=False,
+                            enable_size_cluster=False, unsafe_stacking_multiplier=0.2,
+                        ),
+                    )
+                    for tier in ('1', '2'):
+                        yard.addContainerInput(Container(**(record | {
+                            'container_id': f'SUPPORT-{tier}', 'tier_no': tier, 'slot_no': '2',
+                        })))
+                    unsafe = ('A', 0, unsafe_slot, 2)
+                    safe = ('A', 0, safe_slot, 0)
+                    trace = {}
+                    result = yard.assignContainer(incoming, trace=trace)
+                    scores = {candidate.coordinates: candidate for candidate in result.sorted_candidate_evaluations}
+                    self.assertEqual(scores[safe].stacking_safety_multiplier, 1.0)
+                    if mode == 'feasibility':
+                        self.assertNotIn(unsafe, scores)
+                        self.assertEqual(trace['rejections']['unsafe_stacking'], 1)
+                        with self.assertRaisesRegex(PlacementRejected, 'unsafe_stacking'):
+                            yard.addContainerByCoords(incoming, unsafe)
+                    else:
+                        factor = 0.2 if mode == 'heuristic' else 1.0
+                        self.assertEqual(scores[unsafe].stacking_safety_multiplier, factor)
+                        self.assertEqual(scores[unsafe].evaluation_score, factor)
+                        if mode == 'heuristic':
+                            self.assertLess(result.getCoords().index(safe), result.getCoords().index(unsafe))
+                        yard.addContainerByCoords(incoming, unsafe)
+                        self.assertIs(yard.getStack(*unsafe[:3]).getContainer(2), incoming)
 
     @staticmethod
     def snapshot(yard):

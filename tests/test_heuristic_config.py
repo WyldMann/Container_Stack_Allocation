@@ -58,6 +58,7 @@ class HeuristicConfigTests(unittest.TestCase):
                 if field.name not in (
                     'size_cluster_bias', 'loader_inaccessible_destination_multiplier',
                     'loader_occupied_access_loss_weight', 'loader_future_access_loss_weight',
+                    'unsafe_stacking_multiplier',
                 ):
                     values += ('0',)
             for value in values:
@@ -75,6 +76,14 @@ class HeuristicConfigTests(unittest.TestCase):
                 self.assertEqual(getattr(settings, name), 0)
         with self.assertRaisesRegex(ConfigurationError, 'between 0 and 1'):
             self.load_text('[heuristic]\nloader_inaccessible_destination_multiplier = 1.1\n')
+
+    def test_unsafe_stacking_multiplier_enforces_inclusive_bounds(self):
+        for value in (0, 0.25, 1):
+            settings = self.load_text(f'[heuristic]\nunsafe_stacking_multiplier = {value}\n')
+            self.assertEqual(settings.heuristic.unsafe_stacking_multiplier, value)
+        for value in (-0.01, 1.01):
+            with self.assertRaisesRegex(ConfigurationError, 'between 0 and 1'):
+                self.load_text(f'[heuristic]\nunsafe_stacking_multiplier = {value}\n')
 
     def test_factor_switches_accept_booleans_and_preserve_other_defaults(self):
         for name in ('enable_delta_container_mass', 'enable_equipment_distance', 'enable_size_cluster'):

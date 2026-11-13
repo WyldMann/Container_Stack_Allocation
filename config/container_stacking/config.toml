@@ -1,7 +1,7 @@
 # Placement settings for main.py.
 [feasibility]
-# Enforce the existing pyramid stacking safety rule.
-stacking_safety = true
+# Pyramid stacking modes: "feasibility" rejects, "heuristic" scores, and "off" skips.
+stacking_safety_mode = "feasibility"
 
 # Loader modes: "feasibility" rejects, "heuristic" scores, and "off" skips.
 # Current access covers the destination and occupied stacks. RTGs are exempt.
@@ -14,6 +14,9 @@ ignore_full_stacks_for_loader_access = true
 
 
 [heuristic]
+# Score multiplier (0 to 1) for failing the pyramid check in heuristic mode.
+unsafe_stacking_multiplier = 0.25
+
 # Disabled factors skip scoring and contribute a neutral multiplier of 1.
 enable_delta_container_mass = true
 enable_equipment_distance = false

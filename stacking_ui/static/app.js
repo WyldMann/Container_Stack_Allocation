@@ -18,8 +18,11 @@ const tomlEditors = {
   mapping: "mapping_toml"
 };
 const tomlDocuments = {};
-const loaderModes = ["off", "heuristic", "feasibility"];
-const loaderModeKeys = ["loader_access_mode", "preserve_future_loader_access_mode"];
+const ruleModes = ["off", "heuristic", "feasibility"];
+const ruleModeKeys = ["stacking_safety_mode", "loader_access_mode", "preserve_future_loader_access_mode"];
+const stackingScoringOption = {key: "unsafe_stacking_multiplier", mode: "stacking", defaultValue: "0.25",
+  label: "Pyramid violation multiplier",
+  description: "Multiply the placement score by this value (0–1) when the pyramid check fails. One removes the penalty."};
 const loaderScoringOptions = [
   {key: "loader_inaccessible_destination_multiplier", mode: "current", defaultValue: "0.25",
     label: "Unreachable destination multiplier",
@@ -33,8 +36,9 @@ const loaderScoringOptions = [
 ];
 const placementGroups = [
   {title: "Stacking safety", options: {
-    "feasibility.stacking_safety": ["Enforce pyramid stacking",
-      "Reject placements that would exceed the safe stack height for the location."]
+    "feasibility.stacking_safety_mode": ["Pyramid stacking",
+      "Off skips the check. Heuristic lowers the score for placements that fail it. Feasibility rejects those placements."],
+    "heuristic.unsafe_stacking_multiplier": [stackingScoringOption.label, stackingScoringOption.description]
   }},
   {title: "Loader access", description:
     "Off skips the check. Heuristic uses access to rank placements. Feasibility rejects placements that block access. These checks apply to loader-served blocks.",
@@ -128,8 +132,8 @@ async function action(task, report = message) {
   } finally {
     busy = false;
     controls.forEach(node => node.disabled = false);
-    const {loaderAccess, placementRows} = tomlDocuments.config;
-    updateLoaderAccess(loaderAccess, placementRows);
+    const {ruleControls, placementRows} = tomlDocuments.config;
+    updateRuleControls(ruleControls, placementRows);
     updatePlacementDependencies(placementRows);
     Object.keys(tomlEditors).forEach(updateTomlSave);
   }
@@ -241,7 +245,7 @@ function showPlacementGroups(editor, rows) {
 
 function setPlacementInactive(option, inactive) {
   option.classList.toggle("is-inactive", inactive);
-  option.querySelector("input, textarea").disabled = busy || inactive;
+  for (const input of option.querySelectorAll("input, textarea")) input.disabled = busy || inactive;
 }
 
 function updatePlacementDependencies(rows) {
@@ -259,7 +263,7 @@ function updatePlacementDependencies(rows) {
   for (const option of rows.get("heuristic.min_value") ?? []) setPlacementInactive(option, fallbackInactive);
 }
 
-function loaderAccessSwitch(access, rows, key, prefix, value) {
+function ruleModeSwitch(controls, rows, key, prefix, value) {
   const future = key.startsWith("preserve_future_");
   const legacy = !key.endsWith("_mode");
   const modeKey = legacy ? key + "_mode" : key;
@@ -285,7 +289,7 @@ function loaderAccessSwitch(access, rows, key, prefix, value) {
     input.value = mode === initial ? original :
       modePrefix + JSON.stringify(mode) + (value === null ? "\n" : "");
   };
-  for (const mode of loaderModes) {
+  for (const mode of ruleModes) {
     const choice = el("input");
     choice.type = "radio";
     choice.name = modeKey;
@@ -296,22 +300,27 @@ function loaderAccessSwitch(access, rows, key, prefix, value) {
     control.choices.push(choice);
     choice.addEventListener("change", () => {
       control.select(mode);
-      updateLoaderAccess(access, rows, !future);
+      updateRuleControls(controls, rows, modeKey === "loader_access_mode");
       updateTomlSave("config");
       changed();
     });
   }
   row.append(label, group);
-  access[modeKey] = control;
+  controls[modeKey] = control;
   return control;
 }
 
-function updateLoaderAccess(access, rows, currentChanged = false) {
-  const current = access.loader_access_mode;
-  const future = access.preserve_future_loader_access_mode;
+function updateRuleControls(controls, rows, currentChanged = false) {
+  const stacking = controls.stacking_safety_mode;
+  const current = controls.loader_access_mode;
+  const future = controls.preserve_future_loader_access_mode;
   const mode = current?.mode ?? "feasibility";
-  const limit = loaderModes.indexOf(mode);
-  if (currentChanged && future && loaderModes.indexOf(future.mode) > limit) future.select(mode);
+  const limit = ruleModes.indexOf(mode);
+  if (currentChanged && future && ruleModes.indexOf(future.mode) > limit) future.select(mode);
+  for (const choice of stacking?.choices ?? []) {
+    choice.checked = choice.value === stacking.mode;
+    choice.disabled = busy;
+  }
   const futureInactive = mode === "off" && (future?.mode ?? mode) === "off";
   for (const choice of current?.choices ?? []) {
     choice.checked = choice.value === mode;
@@ -322,26 +331,98 @@ function updateLoaderAccess(access, rows, currentChanged = false) {
     choice.disabled = busy || futureInactive || index > limit;
   }
   future?.option.classList.toggle("is-inactive", futureInactive);
-  if (access.ignoreFull) setPlacementInactive(access.ignoreFull, mode === "off");
-  const effectiveModes = {current: mode, future: future?.mode ?? mode};
-  for (const {key, mode: scoringMode} of loaderScoringOptions) {
+  if (controls.ignoreFull) setPlacementInactive(controls.ignoreFull, mode === "off");
+  const effectiveModes = {stacking: stacking?.mode, current: mode, future: future?.mode ?? mode};
+  for (const {key, mode: scoringMode} of [stackingScoringOption, ...loaderScoringOptions]) {
     for (const option of rows.get("heuristic." + key) ?? []) {
       setPlacementInactive(option, effectiveModes[scoringMode] !== "heuristic");
     }
   }
-  if (access.note) {
-    access.note.textContent = mode === "heuristic" && (future.mode ?? mode) === "heuristic" ?
+  if (controls.note) {
+    controls.note.textContent = mode === "heuristic" && (future.mode ?? mode) === "heuristic" ?
       "Current loader access ranks first when both modes are Heuristic." :
       "Future loader access can use the current mode or a weaker mode.";
   }
 }
 
-function addMissingLoaderWeights(rows, fields, source, offset) {
+function addPyramidMultiplier(rows, fields, start, end, value, prefix = "") {
+  const {key, defaultValue} = stackingScoringOption;
+  const slider = el("input");
+  slider.type = "range";
+  slider.min = "0";
+  slider.max = "1";
+  slider.setAttribute("aria-label", stackingScoringOption.label);
+  const number = el("input");
+  number.type = "number";
+  number.min = slider.min;
+  number.max = slider.max;
+  number.step = "any";
+  number.setAttribute("aria-label", stackingScoringOption.label);
+
+  function syncValue(next) {
+    slider.step = Number(next.toFixed(2)) === next ? "0.01" : "any";
+    slider.value = String(next);
+    number.value = slider.value;
+  }
+
+  const literal = value ?? defaultValue;
+  const initial = Number(literal.replaceAll("_", ""));
+  const valid = /^[+-]?(?:0|[1-9](?:_?\d)*)(?:\.\d(?:_?\d)*)?(?:e[+-]?\d(?:_?\d)*)?$/i.test(literal) &&
+    initial >= 0 && initial <= 1;
+  syncValue(valid ? initial : Number(defaultValue));
+
+  const control = el("span", undefined, "toml-range");
+  control.append(slider, number);
+  const row = el("div", undefined, "toml-setting");
+  row.append(el("span"), control);
+  const option = addPlacementOption(rows, "heuristic." + key, row, slider);
+  number.setAttribute("aria-describedby", slider.getAttribute("aria-describedby"));
+  const warning = el("p", "The TOML value must be a number from 0 to 1. Use either control to replace it.", "placement-help");
+  warning.hidden = valid;
+  option.append(warning);
+
+  let edited = false;
+  function applyValue(next) {
+    syncValue(next);
+    edited = true;
+    warning.hidden = true;
+    updateTomlSave("config");
+    changed();
+  }
+
+  slider.addEventListener("input", () => applyValue(slider.valueAsNumber));
+  function commitNumber() {
+    if (!Number.isFinite(number.valueAsNumber)) {
+      number.value = slider.value;
+      return;
+    }
+    const capped = Math.max(0, Math.min(1, number.valueAsNumber));
+    if (capped !== slider.valueAsNumber || !warning.hidden) applyValue(capped);
+    else number.value = slider.value;
+  }
+  number.addEventListener("blur", commitNumber);
+  number.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    commitNumber();
+  });
+  fields.push({start, end, input: slider, format: current => {
+    if (!edited) return value ?? "";
+    if (value !== null) return current;
+    return current === defaultValue ? "" : prefix + current + "\n";
+  }});
+}
+
+function addMissingRuleWeights(rows, fields, source, offset) {
   const separator = offset && source[offset - 1] !== "\n" ? "\n" : "";
-  for (const {key, defaultValue} of loaderScoringOptions) {
+  for (const {key, defaultValue} of [stackingScoringOption, ...loaderScoringOptions]) {
     const path = "heuristic." + key;
     if (rows.has(path)) continue;
     const prefix = separator + (offset ? key : path) + " = ";
+    if (key === stackingScoringOption.key) {
+      addPyramidMultiplier(rows, fields, offset, offset, null, prefix);
+      continue;
+    }
     const input = el("input");
     input.type = "text";
     input.inputMode = "decimal";
@@ -363,12 +444,12 @@ function showToml(kind, text, loadedFrom) {
   const source = text.replace(/\r\n?/g, "\n");
   const fields = [];
   const csvPaths = new Map();
-  const loaderAccess = {};
+  const ruleControls = {};
   const placementRows = new Map();
   const editor = $(kind + "-toml");
   editor.replaceChildren();
   tomlDocuments[kind] = {
-    source, fields, csvPaths, loaderAccess, placementRows,
+    source, fields, csvPaths, ruleControls, placementRows,
     usesProject: loadedFrom == null, projectText: projectTomls[tomlEditors[kind]]
   };
 
@@ -398,7 +479,7 @@ function showToml(kind, text, loadedFrom) {
     const parts = tomlParts(path);
     const [root, key, dataset] = parts;
     const modeKey = kind === "config" && root === "feasibility" && parts.length === 2 &&
-      loaderModeKeys.find(mode => mode === key || mode === key + "_mode");
+      ruleModeKeys.find(mode => mode === key || mode === key + "_mode");
     const optionPath = [root, modeKey || key].join(".");
     const knownOption = kind === "config" && parts.length === 2 && Object.hasOwn(placementOptions, optionPath);
     const knownTable = kind === "config" && table && parts.length === 1 &&
@@ -428,9 +509,14 @@ function showToml(kind, text, loadedFrom) {
       if (lineEnd === -1) lineEnd = source.length;
       if (visible || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
+        if (knownOption && optionPath === "heuristic." + stackingScoringOption.key) {
+          addPyramidMultiplier(placementRows, fields, start, start + value.length, value);
+          offset = statementStart = lineEnd + 1;
+          continue;
+        }
         if (modeKey) {
           seenModes.add(modeKey);
-          const control = loaderAccessSwitch(loaderAccess, placementRows, key, match[1], value);
+          const control = ruleModeSwitch(ruleControls, placementRows, key, match[1], value);
           if (control) {
             control.option = addPlacementOption(placementRows, optionPath, control.row, control.group);
             fields.push({start: offset, end: start + value.length, input: control.input});
@@ -476,7 +562,7 @@ function showToml(kind, text, loadedFrom) {
           if (knownOption) {
             const option = addPlacementOption(placementRows, optionPath, label, input);
             if (optionPath === "feasibility.ignore_full_stacks_for_loader_access" && boolean) {
-              loaderAccess.ignoreFull = option;
+              ruleControls.ignoreFull = option;
             }
           } else {
             editor.append(label);
@@ -499,25 +585,25 @@ function showToml(kind, text, loadedFrom) {
   if (kind === "config") {
     if (!inlineFeasibility) {
       const separator = feasibilityStart && source[feasibilityStart - 1] !== "\n" ? "\n" : "";
-      for (const key of loaderModeKeys.filter(key => !seenModes.has(key))) {
+      for (const key of ruleModeKeys.filter(key => !seenModes.has(key))) {
         const prefix = separator + (feasibilityStart ? key : "feasibility." + key) + " = ";
-        const control = loaderAccessSwitch(loaderAccess, placementRows, key, prefix, null);
+        const control = ruleModeSwitch(ruleControls, placementRows, key, prefix, null);
         control.option = addPlacementOption(placementRows, "feasibility." + key, control.row, control.group);
         fields.push({start: feasibilityStart, end: feasibilityStart, input: control.input});
       }
     }
-    if (!inlineHeuristic) addMissingLoaderWeights(placementRows, fields, source, heuristicStart);
+    if (!inlineHeuristic) addMissingRuleWeights(placementRows, fields, source, heuristicStart);
     fields.sort((a, b) => a.start - b.start || a.end - b.end);
-    const future = loaderAccess.preserve_future_loader_access_mode;
+    const future = ruleControls.preserve_future_loader_access_mode;
     if (future) {
-      loaderAccess.note = el("p", undefined, "placement-help");
-      loaderAccess.note.id = "loader-access-note";
+      ruleControls.note = el("p", undefined, "placement-help");
+      ruleControls.note.id = "loader-access-note";
       future.group.setAttribute("aria-describedby",
-        future.group.getAttribute("aria-describedby") + " " + loaderAccess.note.id);
-      future.option.append(loaderAccess.note);
+        future.group.getAttribute("aria-describedby") + " " + ruleControls.note.id);
+      future.option.append(ruleControls.note);
     }
     showPlacementGroups(editor, placementRows);
-    updateLoaderAccess(loaderAccess, placementRows);
+    updateRuleControls(ruleControls, placementRows);
     updatePlacementDependencies(placementRows);
   }
   const status = $(kind + "-toml-source");

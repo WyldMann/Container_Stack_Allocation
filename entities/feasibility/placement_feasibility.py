@@ -127,7 +127,7 @@ class PlacementFeasibility:
                 rejection_reason=RejectionReason.ANOMALOUS_STACK
             )
 
-        if self.settings.stacking_safety:
+        if self.settings.effective_stacking_safety_mode == "feasibility":
             reason = self._check_stacking_safety(block, proposal)
             if reason is not None:
                 return FeasibilityResult(rejection_reason=reason)

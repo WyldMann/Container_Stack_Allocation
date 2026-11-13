@@ -43,7 +43,7 @@ def _parse_feasibility(document: dict) -> FeasibilitySettings:
         document, "feasibility", {field.name for field in fields(FeasibilitySettings)}
     )
 
-    for name in ("loader_access", "preserve_future_loader_access"):
+    for name in ("stacking_safety", "loader_access", "preserve_future_loader_access"):
         if name in section and name + "_mode" in section:
             raise ConfigurationError(
                 f"Set either feasibility.{name} or feasibility.{name}_mode."

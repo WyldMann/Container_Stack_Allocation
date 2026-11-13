@@ -13,6 +13,7 @@ class FeasibilitySettings:
     ignore_full_stacks_for_loader_access: bool = False
     loader_access_mode: str | None = None
     preserve_future_loader_access_mode: str | None = None
+    stacking_safety_mode: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -21,7 +22,7 @@ class FeasibilitySettings:
         ):
             if type(getattr(self, name)) is not bool:
                 raise TypeError(f"{name} must be a boolean.")
-        for name in ("loader_access_mode", "preserve_future_loader_access_mode"):
+        for name in ("stacking_safety_mode", "loader_access_mode", "preserve_future_loader_access_mode"):
             value = getattr(self, name)
             if value is not None and (not isinstance(value, str) or value not in _ACCESS_STRENGTH):
                 raise ValueError(f"{name} must be 'off', 'heuristic', or 'feasibility'.")
@@ -32,6 +33,12 @@ class FeasibilitySettings:
                 f'preserve_future_loader_access_mode = "{future}" exceeds '
                 f'loader_access_mode = "{current}". Future access must use the same or a weaker mode.'
             )
+
+    @property
+    def effective_stacking_safety_mode(self) -> str:
+        if self.stacking_safety_mode is not None:
+            return self.stacking_safety_mode
+        return "feasibility" if self.stacking_safety else "off"
 
     @property
     def effective_loader_access_mode(self) -> str:

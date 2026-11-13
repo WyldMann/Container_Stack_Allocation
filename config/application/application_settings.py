@@ -13,7 +13,7 @@ class ApplicationSettings:
         settings = self.feasibility
         return {
             "feasibility": {
-                "stacking_safety": settings.stacking_safety,
+                "stacking_safety_mode": settings.effective_stacking_safety_mode,
                 "loader_access_mode": settings.effective_loader_access_mode,
                 "preserve_future_loader_access_mode": settings.effective_future_loader_access_mode,
                 "ignore_full_stacks_for_loader_access": settings.ignore_full_stacks_for_loader_access,

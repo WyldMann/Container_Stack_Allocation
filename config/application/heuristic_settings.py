@@ -21,6 +21,7 @@ class HeuristicSettings:
     loader_inaccessible_destination_multiplier: float = 0.25
     loader_occupied_access_loss_weight: float = 1.0
     loader_future_access_loss_weight: float = 1.0
+    unsafe_stacking_multiplier: float = 0.25
 
     def __post_init__(self) -> None:
         radius = self.size_cluster_radius
@@ -46,7 +47,7 @@ class HeuristicSettings:
                 finite = False
             if not finite:
                 raise ValueError(f"{name} must be finite.")
-            if name == "loader_inaccessible_destination_multiplier":
+            if name in ("loader_inaccessible_destination_multiplier", "unsafe_stacking_multiplier"):
                 if not 0 <= value <= 1:
                     raise ValueError(f"{name} must be between 0 and 1.")
             elif name in (

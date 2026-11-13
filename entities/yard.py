@@ -597,6 +597,7 @@ class Yard:
         settings = self.feasibility.settings
         score_current = settings.effective_loader_access_mode == "heuristic"
         score_future = settings.effective_future_loader_access_mode == "heuristic"
+        score_stacking_safety = settings.effective_stacking_safety_mode == "heuristic"
         prioritize_current_access = settings.prioritize_current_loader_access
         candidates = []
         for coordinate in candidate_coordinates:
@@ -615,11 +616,15 @@ class Yard:
                 access, score_current=score_current, score_future=score_future,
             )
             mass, equipment, distance, cluster, score = self.modelEval(container, coordinate)
+            stacking_safety = 1.0
+            if score_stacking_safety and not self.getBlockByID(block_id).safeMaxima(row, slot):
+                stacking_safety = self.model.settings.unsafe_stacking_multiplier
             candidates.append(CandidateEvaluation(
                 coordinate, self.getStack(block_id, row, slot).getParameters(),
-                mass, equipment, distance, cluster, score * current * future,
+                mass, equipment, distance, cluster, score * current * future * stacking_safety,
                 loader_access=access, loader_access_multiplier=current,
                 future_loader_access_multiplier=future,
+                stacking_safety_multiplier=stacking_safety,
             ))
         return sorted(
             candidates,

@@ -128,6 +128,7 @@ def _calculation(yard, search, result):
             ),
             "loader_access_multiplier": candidate.loader_access_multiplier,
             "future_loader_access_multiplier": candidate.future_loader_access_multiplier,
+            "stacking_safety_multiplier": candidate.stacking_safety_multiplier,
             "score": _number(candidate.evaluation_score),
         })
     return {
@@ -149,6 +150,7 @@ def _calculation(yard, search, result):
                 ("cluster_multiplier", yard.model.enable_size_cluster),
                 ("loader_access_multiplier", settings.effective_loader_access_mode == "heuristic"),
                 ("future_loader_access_multiplier", future_mode == "heuristic"),
+                ("stacking_safety_multiplier", settings.effective_stacking_safety_mode == "heuristic"),
             )
             if enabled
         ],
