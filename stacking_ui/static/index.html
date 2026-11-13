@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>Container stacking | Scenario setup</title>
+  <title>Container Stacking Simulator</title>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./yard-map.css">
   <script src="./defaults.js" defer></script>
@@ -16,16 +16,14 @@
 <body>
 <header>
   <div>
-    <span class="eyebrow">CONTAINER STACKING</span>
-    <h1>Prepare a yard scenario</h1>
-    <p>Choose your CSVs, edit settings, and review the prepared yard.</p>
+    <h1>Container Stacking Simulator</h1>
+    <p>Set placement rules, simulate inbound assignments, and compare the resulting yard with a CSV snapshot.</p>
   </div>
 </header>
 <main>
   <div id="message" role="status" aria-live="polite"></div>
   <section>
-    <span class="eyebrow">01 / DATA</span>
-    <h2>Yard and inbound files</h2>
+    <h2>Yard and inbound data</h2>
     <fieldset class="file-sources">
       <legend>CSV source</legend>
       <label><input id="source-folder" type="radio" name="file-source" value="folder" checked> Use files in the project folder (default)</label>
@@ -35,8 +33,7 @@
     <div id="datasets" class="dataset-grid"></div>
   </section>
   <section>
-    <span class="eyebrow">02 / CONFIGURATION</span>
-    <h2>Branches and placement rules</h2>
+    <h2>Simulation settings</h2>
     <p class="note">Inbound rows without a branch belong to every selected branch. Queue order follows the CSV.</p>
     <p>Edit the placement settings or load a different TOML. Use TOML syntax for text values in Stacking inputs and CSV column mappings.</p>
     <div id="project-toml-actions" hidden>
@@ -77,7 +74,7 @@
   </section>
   <section class="stacking-review">
     <div class="section-title">
-      <div><span class="eyebrow">03 / REVIEW</span><h2>Validate the scenario</h2></div>
+      <h2>Yard preview and simulation</h2>
       <div class="actions">
         <button id="generate-preview" type="button" hidden>Generate preview</button>
         <button id="save-yard" class="secondary" type="button" hidden>Save yard CSV</button>
@@ -88,6 +85,5 @@
     <div id="results"><div class="empty">Generate a preview to review the yard, inbound queue, and data issues.</div></div>
   </section>
 </main>
-<footer>Container stacking | Scenario preparation</footer>
 </body>
 </html>
