@@ -263,11 +263,6 @@ function showPlacementGroups(editor, rows) {
       groups.append(group);
     }
   }
-  if (editor.childElementCount) {
-    const other = el("fieldset", undefined, "placement-group");
-    other.append(el("legend", "Other TOML settings"), ...editor.children);
-    groups.append(other);
-  }
   editor.replaceChildren(groups);
 }
 
@@ -501,8 +496,8 @@ function showToml(kind, text, loadedFrom) {
       ruleModeKeys.find(mode => mode === key || mode === key + "_mode");
     const optionPath = [root, modeKey || key].join(".");
     const knownOption = kind === "config" && parts.length === 2 && Object.hasOwn(placementOptions, optionPath);
-    const knownTable = kind === "config" && table && parts.length === 1 &&
-      (root === "feasibility" || root === "heuristic");
+    const legacyLoaderOption = kind === "config" && root === "feasibility" && parts.length === 2 &&
+      (key === "loader_access" || key === "loader_access_mode");
     if (kind === "config" && root === "feasibility" && parts.length === 1) {
       if (table) feasibilityStart = Math.min(lineEnd + 1, source.length);
       else if (match) inlineFeasibility = true;
@@ -516,7 +511,7 @@ function showToml(kind, text, loadedFrom) {
     const isCsvPath = inFileCards && match && parts.length === 3 && Object.hasOwn(descriptions, dataset);
     const visible = !omitted && !inFileCards &&
       !(kind === "input" && table && root === "csv" && parts.length === 1);
-    if (visible && !knownOption && !knownTable) {
+    if (visible && kind !== "config") {
       for (const comment of comments) editor.append(el("p", comment, "toml-comment"));
     }
     comments.length = 0;
@@ -526,18 +521,17 @@ function showToml(kind, text, loadedFrom) {
       const boundary = tomlValueEnd(source, start);
       lineEnd = source.indexOf("\n", boundary);
       if (lineEnd === -1) lineEnd = source.length;
-      if (visible || isCsvPath) {
+      if ((visible && (kind !== "config" || knownOption || legacyLoaderOption)) || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
-        if (kind === "config" && root === "feasibility" && parts.length === 2 &&
-            (key === "loader_access" || key === "loader_access_mode")) {
+        if (legacyLoaderOption) {
           const legacy = key === "loader_access" ?
             (value === "true" ? "feasibility" : value === "false" ? "off" : null) :
             value.match(/^["']{1,3}(off|heuristic|feasibility)["']{1,3}$/)?.[1];
           if (legacy) {
             legacyLoaderMode = legacy;
-            offset = statementStart = lineEnd + 1;
-            continue;
           }
+          offset = statementStart = lineEnd + 1;
+          continue;
         }
         const boundedWeight = knownOption && root === "heuristic" &&
           boundedRuleWeights.find(setting => setting.key === key);
@@ -602,7 +596,7 @@ function showToml(kind, text, loadedFrom) {
         }
         fields.push({start, end: start + value.length, input});
       }
-    } else if (visible && !knownTable) {
+    } else if (visible && kind !== "config") {
       editor.append(el(table ? "h4" : "p", trimmed, table ? "toml-section" : "toml-comment"));
     }
     offset = lineEnd + 1;
@@ -611,7 +605,7 @@ function showToml(kind, text, loadedFrom) {
   }
   if (omittedTomlPath(kind, tomlParts(section))) {
     fields.push({start: statementStart, end: source.length});
-  } else {
+  } else if (kind !== "config") {
     for (const comment of comments) editor.append(el("p", comment, "toml-comment"));
   }
   if (kind === "config") {
