@@ -15,6 +15,8 @@ class FeasibilitySettings:
     preserve_future_loader_access_mode: str | None = None
     stacking_safety_mode: str | None = None
     stack_capacity_mode: str = "feasibility"
+    loader_destination_access_mode: str | None = None
+    preserve_occupied_loader_access_mode: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -23,15 +25,19 @@ class FeasibilitySettings:
         ):
             if type(getattr(self, name)) is not bool:
                 raise TypeError(f"{name} must be a boolean.")
-        for name in ("stack_capacity_mode", "stacking_safety_mode", "loader_access_mode", "preserve_future_loader_access_mode"):
+        for name in (
+            "stack_capacity_mode", "stacking_safety_mode", "loader_access_mode",
+            "loader_destination_access_mode", "preserve_occupied_loader_access_mode",
+            "preserve_future_loader_access_mode",
+        ):
             value = getattr(self, name)
             if value is None and name != "stack_capacity_mode":
                 continue
             if not isinstance(value, str) or value not in _ACCESS_STRENGTH:
                 raise ValueError(f"{name} must be 'off', 'heuristic', or 'feasibility'.")
-        current = self.effective_loader_access_mode
+        current = self.effective_occupied_loader_access_mode
         future = self.effective_future_loader_access_mode
-        if _ACCESS_STRENGTH[future] > _ACCESS_STRENGTH[current]:
+        if self.preserve_occupied_loader_access_mode is None and _ACCESS_STRENGTH[future] > _ACCESS_STRENGTH[current]:
             raise ValueError(
                 f'preserve_future_loader_access_mode = "{future}" exceeds '
                 f'loader_access_mode = "{current}". Future access must use the same or a weaker mode.'
@@ -50,11 +56,30 @@ class FeasibilitySettings:
         return "feasibility" if self.loader_access else "off"
 
     @property
+    def effective_destination_loader_access_mode(self) -> str:
+        return self.loader_destination_access_mode or self.effective_loader_access_mode
+
+    @property
+    def effective_occupied_loader_access_mode(self) -> str:
+        return self.preserve_occupied_loader_access_mode or self.effective_loader_access_mode
+
+    @property
     def effective_future_loader_access_mode(self) -> str:
         if self.preserve_future_loader_access_mode is not None:
             return self.preserve_future_loader_access_mode
-        return self.effective_loader_access_mode if self.preserve_future_loader_access else "off"
+        return self.effective_occupied_loader_access_mode if self.preserve_future_loader_access else "off"
 
     @property
     def prioritize_current_loader_access(self) -> bool:
-        return self.effective_future_loader_access_mode == self.effective_loader_access_mode == "heuristic"
+        return self.effective_future_loader_access_mode == self.effective_occupied_loader_access_mode == "heuristic"
+
+    @property
+    def prioritize_loader_destination(self) -> bool:
+        return self.prioritize_current_loader_access and self.loader_destination_access_mode is None and (
+            self.effective_destination_loader_access_mode == "heuristic"
+        )
+
+    @property
+    def loader_access_modes(self) -> tuple[str, str, str]:
+        return (self.effective_destination_loader_access_mode, self.effective_occupied_loader_access_mode,
+                self.effective_future_loader_access_mode)

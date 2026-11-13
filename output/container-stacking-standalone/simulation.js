@@ -325,8 +325,9 @@ const multiplierLabels = {
   mass_multiplier: "Mass multiplier",
   distance_multiplier: "Equipment distance multiplier",
   cluster_multiplier: "Size cluster multiplier",
-  loader_access_multiplier: "Current loader access multiplier",
-  future_loader_access_multiplier: "Future loader access multiplier",
+  loader_destination_multiplier: "Destination reachability multiplier",
+  loader_access_multiplier: "Occupied access preservation multiplier",
+  future_loader_access_multiplier: "Future access preservation multiplier",
   stacking_safety_multiplier: "Pyramid stacking multiplier",
   capacity_multiplier: "Stack capacity multiplier"
 };
@@ -345,12 +346,17 @@ function loaderAccessValues(candidate) {
 
 function heuristicRows(candidate, multipliers = Object.keys(multiplierLabels)) {
   return [
-    ...(candidate.loader_destination_accessible == null ? [] :
+    ...(!hasLoaderAccessDetails(candidate) ? [] :
       loaderAccessValues(candidate).map((value, i) => [loaderAccessLabels[i], value])),
     ...(candidate.overcapacity_tiers ? [["Tiers above capacity", candidate.overcapacity_tiers]] : []),
     ...multipliers.map(key => [multiplierLabels[key], traceNumber(candidate[key])]),
     ["Heuristic score", traceNumber(candidate.score)]
   ];
+}
+
+function hasLoaderAccessDetails(candidate) {
+  return candidate.loader_destination_accessible != null || candidate.isolated_occupied_locations != null ||
+    candidate.isolated_future_locations != null;
 }
 
 function heuristicTable(rows) {
@@ -415,10 +421,12 @@ function placementTrace(calculation, status) {
     ])));
   }
   if (calculation.candidates.length) {
-    const showLoaderAccess = calculation.candidates.some(candidate => candidate.loader_destination_accessible != null);
+    const showLoaderAccess = calculation.candidates.some(hasLoaderAccessDetails);
     details.append(el("p", "Locations that passed parameter selection, in yard order."));
     if (calculation.prioritize_current_loader_access) {
-      details.append(el("p", "Ranking prefers accessible destinations, then fewer occupied stacks losing access, then a higher heuristic score."));
+      details.append(el("p", calculation.prioritize_loader_destination ?
+        "Ranking prefers accessible destinations, then fewer occupied stacks losing access, then a higher heuristic score." :
+        "Ranking prefers fewer occupied stacks losing access, then a higher heuristic score."));
     }
     if (multipliers.length) {
       details.append(el("p", "Heuristic score = " + multipliers.map(key => multiplierLabels[key].toLowerCase()).join(" × ")));

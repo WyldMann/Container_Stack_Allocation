@@ -20,13 +20,14 @@ class CandidateEvaluation:
     stacking_safety_multiplier: float = 1.0
     capacity_multiplier: float = 1.0
     overcapacity_tiers: int = 0
+    loader_destination_multiplier: float = 1.0
 
-    def ranking_key(self, prioritize_current_access: bool) -> tuple[bool, int, float]:
+    def ranking_key(self, prioritize_current_access: bool, prioritize_destination: bool = True) -> tuple[bool, int, float]:
         access = self.loader_access if prioritize_current_access else None
         if access is None:
             return True, 0, self.evaluation_score
         return (
-            access.destination_accessible,
+            not prioritize_destination or access.destination_accessible,
             -len(access.isolated_occupied_locations),
             self.evaluation_score,
         )

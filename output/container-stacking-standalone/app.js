@@ -19,7 +19,8 @@ const tomlEditors = {
 };
 const tomlDocuments = {};
 const ruleModes = ["off", "heuristic", "feasibility"];
-const ruleModeKeys = ["stacking_safety_mode", "stack_capacity_mode", "loader_access_mode", "preserve_future_loader_access_mode"];
+const ruleModeKeys = ["stacking_safety_mode", "stack_capacity_mode", "loader_destination_access_mode",
+  "preserve_occupied_loader_access_mode", "preserve_future_loader_access_mode"];
 const stackingScoringOption = {key: "unsafe_stacking_multiplier", mode: "stacking", defaultValue: "0.25",
   label: "Pyramid violation multiplier",
   description: "Multiply the placement score by this value (0–1) when the pyramid check fails. One removes the penalty."};
@@ -28,10 +29,10 @@ const capacityScoringOption = {key: "overcapacity_tier_multiplier", mode: "capac
   description: "Apply this multiplier (0–1) once per tier above nominal capacity. One removes the penalty."};
 const boundedRuleWeights = [stackingScoringOption, capacityScoringOption];
 const loaderScoringOptions = [
-  {key: "loader_inaccessible_destination_multiplier", mode: "current", defaultValue: "0.25",
+  {key: "loader_inaccessible_destination_multiplier", mode: "destination", defaultValue: "0.25",
     label: "Unreachable destination multiplier",
-    description: "Multiply the current access score by this value (0–1) when the loader cannot reach the destination."},
-  {key: "loader_occupied_access_loss_weight", mode: "current", defaultValue: "1.0",
+    description: "Multiply the placement score by this value (0–1) when the loader cannot reach the destination."},
+  {key: "loader_occupied_access_loss_weight", mode: "occupied", defaultValue: "1.0",
     label: "Occupied access loss weight",
     description: "Higher values penalize cutting off occupied stacks more. Zero removes this score penalty."},
   {key: "loader_future_access_loss_weight", mode: "future", defaultValue: "1.0",
@@ -49,13 +50,15 @@ const placementGroups = [
       "Off skips the check. Heuristic lowers the score for placements that fail it. Feasibility rejects those placements."],
     "heuristic.unsafe_stacking_multiplier": [stackingScoringOption.label, stackingScoringOption.description]
   }},
-  {title: "Loader access", description:
-    "Off skips the check. Heuristic uses access to rank placements. Feasibility rejects placements that block access. These checks apply to loader-served blocks.",
+  {title: "Loader reachability and access preservation", description:
+    "Off skips the rule. Heuristic scores it. Feasibility rejects placements that fail it. These rules apply to loader-served blocks.",
   options: {
-    "feasibility.loader_access_mode": ["Current loader access",
-      "Protect access to the placement location and to containers already in the yard."],
-    "feasibility.preserve_future_loader_access_mode": ["Future loader access",
-      "Keep locations with room for more containers reachable."],
+    "feasibility.loader_destination_access_mode": ["Currently loader accessible",
+      "Check whether the loader can reach this placement location before placing the container."],
+    "feasibility.preserve_occupied_loader_access_mode": ["Preserve access to occupied stacks",
+      "Check whether this placement cuts off access to containers already in the yard."],
+    "feasibility.preserve_future_loader_access_mode": ["Preserve access to future receiving locations",
+      "Check whether this placement cuts off access to locations with room for more containers."],
     "feasibility.ignore_full_stacks_for_loader_access": ["Ignore full stacks",
       "Exclude stacks at or above nominal capacity from the current access check."],
     ...Object.fromEntries(loaderScoringOptions.map(({key, label, description}) =>
@@ -272,11 +275,10 @@ function updatePlacementDependencies(rows) {
   for (const option of rows.get("heuristic.min_value") ?? []) setPlacementInactive(option, fallbackInactive);
 }
 
-function ruleModeSwitch(controls, rows, key, prefix, value) {
-  const future = key.startsWith("preserve_future_");
+function ruleModeSwitch(controls, rows, key, prefix, value, fallback = "feasibility") {
   const legacy = !key.endsWith("_mode");
   const modeKey = legacy ? key + "_mode" : key;
-  const fallback = future ? null : "feasibility";
+  if (key.startsWith("preserve_future_")) fallback = null;
   const original = value === null ? "" : prefix + value;
   const initial = value === null || (legacy && value === "true") ? fallback :
     legacy ? "off" : value.match(/^["']{1,3}(off|heuristic|feasibility)["']{1,3}$/)?.[1];
@@ -293,9 +295,9 @@ function ruleModeSwitch(controls, rows, key, prefix, value) {
   group.setAttribute("role", "radiogroup");
   group.setAttribute("aria-labelledby", label.id);
   const control = {row, group, input, mode: initial, choices: []};
-  control.select = mode => {
+  control.select = (mode, explicit = false) => {
     control.mode = mode;
-    input.value = mode === initial ? original :
+    input.value = mode === initial && !explicit ? original :
       modePrefix + JSON.stringify(mode) + (value === null ? "\n" : "");
   };
   for (const mode of ruleModes) {
@@ -308,8 +310,11 @@ function ruleModeSwitch(controls, rows, key, prefix, value) {
     group.append(option);
     control.choices.push(choice);
     choice.addEventListener("change", () => {
-      control.select(mode);
-      updateRuleControls(controls, rows, modeKey === "loader_access_mode");
+      control.select(mode, modeKey === "preserve_occupied_loader_access_mode" && value === null);
+      if (modeKey === "preserve_future_loader_access_mode" && !controls.preserve_occupied_loader_access_mode?.input.value) {
+        controls.preserve_occupied_loader_access_mode?.select(controls.preserve_occupied_loader_access_mode.mode, true);
+      }
+      updateRuleControls(controls, rows);
       updateTomlSave("config");
       changed();
     });
@@ -319,37 +324,26 @@ function ruleModeSwitch(controls, rows, key, prefix, value) {
   return control;
 }
 
-function updateRuleControls(controls, rows, currentChanged = false) {
+function updateRuleControls(controls, rows) {
   const stacking = controls.stacking_safety_mode;
   const capacity = controls.stack_capacity_mode;
-  const current = controls.loader_access_mode;
+  const destination = controls.loader_destination_access_mode;
+  const occupied = controls.preserve_occupied_loader_access_mode;
   const future = controls.preserve_future_loader_access_mode;
-  const mode = current?.mode ?? "feasibility";
-  const limit = ruleModes.indexOf(mode);
-  if (currentChanged && future && ruleModes.indexOf(future.mode) > limit) future.select(mode);
-  for (const control of [stacking, capacity, current]) {
+  const occupiedMode = occupied?.mode ?? "feasibility";
+  for (const control of [stacking, capacity, destination, occupied, future]) {
     for (const choice of control?.choices ?? []) {
-      choice.checked = choice.value === control.mode;
+      choice.checked = choice.value === (control.mode ?? occupiedMode);
       choice.disabled = busy;
     }
   }
-  const futureInactive = mode === "off" && (future?.mode ?? mode) === "off";
-  for (const [index, choice] of (future?.choices ?? []).entries()) {
-    choice.checked = choice.value === (future.mode ?? mode);
-    choice.disabled = busy || futureInactive || index > limit;
-  }
-  future?.option.classList.toggle("is-inactive", futureInactive);
-  if (controls.ignoreFull) setPlacementInactive(controls.ignoreFull, mode === "off");
-  const effectiveModes = {stacking: stacking?.mode, capacity: capacity?.mode, current: mode, future: future?.mode ?? mode};
+  if (controls.ignoreFull) setPlacementInactive(controls.ignoreFull, occupiedMode === "off");
+  const effectiveModes = {stacking: stacking?.mode, capacity: capacity?.mode, destination: destination?.mode,
+    occupied: occupiedMode, future: future?.mode ?? occupiedMode};
   for (const {key, mode: scoringMode} of [...boundedRuleWeights, ...loaderScoringOptions]) {
     for (const option of rows.get("heuristic." + key) ?? []) {
       setPlacementInactive(option, effectiveModes[scoringMode] !== "heuristic");
     }
-  }
-  if (controls.note) {
-    controls.note.textContent = mode === "heuristic" && (future.mode ?? mode) === "heuristic" ?
-      "Current loader access ranks first when both modes are Heuristic." :
-      "Future loader access can use the current mode or a weaker mode.";
   }
 }
 
@@ -467,6 +461,7 @@ function showToml(kind, text, loadedFrom) {
   let heuristicStart = 0;
   let inlineFeasibility = false;
   let inlineHeuristic = false;
+  let legacyLoaderMode = "feasibility";
   const seenModes = new Set();
   const comments = [];
   for (let offset = 0; offset < source.length;) {
@@ -517,6 +512,17 @@ function showToml(kind, text, loadedFrom) {
       if (lineEnd === -1) lineEnd = source.length;
       if (visible || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
+        if (kind === "config" && root === "feasibility" && parts.length === 2 &&
+            (key === "loader_access" || key === "loader_access_mode")) {
+          const legacy = key === "loader_access" ?
+            (value === "true" ? "feasibility" : value === "false" ? "off" : null) :
+            value.match(/^["']{1,3}(off|heuristic|feasibility)["']{1,3}$/)?.[1];
+          if (legacy) {
+            legacyLoaderMode = legacy;
+            offset = statementStart = lineEnd + 1;
+            continue;
+          }
+        }
         const boundedWeight = knownOption && root === "heuristic" &&
           boundedRuleWeights.find(setting => setting.key === key);
         if (boundedWeight) {
@@ -597,21 +603,14 @@ function showToml(kind, text, loadedFrom) {
       const separator = feasibilityStart && source[feasibilityStart - 1] !== "\n" ? "\n" : "";
       for (const key of ruleModeKeys.filter(key => !seenModes.has(key))) {
         const prefix = separator + (feasibilityStart ? key : "feasibility." + key) + " = ";
-        const control = ruleModeSwitch(ruleControls, placementRows, key, prefix, null);
+        const fallback = key.includes("loader_") ? legacyLoaderMode : "feasibility";
+        const control = ruleModeSwitch(ruleControls, placementRows, key, prefix, null, fallback);
         control.option = addPlacementOption(placementRows, "feasibility." + key, control.row, control.group);
         fields.push({start: feasibilityStart, end: feasibilityStart, input: control.input});
       }
     }
     if (!inlineHeuristic) addMissingRuleWeights(placementRows, fields, source, heuristicStart);
     fields.sort((a, b) => a.start - b.start || a.end - b.end);
-    const future = ruleControls.preserve_future_loader_access_mode;
-    if (future) {
-      ruleControls.note = el("p", undefined, "placement-help");
-      ruleControls.note.id = "loader-access-note";
-      future.group.setAttribute("aria-describedby",
-        future.group.getAttribute("aria-describedby") + " " + ruleControls.note.id);
-      future.option.append(ruleControls.note);
-    }
     showPlacementGroups(editor, placementRows);
     updateRuleControls(ruleControls, placementRows);
     updatePlacementDependencies(placementRows);

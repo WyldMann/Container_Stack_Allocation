@@ -12,10 +12,12 @@ from TOML** in its editor. **Set default** remembers the current TOML in
 this browser for future visits to the same page. **Save as TOML** downloads a
 copy. **Save yard CSV** downloads **containers.csv**.
 
-Loader access weights are editable when their current or future mode is
-**Heuristic**. The default unreachable destination multiplier is 0.25. Each
-access loss weight defaults to 1 and scales the penalty per occupied location
-or future receiving option that loses access.
+**Currently loader accessible** checks whether the loader can reach the
+destination before placement. **Preserve access to occupied stacks** and
+**Preserve access to future receiving locations** check which locations would
+lose access after placement. Each rule has its own mode and enables its weight
+in **Heuristic** mode. The default unreachable destination multiplier is 0.25.
+Each access loss weight defaults to 1 per location that loses access.
 
 To build a new snapshot from the project root, extract the
 [Pyodide 0.27.7 npm archive](https://registry.npmjs.org/pyodide/-/pyodide-0.27.7.tgz).

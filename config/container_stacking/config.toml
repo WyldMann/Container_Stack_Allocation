@@ -6,13 +6,13 @@ stacking_safety_mode = "feasibility"
 # Stack capacity modes: "feasibility" rejects overflow, "heuristic" scores it, and "off" allows it.
 stack_capacity_mode = "feasibility"
 
-# Loader modes: "feasibility" rejects, "heuristic" scores, and "off" skips.
-# Current access covers the destination and occupied stacks. RTGs are exempt.
-# Future access covers receiving options and must use the same or a weaker
-# mode (off < heuristic < feasibility). Omit it to inherit the current mode.
-loader_access_mode = "heuristic"
+# Loader modes: "feasibility" rejects, "heuristic" scores, and "off" skips. RTGs are exempt.
+# Check whether a loader can reach the destination before placement.
+loader_destination_access_mode = "heuristic"
+# Protect existing containers and future receiving locations from losing access.
+preserve_occupied_loader_access_mode = "heuristic"
 preserve_future_loader_access_mode = "heuristic"
-# Exclude fully occupied stacks from current access protection.
+# Exclude fully occupied stacks from occupied access protection.
 ignore_full_stacks_for_loader_access = true
 
 
@@ -67,10 +67,10 @@ size_cluster_prior = 2.0
 # for different sizes. Zero produces a neutral multiplier of 1.
 size_cluster_bias = 2.0
 
-# Current loader-access score multiplier for an unreachable destination (0 to 1).
+# Destination reachability score multiplier for an unreachable destination (0 to 1).
 loader_inaccessible_destination_multiplier = 0.25
 
-# Current access score divides by 1 plus this weight per occupied location losing access.
+# Occupied access score divides by 1 plus this weight per occupied location losing access.
 loader_occupied_access_loss_weight = 1.0
 
 # Future access score divides by 1 plus this weight per receiving option losing access.

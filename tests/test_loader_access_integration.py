@@ -53,6 +53,50 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
         result = self.yard.feasibility.evaluate(self.container, self.block, 0, 1)
         self.assertEqual(result.rejection_reason, RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED)
 
+    def test_destination_reachability_modes_are_independent_of_access_preservation(self):
+        self.set_stack(1, 1)
+        coordinate = ("A", 1, 1, 0)
+        yard = self.yard
+        for mode in ("off", "heuristic", "feasibility"):
+            with self.subTest(mode=mode):
+                yard.feasibility.settings = replace(
+                    yard.feasibility.settings, loader_access_mode="off",
+                    loader_destination_access_mode=mode, preserve_occupied_loader_access_mode="off",
+                )
+                result = yard.feasibility.evaluate(self.container, self.block, 1, 1)
+                if mode == "feasibility":
+                    self.assertEqual(result.rejection_reason, RejectionReason.LOADER_DESTINATION_INACCESSIBLE)
+                    continue
+                self.assertEqual(result.coordinates, coordinate)
+                with patch.object(yard, "modelEval", return_value=(None, None, 0.0, 1.0, 1.0)):
+                    candidate, = yard.bestCoordCandidate(self.container, [coordinate])
+                self.assertEqual(candidate.evaluation_score, 0.25 if mode == "heuristic" else 1.0)
+                self.assertEqual(candidate.loader_access_multiplier, 1.0)
+                committed = yard.feasibility.evaluate(
+                    self.container, self.block, 1, 1, include_loader_heuristics=False,
+                )
+                self.assertTrue(committed.feasible)
+                self.assertIsNone(committed.loader_access)
+
+    def test_preservation_can_reject_with_destination_reachability_off(self):
+        self.set_stack(0, 1)
+        self.set_stack(1, 1, count=1)
+        evaluator = self.yard.feasibility
+        evaluator.settings = replace(
+            evaluator.settings, loader_access_mode="off", loader_destination_access_mode="off",
+            preserve_occupied_loader_access_mode="feasibility",
+        )
+        result = evaluator.evaluate(self.container, self.block, 0, 1, include_loader_heuristics=False)
+        self.assertEqual(result.rejection_reason, RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED)
+
+        self.set_stack(1, 1)
+        evaluator.settings = replace(
+            evaluator.settings, preserve_occupied_loader_access_mode="off",
+            preserve_future_loader_access_mode="feasibility",
+        )
+        result = evaluator.evaluate(self.container, self.block, 0, 1, include_loader_heuristics=False)
+        self.assertEqual(result.rejection_reason, RejectionReason.LOADER_ACCESS_BLOCKED)
+
     def test_disabling_future_access_still_protects_full_stacks(self):
         evaluator = self.yard.feasibility
         evaluator.settings = replace(evaluator.settings, preserve_future_loader_access=False)
@@ -155,7 +199,8 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
             coordinate = ("A", 1, 1, 0)
             candidate, = yard.bestCoordCandidate(self.container, [coordinate])
             self.assertFalse(candidate.loader_access.destination_accessible)
-            self.assertEqual(candidate.loader_access_multiplier, 0.25)
+            self.assertEqual(candidate.loader_destination_multiplier, 0.25)
+            self.assertEqual(candidate.loader_access_multiplier, 1.0)
             self.assertEqual(candidate.future_loader_access_multiplier, 1.0)
             self.block.setRTG(RTG("RTG-1", ("A", 0, 0)))
             candidate, = yard.bestCoordCandidate(self.container, [coordinate])
@@ -183,7 +228,8 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
         )
         with patch.object(yard, "modelEval", return_value=(None, None, 0.0, 1.0, 10.0)):
             candidate, = yard.bestCoordCandidate(self.container, [coordinate], loader_access_results={coordinate: access})
-            self.assertAlmostEqual(candidate.loader_access_multiplier, 0.2)
+            self.assertAlmostEqual(candidate.loader_destination_multiplier, 0.6)
+            self.assertAlmostEqual(candidate.loader_access_multiplier, 1 / 3)
             self.assertEqual(candidate.future_loader_access_multiplier, 0.5)
             self.assertAlmostEqual(candidate.evaluation_score, 1.0)
 

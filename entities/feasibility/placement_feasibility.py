@@ -60,7 +60,7 @@ class PlacementFeasibility:
         loader_policy: LoaderBorderAccessPolicy | None = None,
     ) -> LoaderAccessContext | None:
         """Prepare one block's access data for a read-only candidate search."""
-        if self.settings.effective_loader_access_mode == "off" or block.getRTG() is not None:
+        if all(mode == "off" for mode in self.settings.loader_access_modes) or block.getRTG() is not None:
             return None
         if loader_policy is None:
             loader_policy = LoaderBorderAccessPolicy()
@@ -135,17 +135,16 @@ class PlacementFeasibility:
             if reason is not None:
                 return FeasibilityResult(rejection_reason=reason)
 
-        current_mode = self.settings.effective_loader_access_mode
-        future_mode = self.settings.effective_future_loader_access_mode
+        destination_mode, occupied_mode, future_mode = self.settings.loader_access_modes
+        active_modes = ("feasibility", "heuristic") if include_loader_heuristics else ("feasibility",)
         access = None
-        if current_mode == "feasibility" or (current_mode == "heuristic" and include_loader_heuristics):
+        if any(mode in active_modes for mode in (destination_mode, occupied_mode, future_mode)):
             access = self._evaluate_loader_access(
                 block, proposal, loader_policy, loader_context,
-                check_future=(future_mode == "feasibility"
-                              or (future_mode == "heuristic" and include_loader_heuristics)),
+                check_future=future_mode in active_modes,
             )
         if access is not None:
-            reason = self._loader_rejection(access, current_mode, future_mode)
+            reason = self._loader_rejection(access, destination_mode, occupied_mode, future_mode)
             if reason is not None:
                 return FeasibilityResult(rejection_reason=reason, loader_access=access)
 
@@ -173,13 +172,12 @@ class PlacementFeasibility:
 
     @staticmethod
     def _loader_rejection(
-        result: LoaderAccessResult, current_mode: str, future_mode: str,
+        result: LoaderAccessResult, destination_mode: str, occupied_mode: str, future_mode: str,
     ) -> RejectionReason | None:
-        if current_mode == "feasibility":
-            if not result.destination_accessible:
-                return RejectionReason.LOADER_DESTINATION_INACCESSIBLE
-            if result.isolated_occupied_locations:
-                return RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED
+        if destination_mode == "feasibility" and not result.destination_accessible:
+            return RejectionReason.LOADER_DESTINATION_INACCESSIBLE
+        if occupied_mode == "feasibility" and result.isolated_occupied_locations:
+            return RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED
         if future_mode == "feasibility" and result.isolated_locations:
             return RejectionReason.LOADER_ACCESS_BLOCKED
         return None

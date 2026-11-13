@@ -617,7 +617,8 @@ class Yard:
     ) -> list[CandidateEvaluation]:
         """Rank the coordinates that advanced from feasibility and parameter selection."""
         settings = self.feasibility.settings
-        score_current = settings.effective_loader_access_mode == "heuristic"
+        score_destination = settings.effective_destination_loader_access_mode == "heuristic"
+        score_current = settings.effective_occupied_loader_access_mode == "heuristic"
         score_future = settings.effective_future_loader_access_mode == "heuristic"
         score_stacking_safety = settings.effective_stacking_safety_mode == "heuristic"
         score_capacity = settings.stack_capacity_mode == "heuristic"
@@ -628,7 +629,7 @@ class Yard:
             block = self.getBlockByID(block_id)
             if loader_access_results is not None:
                 access = loader_access_results.get(coordinate)
-            elif score_current or score_future:
+            elif score_destination or score_current or score_future:
                 # Direct callers can supply coordinates without a prior search.
                 access = self.feasibility.evaluate(
                     container, block, row, slot,
@@ -636,8 +637,8 @@ class Yard:
                 ).loader_access
             else:
                 access = None
-            current, future = self.model.loader_access_multipliers(
-                access, score_current=score_current, score_future=score_future,
+            destination, current, future = self.model.loader_access_multipliers(
+                access, score_destination=score_destination, score_current=score_current, score_future=score_future,
             )
             mass, equipment, distance, cluster, score = self.modelEval(container, coordinate)
             stacking_safety = 1.0
@@ -653,15 +654,19 @@ class Yard:
                 capacity_multiplier = self.model.settings.overcapacity_tier_multiplier ** overcapacity_tiers
             candidates.append(CandidateEvaluation(
                 coordinate, self.getStack(block_id, row, slot).getParameters(),
-                mass, equipment, distance, cluster, score * current * future * stacking_safety * capacity_multiplier,
+                mass, equipment, distance, cluster,
+                score * destination * current * future * stacking_safety * capacity_multiplier,
                 loader_access=access, loader_access_multiplier=current,
+                loader_destination_multiplier=destination,
                 future_loader_access_multiplier=future,
                 stacking_safety_multiplier=stacking_safety,
                 capacity_multiplier=capacity_multiplier, overcapacity_tiers=overcapacity_tiers,
             ))
         return sorted(
             candidates,
-            key=lambda candidate: candidate.ranking_key(prioritize_current_access),
+            key=lambda candidate: candidate.ranking_key(
+                prioritize_current_access, settings.prioritize_loader_destination,
+            ),
             reverse=True,
         )
 

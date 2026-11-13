@@ -94,6 +94,17 @@ loader_acess = false
                     with self.assertRaisesRegex(ConfigurationError, key + "_mode"):
                         parse_config({"feasibility": {key + "_mode": value}})
 
+    def test_independent_loader_modes_round_trip(self):
+        settings = parse_config({"feasibility": {
+            "loader_destination_access_mode": "heuristic",
+            "preserve_occupied_loader_access_mode": "off",
+            "preserve_future_loader_access_mode": "feasibility",
+        }})
+        self.assertEqual(settings.feasibility.loader_access_modes, ("heuristic", "off", "feasibility"))
+        document = settings.to_document()
+        self.assertNotIn("loader_access_mode", document["feasibility"])
+        self.assertEqual(parse_config(document).to_document(), document)
+
     def test_stacking_safety_mode_round_trips_and_accepts_legacy_booleans(self):
         for options, mode in (
             ({"stacking_safety": True}, "feasibility"),
