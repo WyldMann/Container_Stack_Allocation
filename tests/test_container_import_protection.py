@@ -1,5 +1,6 @@
 import unittest
 
+from config import FeasibilitySettings
 from entities import Container, Yard
 
 
@@ -78,6 +79,33 @@ class ContainerImportProtectionTests(unittest.TestCase):
                             self.assertEqual(yard.bad_data.stacks_with_dummy_containers, [])
                             self.assertEqual(yard.bad_data.getTotalAnomalousStacks(),
                                              len(footprint) if tier_no == "3" else 0)
+
+    def test_import_restores_consecutive_overflow_tiers_but_rejects_a_skipped_tier(self):
+        block = self.block | {"max_tier": "5"}
+        settings = FeasibilitySettings(stack_capacity_mode="feasibility")
+        for size, footprint in (("20", (3,)), ("40", (2, 3))):
+            for overflow, accepted, rejected in (((7, 6), (6, 7), []), ((7,), (), ["TIER-7"])):
+                with self.subTest(size=size, overflow=overflow):
+                    nominal_tiers = (5, 4, 3, 2, 1)
+                    records = [
+                        self.record | dict(
+                            container_id=f"TIER-{tier}", container_size=size,
+                            row_no="2", slot_no="4", tier_no=str(tier),
+                        )
+                        for tier in (*overflow, *nominal_tiers)
+                    ]
+                    yard = Yard([block], containers_input=records, feasibility_settings=settings)
+                    expected = [f"TIER-{tier}" for tier in (*range(1, 6), *accepted)]
+                    self.assertEqual(set(yard.containers), set(expected))
+                    self.assertEqual(
+                        [item.getId() for item in yard.bad_data.getContainerCoordsInvalid()], rejected,
+                    )
+                    self.assertEqual(yard.bad_data.getTotalAnomalousStacks(), 0)
+                    for slot in footprint:
+                        stack = yard.getStack("A", 1, slot)
+                        self.assertEqual(stack.getMaxTier(), 5)
+                        self.assertEqual(stack.occupancy(), len(expected))
+                        self.assertEqual(stack.getContainers(), [yard.containers[key] for key in expected])
 
     def test_removed_anchor_or_partner_leaves_entire_footprint_unchanged(self):
         for container_size, removed_slot in (("20", 1), ("40", 1), ("40", 0)):
