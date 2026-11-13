@@ -39,15 +39,15 @@ const loaderScoringOptions = [
     description: "Higher values penalize cutting off future receiving options more. Zero removes this score penalty."}
 ];
 const placementGroups = [
-  {title: "Stacking safety", options: {
-    "feasibility.stacking_safety_mode": ["Pyramid stacking",
-      "Off skips the check. Heuristic lowers the score for placements that fail it. Feasibility rejects those placements."],
-    "heuristic.unsafe_stacking_multiplier": [stackingScoringOption.label, stackingScoringOption.description]
-  }},
   {title: "Stack capacity", options: {
     "feasibility.stack_capacity_mode": ["Nominal stack capacity",
       "Off allows extra tiers. Heuristic allows extra tiers with a score penalty. Feasibility rejects them."],
     "heuristic.overcapacity_tier_multiplier": [capacityScoringOption.label, capacityScoringOption.description]
+  }},
+  {title: "Stacking safety", options: {
+    "feasibility.stacking_safety_mode": ["Pyramid stacking",
+      "Off skips the check. Heuristic lowers the score for placements that fail it. Feasibility rejects those placements."],
+    "heuristic.unsafe_stacking_multiplier": [stackingScoringOption.label, stackingScoringOption.description]
   }},
   {title: "Loader access", description:
     "Off skips the check. Heuristic uses access to rank placements. Feasibility rejects placements that block access. These checks apply to loader-served blocks.",

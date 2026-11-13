@@ -2,7 +2,7 @@
 
 ## Share the standalone simulator
 
-Extract the standalone ZIP and open **index.html** in Chrome or Microsoft Edge. Keep the
+Extract the standalone ZIP and open **container-stacking-simulator.html** in Chrome or Microsoft Edge. Keep the
 files together. The package includes the Python engine, the interface, and a
 snapshot of the stacking CSVs and TOMLs. It runs without a server or a separate
 Python or Node.js installation.

@@ -69,7 +69,7 @@
       else request.resolve(result);
     };
     worker.onerror = () => {
-      stopped = new Error("The browser simulation stopped. Reopen index.html to try again.");
+      stopped = new Error("The browser simulation stopped. Reopen container-stacking-simulator.html to try again.");
       for (const {reject} of pending.values()) reject(stopped);
       pending.clear();
     };

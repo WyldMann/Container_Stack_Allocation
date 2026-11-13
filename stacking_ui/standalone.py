@@ -24,6 +24,7 @@ RUNTIME_FILES = {
     "python_stdlib.zip": "application/zip",
 }
 STATIC = Path(__file__).with_name("static")
+ENTRY_PAGE = "container-stacking-simulator.html"
 
 
 def project_snapshot():
@@ -85,7 +86,7 @@ def build(runtime, destination):
     page = page.replace("Choose files in the browser", "Replace selected CSVs")
 
     with ZipFile(destination, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("index.html", page)
+        archive.writestr(ENTRY_PAGE, page)
         archive.writestr("defaults.js", "const TOML_DEFAULTS = " + json.dumps(documents) + ";\n")
         archive.writestr("runtime-assets.js", "let STACKING_RUNTIME = " + json.dumps(assets) + ";\n")
         for name in ("style.css", "yard-map.css", "yard-map.js", "yard-comparison-map.js",
@@ -93,7 +94,7 @@ def build(runtime, destination):
             archive.write(STATIC / name, name)
         for name, content in licenses.items():
             archive.writestr("licenses/" + name, content)
-        archive.writestr("README.txt", "Extract all files and open index.html in Chrome or Microsoft Edge.\n"
+        archive.writestr("README.txt", f"Extract all files and open {ENTRY_PAGE} in Chrome or Microsoft Edge.\n"
                          "The package includes a copy of the CSVs and TOMLs from build time.\n"
                          "Use Replace selected CSVs or Load from TOML to use newer data.\n"
                          "Set default remembers a TOML in this browser for this page.\n"
