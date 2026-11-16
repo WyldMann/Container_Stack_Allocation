@@ -265,6 +265,7 @@ class BadYardData:
         registered_containers,
         feasibility,
         loader_policies,
+        loader_selected: bool = False,
     ) -> PlacementProposal:
         self.validateInboundContainer(container, registered_containers)
         try:
@@ -284,6 +285,7 @@ class BadYardData:
             slot_index,
             loader_policy=loader_policies.get(block_id),
             include_loader_heuristics=False,
+            loader_selected=loader_selected,
         )
         if not result.feasible:
             raise PlacementRejected(
@@ -351,6 +353,7 @@ class BadYardData:
             registered_containers=registered_containers,
             feasibility=feasibility,
             loader_policies=loader_policies,
+            loader_selected=isinstance(equipment, Loader),
         )
         try:
             source, destination = self.validateEquipmentMove(

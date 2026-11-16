@@ -76,6 +76,7 @@ class PlacementFeasibility:
             loader_policy: LoaderBorderAccessPolicy | None = None,
             loader_context: LoaderAccessContext | None = None,
             include_loader_heuristics: bool = True,
+            loader_selected: bool = False,
     ) -> FeasibilityResult:
         container_size = container.getContSize()
         if container_size not in ("20", "40"):
@@ -138,7 +139,10 @@ class PlacementFeasibility:
         destination_mode, occupied_mode, future_mode = self.settings.loader_access_modes
         active_modes = ("feasibility", "heuristic") if include_loader_heuristics else ("feasibility",)
         access = None
-        if any(mode in active_modes for mode in (destination_mode, occupied_mode, future_mode)):
+        # The block's RTG serves by default unless a loader was explicitly selected.
+        if (loader_selected or block.getRTG() is None) and any(
+            mode in active_modes for mode in (destination_mode, occupied_mode, future_mode)
+        ):
             access = self._evaluate_loader_access(
                 block, proposal, loader_policy, loader_context,
                 check_future=future_mode in active_modes,
@@ -159,9 +163,6 @@ class PlacementFeasibility:
         *,
         check_future: bool,
     ) -> LoaderAccessResult | None:
-        # Matches equipment selection: a block's RTG serves all its candidates.
-        if block.getRTG() is not None:
-            return None
         if policy is None:
             policy = LoaderBorderAccessPolicy()
         return self.loader_access.evaluate(

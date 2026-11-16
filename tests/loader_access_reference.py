@@ -272,8 +272,6 @@ class ReferencePlacementFeasibility(PlacementFeasibility):
         return None
 
     def _evaluate_loader_access(self, block, proposal, policy, context=None, *, check_future):
-        if block.getRTG() is not None:
-            return None
         if policy is None:
             policy = LoaderBorderAccessPolicy()
         return self.loader_access.evaluate(

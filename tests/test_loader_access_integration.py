@@ -47,6 +47,29 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
             RejectionReason.LOADER_DESTINATION_INACCESSIBLE,
         )
 
+    def test_explicit_loader_needs_access_even_when_block_has_an_rtg(self):
+        self.set_stack(1, 1)
+        loader = Loader("L", ("A", 0, 0))
+        rtg = RTG("R", ("A", 0, 0))
+        self.yard.master_loaders.append(loader)
+        self.block.addLoader(loader)
+        self.block.setRTG(rtg)
+        container = Container(
+            container_id="NEW", principal="", container_condition="", container_fill="",
+            container_size="20", container_grade="", pol="", pod="", vessel="",
+            voyage="", weight="", move_time="",
+        )
+
+        with self.assertRaisesRegex(PlacementRejected, "loader_destination_inaccessible"):
+            self.yard.placeContainer(container, ("A", 1, 1, 0), loader)
+        self.assertEqual(loader.getCoords(), ("A", 0, 0))
+        self.assertNotIn("NEW", self.yard.containers)
+        self.assertIsNone(self.block.getStack(1, 1).getContainer(0))
+
+        result = self.yard.assign_and_place(container)
+        self.assertIs(result.getBestEquipment(), rtg)
+        self.assertIs(self.block.getStack(1, 1).getContainer(0), container)
+
     def test_placement_isolating_neighbour_is_rejected(self):
         self.set_stack(0, 1)
         self.set_stack(1, 1, count=1)
