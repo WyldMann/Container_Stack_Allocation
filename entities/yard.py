@@ -455,10 +455,16 @@ class Yard:
     def getStack(self, block_id: str, row_index: int, slot_index:int) -> Stack:
         return self.getBlockByID(block_id).getStack(row_index, slot_index)
 
+    def canServeBlock(self, block: Block) -> bool:
+        """A block can use its own RTG or a registered loader from the yard."""
+        return block.getRTG() is not None or bool(self.master_loaders)
+
     def findCoordsCandidates(
         self, container: Container, *, rejection_counts: dict[str, int] | None = None,
         loader_access_results: dict[tuple[str, int, int, int], LoaderAccessResult] | None = None,
+        require_equipment: bool = False,
     ) -> tuple[float, dict[str, float], list[tuple[str, int, int, int]]]:
+        """Find candidates, optionally requiring serving equipment for assignment."""
         max_score : float = 0
         candidate_coordinates : list[tuple[str,int,int,int]] = []
 
@@ -469,6 +475,13 @@ class Yard:
         parameter_scores = dict(sorted(parameter_scores.items(), key=lambda item: item[1], reverse=True))
 
         for block in self.blocks_by_id.values():
+            if require_equipment and not self.canServeBlock(block):
+                if rejection_counts is not None:
+                    reason = "no_available_equipment"
+                    rejection_counts[reason] = rejection_counts.get(reason, 0) + sum(
+                        len(row) for row in block.getSlots()
+                    )
+                continue
             loader_policy = self.loader_access_policies.get(block.getId())
             # This loop only evaluates candidates; no context survives a placement.
             loader_context = self.feasibility.prepare_loader_context(block, loader_policy)
@@ -518,6 +531,7 @@ class Yard:
         rejections = {} if trace is not None else None
         max_score, parameter_scores, candidate_coordinates = self.findCoordsCandidates(
             container, rejection_counts=rejections, loader_access_results=access_results,
+            require_equipment=True,
         )
         if trace is not None:
             trace.update(

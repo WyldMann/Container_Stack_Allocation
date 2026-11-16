@@ -2,6 +2,7 @@ import unittest
 
 from entities import Container, Yard
 from entities.equipment import Equipment, Loader, RTG
+from tests.test_parameter_evaluation import make_container
 
 
 class EquipmentMovementTests(unittest.TestCase):
@@ -109,6 +110,29 @@ class EquipmentMovementTests(unittest.TestCase):
         self.assertEqual(self.loader.getCoords(), ("B", 1, 2))
         self.assertEqual(self.source.getLoaders(), [])
         self.assertEqual(self.destination.getLoaders(), [self.loader])
+
+    def test_assignment_without_equipment_returns_no_placement(self):
+        self.source.rtg = None
+        self.source.removeLoader(self.loader)
+        self.yard.master_loaders.clear()
+        trace = {}
+        self.assertIsNone(self.yard.assignContainer(make_container(container_size="20"), trace=trace))
+        self.assertEqual(trace["rejections"], {"no_available_equipment": trace["checked"]})
+        self.assertFalse(self.yard.containers)
+
+    def test_assignment_borrows_loader_from_nearest_block(self):
+        yard = Yard(
+            [dict(branch_id="BR", block_id=block_id, block_code=block_id,
+                  slot_count="1", row_count="1", max_tier="3", pos_x=str(x), pos_y="0")
+             for block_id, x in (("A", 0), ("B", 5), ("C", 10))],
+            removed_slots_input=[("B", 0, 0), ("C", 0, 0)],
+            equipment_input=[dict(equipment_code=code, equipment_type="SL") for code in ("FAR", "NEAR")],
+            equipment_locations_input={"FAR": ("BR", "C", 0, 0), "NEAR": ("BR", "B", 0, 0)},
+        )
+        result = yard.assign_and_place(make_container(container_size="20"))
+        self.assertEqual(result.getBestCoordinate(), ("A", 0, 0, 0))
+        self.assertEqual(result.getBestEquipment().getCode(), "NEAR")
+        self.assertEqual(result.getBestEquipment().getCoords(), ("A", 0, 0))
 
 
 if __name__ == "__main__":

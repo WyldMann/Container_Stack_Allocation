@@ -369,6 +369,7 @@ function placementTrace(calculation, status) {
   const number = traceNumber;
   const multipliers = calculation.enabled_multipliers ?? Object.keys(multiplierLabels);
   const reasons = {
+    no_available_equipment: "No equipment can serve the block",
     unsupported_size: "Unsupported container size",
     invalid_location: "Invalid location",
     stack_unavailable: "Stack full or removed",

@@ -508,6 +508,28 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual(preview["branches"][0]["summary"]["existing_containers"], 1)
         self.assertIn("no RTG", preview["branches"][0]["issues"][0]["message"])
 
+    def test_unserved_block_does_not_hide_rtg_block_with_lower_parameter_score(self):
+        self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {
+            "block_id": "11", "block_code": "B", "pos_x": "10",
+        })
+        self.rows["parameters"] = [dict(parameter_id="P", container_size="20",
+                                        container_size_score="1", terminal_id="1", branch_id="2")]
+        self.rows["yard_planning"] = [dict(parameter_id="P", block_id="11", row_no="1", slot_no="1",
+                                           terminal_id="1", branch_id="2")]
+        self.write_files()
+        scenario = prepare_scenario(self.payload)
+        preview = public_preview(scenario)
+        self.assertTrue(preview["ready"], preview["branches"][0]["issues"])
+        problem, = preview["branches"][0]["issues"]
+        self.assertEqual(problem["severity"], "warning")
+        self.assertIn("Block B", problem["message"])
+
+        simulation = Simulation(scenario)
+        step = simulation.step(simulation.id, "JKT74", 1)
+        self.assertEqual(step["row"]["status"], "placed")
+        self.assertEqual(step["placement"]["block"], "A")
+        self.assertEqual(step["calculation"]["rejections"]["no_available_equipment"], 8)
+
     def test_missing_file_is_not_silently_empty(self):
         del self.payload["files"]["parameters"]
         preview = public_preview(prepare_scenario(self.payload))
