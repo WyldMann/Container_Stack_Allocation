@@ -172,6 +172,7 @@
 .simulation-outcome details { padding-top: 5px; font-size: 13px; }
 .simulation-outcome details p { margin-top: 6px; }
 .dataset-path { display: block; font-size: 12px; }
+.dataset-grid + details { margin-top: 16px; }
 .dataset-path input, .dataset-path textarea {
   display: block;
   width: 100%;

@@ -7,10 +7,11 @@ files together. The package includes the Python engine, the interface, and a
 snapshot of the stacking CSVs and TOMLs. It runs without a server or a separate
 Python or Node.js installation.
 
-Use **Replace selected CSVs** to replace any bundled dataset, or use **Load
-from TOML** in its editor. **Set default** remembers the current TOML in
-this browser for future visits to the same page. **Save as TOML** downloads a
-copy. **Save yard CSV** downloads **containers.csv**.
+Under **Yard and inbound data**, use **Replace selected CSVs** to replace any
+bundled CSV. **Input configuration** and **CSV column mappings** each offer
+**Load from TOML**. **Set default** remembers the current TOML in this browser
+for future visits to the same page. **Save as TOML** downloads a copy.
+**Save yard CSV** downloads **containers.csv**.
 
 **Currently loader accessible** checks whether the loader can reach the
 destination before placement. **Preserve access to occupied stacks** and
@@ -43,17 +44,18 @@ in an Edge window. It uses local Node.js and `playwright-core`, including the
 installed Codex runtime when available. Each editor shows its loaded file and offers
 **Load from TOML** to replace its contents in the editor.
 
-1. **Use files in the project folder** is selected by default. The dataset cards
-   show the CSV paths from the stacking input TOML and let you edit them there.
+1. Under **Yard and inbound data**, **Use files in the project folder** is
+   selected by default. Use **Input configuration** to load another input TOML
+   or edit `branch_code`. The dataset cards show the configured CSV paths and
+   let you edit them there.
    Relative paths start in `config/container_stacking`, and the CSVs must be inside the project.
    Choose **Choose files in the browser** to select the nine UTF-8 CSVs yourself.
-   Either source lets you mark a dataset explicitly empty.
-2. Edit the prefilled values in Placement settings. Options are grouped by what
-   they affect and include short descriptions. Use TOML syntax when editing text
-   values in Stacking inputs and CSV column mappings. To change the file
-   structure, load another TOML into its editor. Edit
-   `branch_code` under **Stacking inputs** to select branches. Each editor's
-   **Save** button writes its values to the corresponding project TOML.
+   Either source lets you mark a dataset explicitly empty. Open **CSV column
+   mappings** below the cards to edit or load a mapping. Use TOML syntax when
+   editing text values in either editor.
+2. Under **Simulation settings**, edit the prefilled values in **Placement
+   settings**. Each editor's **Save** button writes its values to the
+   corresponding project TOML.
 3. Click **Generate preview**. The top-down map places blocks using their
    `POS_X` and `POS_Y` coordinates. Use **Fit yard** to see all blocks or
    **100%** to read the stack grids at full size. Select any stack to inspect
