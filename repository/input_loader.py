@@ -28,7 +28,7 @@ def _read_datasets(make_loader, profiles, *, datasets=None, on_row_error=None):
         "existing_containers": (ContainerRepository, "read_records"),
         "inbound_containers": (ContainerRepository, "read_records"),
         "master_equipment": (Repository, "read_records"),
-        "equipment_history": (EquipmentMoveRepository, "read_locations"),
+        "equipment_history": (EquipmentMoveRepository, "read_yard_locations"),
     }
     if datasets is not None:
         unknown = set(datasets) - set(readers)

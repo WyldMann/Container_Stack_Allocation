@@ -182,6 +182,23 @@ class InputFilterTests(unittest.TestCase):
             load_yard_inputs(self.settings(), include_shifting=False)
         self.assertEqual(opened, ["terminal_branches.csv"])
 
+    def test_yard_groups_mixed_case_equipment_ids_before_selecting_latest_move(self):
+        self.write_records("master_equipment", [dict(equipment_code="rtg01", equipment_type="RTG")])
+        base = self.data["equipment_history"][0]
+        for competing_time in ("08:00:00", "09:00:00"):
+            with self.subTest(competing_time=competing_time):
+                self.write_records("equipment_history", [
+                    base | dict(equipment_code="rtg01", block_code="C", move_time="2026-10-01 09:00:00"),
+                    base | dict(equipment_code="RTG01", block_code="B", move_time=f"2026-10-01 {competing_time}"),
+                ])
+                inputs = load_yard_inputs(self.settings(), include_shifting=False)
+                self.assertEqual(inputs["equipment_history"], {"RTG01": ("2", "C", 0, 0)})
+
+                yard = Yard(inputs["yard_blocks"], equipment_input=inputs["master_equipment"],
+                            equipment_locations_input=inputs["equipment_history"])
+                self.assertEqual(yard.getBlockByCode("2", "C").getRTG().getCode(), "RTG01")
+                self.assertIsNone(yard.getBlockByCode("2", "B").getRTG())
+
     def test_csv_parameters_and_planning_use_resolved_branch_ids(self):
         self.write_records("parameters", [
             dict(parameter_id=parameter, terminal_id=terminal, branch_id=branch)

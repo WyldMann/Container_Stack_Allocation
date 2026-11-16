@@ -174,7 +174,11 @@ class YardPlanningRepository(Repository):
 class EquipmentMoveRepository(Repository):
     required_fields = ("equipment_code", "branch_id", "block_code", "row_no", "slot_no", "move_time")
 
-    def read_locations(self) -> dict[str, tuple[str, str, int, int]]:
+    def read_yard_locations(self) -> dict[str, tuple[str, str, int, int]]:
+        """Group movements using the same equipment IDs as the yard master data."""
+        return self.read_locations(normalize_equipment_code=True)
+
+    def read_locations(self, *, normalize_equipment_code: bool = False) -> dict[str, tuple[str, str, int, int]]:
         result = {}
         timestamp_kinds = set()
         for location, record in self._iter_rows():
@@ -206,6 +210,8 @@ class EquipmentMoveRepository(Repository):
 
             coordinates = (record["branch_id"], record["block_code"], *position)
             equipment_code = record["equipment_code"]
+            if normalize_equipment_code:
+                equipment_code = strGeneralize(equipment_code)
             if equipment_code not in result or dt > result[equipment_code][0]:
                 result[equipment_code] = (dt, coordinates)
 
