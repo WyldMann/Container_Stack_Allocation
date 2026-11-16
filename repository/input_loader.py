@@ -155,12 +155,13 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None, on_row
             # Only this resolved identity, never user-supplied numeric IDs, scopes
             # datasets whose exports contain TERMINAL_ID / BRANCH_ID.
             for field in ("terminal_id", "branch_id"):
-                value = directory.records[0][field]
+                # Keep the source spelling for text-valued source filters.
+                value = reference["terminal_branches"][0][field]
                 try:
                     scope_ids[field] = int(value)
                 except ValueError:
                     scope_ids[field] = value
-        inputs = dict(reference)
+        inputs = reference | {"terminal_branches": directory.records}
         if branch_code and sources.get("removed_slots") == "sql":
             if "yard_blocks" in sources:
                 inputs.update(_read_datasets(make_loader, profiles, datasets=("yard_blocks",)))
@@ -174,15 +175,22 @@ def load_yard_inputs(settings, *, include_shifting=True, connection=None, on_row
             if name in inputs and profiles[name].branch_kind == "code":
                 inputs[name] = directory.normalize_containers(inputs[name], scoped=bool(branch_code))
         if branch_code and "inbound_containers" in inputs and profiles["inbound_containers"].branch_kind == "id":
-            branch_id = strGeneralize(reference["terminal_branches"][0]["branch_id"])
+            branch_id = directory.records[0]["branch_id"]
             inputs["inbound_containers"] = [
                 row for row in inputs["inbound_containers"]
                 if strGeneralize(row["branch_id"].strip()) in ("", branch_id)
             ]
-        if "equipment_history" in inputs and profiles["equipment_history"].branch_kind == "code":
-            inputs["equipment_history"] = directory.normalize_equipment_locations(
-                inputs["equipment_history"], scoped=bool(branch_code),
-            )
+        if "equipment_history" in inputs:
+            locations = inputs["equipment_history"]
+            if profiles["equipment_history"].branch_kind == "code":
+                inputs["equipment_history"] = directory.normalize_equipment_locations(
+                    locations, scoped=bool(branch_code),
+                )
+            else:
+                inputs["equipment_history"] = {
+                    equipment: (strGeneralize(branch_id.strip()), *position)
+                    for equipment, (branch_id, *position) in locations.items()
+                }
         if branch_code:
             _scope_to_yard_blocks(inputs)
         if include_shifting and (settings.get("shifting_source") in ("csv", "sql")

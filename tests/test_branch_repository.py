@@ -36,6 +36,10 @@ class BranchDirectoryTests(unittest.TestCase):
             directory.normalize_containers([row])
         self.assertEqual(directory.normalize_containers([row], scoped=True), [])
 
+    def test_duplicate_ids_are_detected_after_removing_zero_padding(self):
+        with self.assertRaisesRegex(InputError, "ambiguous branch code or ID"):
+            BranchDirectory([branch(branch_id="002"), branch(branch_id="2", code="OTHER")])
+
     def test_inbound_without_coordinates_remains_assignable(self):
         row = dict(container_id="INBOUND", branch_id="", block_code="")
         self.assertEqual(BranchDirectory([branch()]).normalize_containers([row]), [row])

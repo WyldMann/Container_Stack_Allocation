@@ -1,6 +1,7 @@
 """Resolve source branch codes to the IDs used by yard coordinates."""
 
 from config import ConfigurationError
+from utils import strGeneralize
 from .repository import Repository
 from .loader import InputError
 
@@ -16,20 +17,22 @@ class BranchDirectory:
     def __init__(self, records):
         if not records:
             raise InputError("terminal_branches: no branches match the configured filters.")
-        self.records = records
+        self.records = []
         self.by_code = {}
         self.by_id = {}
         for row in records:
             if any(not value.strip() for value in row.values()):
                 raise InputError("terminal_branches: branch IDs, code and name must be non-empty.")
             code = row["branch_code"].strip().upper()
-            branch_id = row["branch_id"]
+            branch_id = strGeneralize(row["branch_id"].strip())
             if code in self.by_code or branch_id in self.by_id:
                 raise InputError(
                     "terminal_branches: ambiguous branch code or ID; select a unique branch_code."
                 )
-            self.by_code[code] = row
-            self.by_id[branch_id] = row
+            normalized = row | {"branch_id": branch_id}
+            self.records.append(normalized)
+            self.by_code[code] = normalized
+            self.by_id[branch_id] = normalized
 
     @property
     def codes_by_id(self):
