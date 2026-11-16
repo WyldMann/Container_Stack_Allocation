@@ -61,12 +61,20 @@ class HeuristicConfigTests(unittest.TestCase):
                     'size_cluster_bias', 'loader_inaccessible_destination_multiplier',
                     'loader_occupied_access_loss_weight', 'loader_future_access_loss_weight',
                     'unsafe_stacking_multiplier', 'overcapacity_tier_multiplier',
+                    'no_delta_container_mass_value', 'heavier_container_fallback_score',
                 ):
                     values += ('0',)
             for value in values:
                 with self.subTest(field=field.name, value=value):
                     with self.assertRaises(ConfigurationError):
                         self.load_text(f'[heuristic]\n{field.name} = {value}\n')
+
+    def test_zero_unknown_weight_score_only_applies_when_weight_is_unknown(self):
+        settings = self.load_text('[heuristic]\nno_delta_container_mass_value = 0\n').heuristic
+        model = HeuristicModel(settings)
+        self.assertEqual(model.deltaContainerMass(None), 0)
+        self.assertEqual(model.evaluate(None, 0), 0)
+        self.assertEqual(model.deltaContainerMass(0), settings.w_delta_container_mass)
 
     def test_loader_weights_allow_zero_and_limit_destination_multiplier(self):
         for name in (
@@ -244,6 +252,7 @@ class ConfiguredHeuristicModelTests(unittest.TestCase):
     def test_fallback_scores_can_override_the_legacy_value_independently(self):
         cases = (
             ("", 0.02, 0.02),
+            ("heavier_container_fallback_score = 0\n", 0, 0.02),
             ("heavier_container_fallback_score = 0.03\n", 0.03, 0.02),
             ("equipment_outside_block_fallback_score = 0.04\n", 0.02, 0.04),
         )

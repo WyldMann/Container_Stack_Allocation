@@ -62,7 +62,8 @@ class HeuristicSettings:
                     raise ValueError(f"{name} must be between 0 and 1.")
             elif name in (
                 "size_cluster_bias", "loader_occupied_access_loss_weight",
-                "loader_future_access_loss_weight",
+                "loader_future_access_loss_weight", "no_delta_container_mass_value",
+                "heavier_container_fallback_score",
             ):
                 if value < 0:
                     raise ValueError(f"{name} must be non-negative.")

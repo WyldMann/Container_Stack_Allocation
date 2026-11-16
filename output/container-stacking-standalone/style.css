@@ -371,6 +371,47 @@
 .placement-option.is-inactive .toml-switch input { cursor: default; }
 .placement-group > .placement-help { margin-bottom: 12px; }
 .placement-help + .placement-help { margin-top: 4px; }
+.placement-graph {
+  --score-line: var(--green);
+  --other-score-line: #98532f;
+  --neutral-score-line: #5d6a64;
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border);
+}
+.placement-related-options > .placement-graph { margin-top: 0; }
+.placement-group > .placement-options:empty + .placement-graph { margin-top: 0; }
+.placement-graph figcaption { font-size: 14px; font-weight: 650; margin-bottom: 4px; }
+.placement-graph svg { display: block; width: 100%; height: 204px; }
+.placement-graph svg[hidden] { display: none; }
+.placement-graph-axis, .placement-graph-y-title, .placement-graph-keys { font-size: 12px; color: #536863; }
+.placement-graph-axis { text-align: center; }
+.placement-graph-y-title { margin-top: 6px; }
+.placement-graph svg text { fill: #536863; font-size: 12px; font-variant-numeric: tabular-nums; }
+.placement-graph svg line { stroke: var(--border); }
+.placement-graph svg .guide { stroke: var(--neutral-score-line); stroke-dasharray: 3 4; }
+.placement-graph svg polyline {
+  fill: none;
+  stroke: var(--score-line);
+  stroke-width: 2.4px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.placement-graph svg .point { fill: var(--score-line); stroke: var(--score-line); stroke-width: 1.6px; }
+.placement-graph svg .hollow { fill: #f8faf9; }
+.placement-graph svg .reject { fill: none; stroke: #9b3826; stroke-width: 1.6px; }
+.placement-graph svg .other { --score-line: var(--other-score-line); }
+.placement-graph svg .neutral { --score-line: var(--neutral-score-line); }
+.placement-graph svg polyline.other, .placement-graph svg polyline.neutral { stroke-dasharray: 5 4; }
+.placement-graph-keys { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; }
+.placement-graph-keys:empty { display: none; }
+.placement-graph-keys span { display: inline-flex; align-items: center; gap: 5px; }
+.placement-graph-keys span::before { content: ""; width: 14px; border-top: 2px solid var(--score-line); }
+.placement-graph-keys .other::before { border-top: 2px dashed var(--other-score-line); }
+.placement-graph-keys .neutral::before { border-top: 2px dashed var(--neutral-score-line); }
+.placement-graph-note { margin: 6px 0 0; font-size: 13px; font-variant-numeric: tabular-nums; }
 @media (max-width: 850px) {
   .placement-options { grid-template-columns: 1fr; }
 }

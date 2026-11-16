@@ -22,7 +22,8 @@ class HeuristicModel:
         self.hl_equipment_distance = settings.hl_equipment_distance
         self.lambda_equipment_distance = math.log(2) / self.hl_equipment_distance
         self.heavier_container_fallback_score = (
-            settings.heavier_container_fallback_score or settings.min_value
+            settings.min_value if settings.heavier_container_fallback_score is None
+            else settings.heavier_container_fallback_score
         )
         self.equipment_outside_block_fallback_score = (
             settings.equipment_outside_block_fallback_score or settings.min_value

@@ -41,18 +41,19 @@ const loaderScoringOptions = [
     description: "Higher values penalize cutting off future receiving options more. Zero removes this score penalty."}
 ];
 const placementGroups = [
-  {title: "Stack capacity", options: {
+  {title: "Stack capacity", graph: "capacity", options: {
     "feasibility.stack_capacity_mode": ["Enforce stack height limit",
       "Feasibility enforces the tier limit. Heuristic allows overcapacity with a score penalty. Off allows overcapacity without a capacity penalty."],
     "heuristic.overcapacity_tier_multiplier": [capacityScoringOption.label, capacityScoringOption.description]
   }},
-  {title: "Stacking safety", options: {
+  {title: "Stacking safety", graph: "pyramid", options: {
     "feasibility.stacking_safety_mode": ["Pyramid stacking",
       "Off skips the check. Heuristic lowers the score for placements that fail it. Feasibility rejects those placements."],
     "heuristic.unsafe_stacking_multiplier": [stackingScoringOption.label, stackingScoringOption.description]
   }},
   {title: "Loader reachability and access preservation", description:
     "Off skips the rule. Heuristic scores it. Feasibility rejects placements that fail it. These rules apply to loader-served blocks.",
+  rowGraphs: ["destination", "occupied", "future"],
   optionRows: [
     ["feasibility.loader_destination_access_mode", "heuristic.loader_inaccessible_destination_multiplier"],
     ["feasibility.preserve_occupied_loader_access_mode", "heuristic.loader_occupied_access_loss_weight",
@@ -71,7 +72,7 @@ const placementGroups = [
     ...Object.fromEntries(loaderScoringOptions.map(({key, label, description}) =>
       ["heuristic." + key, [label, description]]))
   }},
-  {title: "Container weight difference", sideBySide: true, toggle: "heuristic.enable_delta_container_mass", options: {
+  {title: "Container weight difference", graph: "weight", sideBySide: true, toggle: "heuristic.enable_delta_container_mass", options: {
     "heuristic.enable_delta_container_mass": ["Score container weight difference",
       "Subtract the incoming container's weight from the weight of the container directly beneath it to score the placement."],
     "heuristic.w_delta_container_mass": ["Maximum weight score",
@@ -83,7 +84,7 @@ const placementGroups = [
     "heuristic.heavier_container_fallback_score": ["Heavier incoming container score",
       "Use this score when the incoming container is heavier than the one beneath it."]
   }},
-  {title: "Equipment distance", sideBySide: true, toggle: "heuristic.enable_equipment_distance", options: {
+  {title: "Equipment distance", graph: "equipment", sideBySide: true, toggle: "heuristic.enable_equipment_distance", options: {
     "heuristic.enable_equipment_distance": ["Score equipment distance",
       "Use the distance from the serving equipment to rank placements."],
     "heuristic.w_equipment_distance": ["Maximum distance score",
@@ -93,7 +94,7 @@ const placementGroups = [
     "heuristic.equipment_outside_block_fallback_score": ["Equipment outside block score",
       "Use this score when the serving equipment is outside the block."]
   }},
-  {title: "Container size clustering", toggle: "heuristic.enable_size_cluster", options: {
+  {title: "Container size clustering", graph: "cluster", toggle: "heuristic.enable_size_cluster", options: {
     "heuristic.enable_size_cluster": ["Score nearby container sizes",
       "Favor placements near containers of the same size."],
     "heuristic.size_cluster_radius": ["Search radius",
@@ -171,7 +172,7 @@ function onFile(input, handler, report) {
   }, report));
 }
 
-function tomlValueEnd(source, start) {
+function tomlValueEnd(source, start, stopAtComma = false) {
   // Find the next comment or newline outside strings, arrays, and inline tables.
   let quote = "";
   let depth = 0;
@@ -201,7 +202,7 @@ function tomlValueEnd(source, start) {
       const newline = source.indexOf("\n", index);
       if (newline === -1) return source.length;
       index = newline;
-    } else if (character === "\n" && !depth) {
+    } else if (!depth && (character === "\n" || (stopAtComma && character === ","))) {
       return index;
     }
   }
@@ -234,21 +235,19 @@ function addPlacementOption(rows, path, row, control) {
   return option;
 }
 
-function showPlacementGroups(editor, rows) {
+function showPlacementGroups(editor, rows, graphs) {
   const groups = el("div", undefined, "placement-groups");
   const weightAndDistance = el("div", undefined, "placement-weight-distance");
-  for (const {title, description, options, optionRows, sideBySide} of placementGroups) {
+  for (const {title, description, options, optionRows, sideBySide, graph, rowGraphs} of placementGroups) {
     const entries = Object.keys(options).flatMap(path => rows.get(path) ?? []);
-    if (!entries.length) continue;
     const group = el("fieldset", undefined, "placement-group");
     group.append(el("legend", title));
     if (description) group.append(el("p", description, "placement-help"));
     if (optionRows) {
-      for (const paths of optionRows) {
+      for (const [index, paths] of optionRows.entries()) {
         const related = paths.flatMap(path => rows.get(path) ?? []);
-        if (!related.length) continue;
         const list = el("div", undefined, "placement-options placement-related-options");
-        list.append(...related);
+        list.append(...related, graphs[rowGraphs[index]].element);
         group.append(list);
       }
     } else {
@@ -256,6 +255,7 @@ function showPlacementGroups(editor, rows) {
       list.append(...entries);
       group.append(list);
     }
+    if (graph) group.append(graphs[graph].element);
     if (sideBySide) {
       if (!weightAndDistance.parentNode) groups.append(weightAndDistance);
       weightAndDistance.append(group);
@@ -264,6 +264,30 @@ function showPlacementGroups(editor, rows) {
     }
   }
   editor.replaceChildren(groups);
+}
+
+function readInlinePlacementOptions(options, section, literal) {
+  if (!literal.startsWith("{") || !literal.endsWith("}")) return;
+  const body = literal.slice(1, -1);
+  for (let cursor = 0; cursor < body.length;) {
+    const match = tomlAssignment.exec(body.slice(cursor));
+    if (!match) break;
+    const start = cursor + match[1].length;
+    const end = tomlValueEnd(body, start, true);
+    options.set(section + "." + tomlParts(match[2]).join("."), body.slice(start, end).trimEnd());
+    cursor = end + 1;
+  }
+}
+
+function placementGraphValue(rows, inline, path) {
+  const option = rows.get(path)?.[0];
+  if (!option) return inline.get(path);
+  const selectedMode = option.querySelector("input[type=radio]:checked");
+  if (selectedMode) return JSON.stringify(selectedMode.value);
+  const number = option.querySelector("input[type=number]");
+  if (number) return number.getAttribute("aria-invalid") === "true" ? "" : number.value;
+  const input = option.querySelector("input, textarea");
+  return input ? tomlFieldValue(input) : undefined;
 }
 
 function setPlacementInactive(option, inactive) {
@@ -388,6 +412,7 @@ function addBoundedRuleWeight(rows, fields, start, end, value, {key, defaultValu
   number.setAttribute("aria-describedby", slider.getAttribute("aria-describedby"));
   const warning = el("p", "The TOML value must be a number from 0 to 1. Use either control to replace it.", "placement-help");
   warning.hidden = valid;
+  if (!valid) number.setAttribute("aria-invalid", "true");
   option.append(warning);
 
   let edited = false;
@@ -395,19 +420,29 @@ function addBoundedRuleWeight(rows, fields, start, end, value, {key, defaultValu
     syncValue(next);
     edited = true;
     warning.hidden = true;
+    number.removeAttribute("aria-invalid");
     updateTomlSave("config");
     changed();
   }
 
   slider.addEventListener("input", () => applyValue(slider.valueAsNumber));
+  number.addEventListener("input", () => {
+    number.removeAttribute("aria-invalid");
+    refreshPlacementGraphs();
+  });
   function commitNumber() {
     if (!Number.isFinite(number.valueAsNumber)) {
       number.value = slider.value;
+      if (!warning.hidden) number.setAttribute("aria-invalid", "true");
+      refreshPlacementGraphs();
       return;
     }
     const capped = Math.max(0, Math.min(1, number.valueAsNumber));
     if (capped !== slider.valueAsNumber || !warning.hidden) applyValue(capped);
-    else number.value = slider.value;
+    else {
+      number.value = slider.value;
+      refreshPlacementGraphs();
+    }
   }
   number.addEventListener("blur", commitNumber);
   number.addEventListener("keydown", event => {
@@ -457,7 +492,11 @@ function showToml(kind, text, loadedFrom) {
   const csvPaths = new Map();
   const ruleControls = {};
   const placementRows = new Map();
+  const inlinePlacement = new Map();
   const editor = $(kind + "-toml");
+  if (kind === "config") {
+    for (const graph of Object.values(tomlDocuments.config?.graphs ?? {})) graph.disconnect();
+  }
   editor.replaceChildren();
   tomlDocuments[kind] = {
     source, fields, csvPaths, ruleControls, placementRows,
@@ -525,10 +564,12 @@ function showToml(kind, text, loadedFrom) {
         const value = source.slice(start, boundary).trimEnd();
         if (legacyFallbackOption) {
           legacyFallbackScore = value;
+          inlinePlacement.set(optionPath, value);
           offset = statementStart = lineEnd + 1;
           continue;
         }
         if (legacyLoaderOption) {
+          inlinePlacement.set(optionPath, value);
           const legacy = key === "loader_access" ?
             (value === "true" ? "feasibility" : value === "false" ? "off" : null) :
             value.match(/^["']{1,3}(off|heuristic|feasibility)["']{1,3}$/)?.[1];
@@ -600,6 +641,8 @@ function showToml(kind, text, loadedFrom) {
           }
         }
         fields.push({start, end: start + value.length, input});
+      } else if (kind === "config" && parts.length === 1 && (root === "heuristic" || root === "feasibility")) {
+        readInlinePlacementOptions(inlinePlacement, root, source.slice(start, boundary).trimEnd());
       }
     } else if (visible && kind !== "config") {
       editor.append(el(table ? "h4" : "p", trimmed, table ? "toml-section" : "toml-comment"));
@@ -626,9 +669,11 @@ function showToml(kind, text, loadedFrom) {
     }
     if (!inlineHeuristic) addMissingHeuristicScores(placementRows, fields, source, heuristicStart, legacyFallbackScore);
     fields.sort((a, b) => a.start - b.start || a.end - b.end);
-    showPlacementGroups(editor, placementRows);
     updateRuleControls(ruleControls, placementRows);
     updatePlacementDependencies(placementRows);
+    const graphs = createPlacementGraphs(path => placementGraphValue(placementRows, inlinePlacement, path));
+    tomlDocuments.config.graphs = graphs;
+    showPlacementGroups(editor, placementRows, graphs);
   }
   const status = $(kind + "-toml-source");
   const origin = standalone ? (browserDefaults[tomlEditors[kind]] == null ?
@@ -673,6 +718,10 @@ function editedToml({source, fields}, preserveHidden = false) {
   return result + source.slice(cursor);
 }
 
+function refreshPlacementGraphs() {
+  for (const graph of Object.values(tomlDocuments.config.graphs ?? {})) graph.update();
+}
+
 function updateTomlSave(kind) {
   const document = tomlDocuments[kind];
   const key = tomlEditors[kind];
@@ -690,6 +739,7 @@ function updateTomlSave(kind) {
   const label = modified ? document.sourceLabel + (standalone ? " · Edited" : " · Unsaved changes") :
     document.saved ? "Saved " + status.dataset.projectFile : document.sourceLabel;
   if (status.textContent !== label) status.textContent = label;
+  if (kind === "config") refreshPlacementGraphs();
 }
 
 function buildDraft() {
