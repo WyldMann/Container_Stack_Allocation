@@ -20,9 +20,9 @@ class PlacementRejected(ValueError):
 @dataclass(frozen=True)
 class ValidatedInboundPlacement:
     proposal: PlacementProposal
-    equipment: Equipment
-    source_block: Block
-    destination_block: Block
+    equipment: Equipment | None
+    source_block: Block | None
+    destination_block: Block | None
 
 
 @dataclass(frozen=True)
@@ -355,6 +355,10 @@ class BadYardData:
             loader_policies=loader_policies,
             loader_selected=isinstance(equipment, Loader),
         )
+        if equipment is None:
+            if master_loaders or any(block.getRTG() is not None for block in blocks_by_id.values()):
+                raise PlacementRejected("Equipment is required when the yard has registered equipment.")
+            return ValidatedInboundPlacement(proposal, None, None, None)
         try:
             source, destination = self.validateEquipmentMove(
                 equipment,

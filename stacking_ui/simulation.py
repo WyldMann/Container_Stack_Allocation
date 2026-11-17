@@ -118,7 +118,7 @@ def _calculation(yard, search, result):
             "selected": candidate is winner,
             "rank": top_ranks.get(coordinates),
             "parameters": [parameter.getId() for parameter in candidate.parameters],
-            "equipment": candidate.equipment.getCode(),
+            "equipment": candidate.equipment.getCode() if candidate.equipment is not None else None,
             "distance": _number(candidate.distance),
             "equipment_outside_block": candidate.distance == float("inf"),
             "mass_difference": _number(candidate.delta_container_mass),
@@ -154,7 +154,7 @@ def _calculation(yard, search, result):
         "enabled_multipliers": [
             name for name, enabled in (
                 ("mass_multiplier", yard.model.enable_delta_container_mass),
-                ("distance_multiplier", yard.model.enable_equipment_distance),
+                ("distance_multiplier", yard.model.enable_equipment_distance and yard.hasEquipment()),
                 ("cluster_multiplier", yard.model.enable_size_cluster),
                 ("loader_destination_multiplier", score_destination),
                 ("loader_access_multiplier", occupied_mode == "heuristic"),

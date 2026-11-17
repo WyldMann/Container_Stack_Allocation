@@ -501,12 +501,46 @@ class ScenarioTests(unittest.TestCase):
         self.assertIn("max_tier", problem["message"])
         self.assertEqual(problem["sources"][0]["line"], 2)
 
-    def test_missing_equipment_blocks_readiness_but_keeps_preview(self):
+    def test_missing_equipment_uses_null_and_keeps_distance_disabled(self):
         self.rows["master_equipment"] = []
-        preview = self.preview()
-        self.assertFalse(preview["ready"])
-        self.assertEqual(preview["branches"][0]["summary"]["existing_containers"], 1)
+        self.rows["equipment_history"] = []
+        self.payload["config_toml"] = self.payload["config_toml"].replace(
+            "enable_equipment_distance = false", "enable_equipment_distance = true"
+        )
+        self.write_files()
+        scenario = prepare_scenario(self.payload)
+        preview = public_preview(scenario)
+        self.assertTrue(preview["ready"], preview)
         self.assertIn("no RTG", preview["branches"][0]["issues"][0]["message"])
+        self.assertEqual(preview["branches"][0]["summary"]["existing_containers"], 1)
+        self.assertEqual(preview["branches"][0]["issues"][0]["severity"], "warning")
+        simulation = Simulation(scenario)
+        step = simulation.step(simulation.id, "JKT74", 1)
+        self.assertEqual(step["row"]["status"], "placed")
+        self.assertIsNone(step["calculation"]["candidates"][0]["equipment"])
+        self.assertIsNone(step["calculation"]["candidates"][0]["distance"])
+        self.assertNotIn("distance_multiplier", step["calculation"]["enabled_multipliers"])
+        self.assertEqual(step["calculation"]["candidates"][0]["distance_multiplier"], 1.0)
+        self.assertIn("NEW1", scenario["branches"][0]["yard"].containers)
+
+    def test_two_yards_run_independently_when_one_has_no_equipment(self):
+        self.rows["terminal_branches"].append(dict(branch_id="3", terminal_id="1", branch_code="JKT64", branch_name="Second yard"))
+        self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {"block_id": "11", "branch_id": "3"})
+        document = tomllib.loads(self.payload["input_toml"])
+        document["input"]["filters"]["branch_code"] = ["JKT74", "JKT64"]
+        self.payload["input_toml"] = dump_toml(document)
+        self.write_files()
+        scenario = prepare_scenario(self.payload)
+        preview = public_preview(scenario)
+        self.assertTrue(preview["ready"], preview)
+        simulation = Simulation(scenario)
+        self.assertEqual(set(simulation.branches), {"JKT74", "JKT64"})
+        equipped = simulation.step(simulation.id, "JKT74", 1)
+        unequipped = simulation.step(simulation.id, "JKT64", 1)
+        self.assertEqual(equipped["row"]["status"], "placed")
+        self.assertEqual(unequipped["row"]["status"], "placed")
+        self.assertEqual(equipped["calculation"]["candidates"][0]["equipment"], "RTG1")
+        self.assertIsNone(unequipped["calculation"]["candidates"][0]["equipment"])
 
     def test_unserved_block_does_not_hide_rtg_block_with_lower_parameter_score(self):
         self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {

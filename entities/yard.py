@@ -459,6 +459,9 @@ class Yard:
         """A block can use its own RTG or a registered loader from the yard."""
         return block.getRTG() is not None or bool(self.master_loaders)
 
+    def hasEquipment(self) -> bool:
+        return bool(self.master_loaders) or any(block.getRTG() is not None for block in self.blocks_by_id.values())
+
     def findCoordsCandidates(
         self, container: Container, *, rejection_counts: dict[str, int] | None = None,
         loader_access_results: dict[tuple[str, int, int, int], LoaderAccessResult] | None = None,
@@ -531,7 +534,7 @@ class Yard:
         rejections = {} if trace is not None else None
         max_score, parameter_scores, candidate_coordinates = self.findCoordsCandidates(
             container, rejection_counts=rejections, loader_access_results=access_results,
-            require_equipment=True,
+            require_equipment=self.hasEquipment(),
         )
         if trace is not None:
             trace.update(
@@ -564,15 +567,10 @@ class Yard:
             feasibility=self.feasibility,
             loader_policies=self.loader_access_policies,
         )
-        self._commitPlacement(
-            container,
-            validated.proposal,
-            (
-                validated.equipment,
-                validated.source_block,
-                validated.destination_block,
-            ),
+        movement = None if validated.equipment is None else (
+            validated.equipment, validated.source_block, validated.destination_block,
         )
+        self._commitPlacement(container, validated.proposal, movement)
 
     def moveEquipment(
         self,
@@ -601,7 +599,7 @@ class Yard:
             raise ValueError("Only loaders can move between blocks.")
 
     # nearest equipment and its distance for a stack coord (without tier)
-    def nearestEquipmentDistance(self,block_id: str, row_index: int, slot_index: int) -> tuple[Equipment,float]:
+    def nearestEquipmentDistance(self,block_id: str, row_index: int, slot_index: int) -> tuple[Equipment | None,float | None]:
         block = self.getBlockByID(block_id)
         # if no RTG is present use loaders
         if block.rtg is None:
@@ -611,13 +609,15 @@ class Yard:
                 return  min(((loader,loader.inBlockDistance(row_index,slot_index)) for loader in loaders), key = lambda x : x[1])
             # else find loader in the nearest block
             else:
+                if not self.master_loaders:
+                    return None, None
                 return min(self.master_loaders, key = lambda loader: self.distanceBetweenBlock(block_id,loader.getCoordsStr()[0])),float("inf")
         else:
             return block.rtg, block.rtg.inBlockDistance(row_index, slot_index)
 
     # returns delta_container_mass, equipment, distance, multiplier, modelScore
     # attribute of candidateEvaluation other than coord and param
-    def modelEval(self, container:Container, coordinate: tuple[str,int,int,int]) -> tuple[float|None,Equipment,float,float,float]:
+    def modelEval(self, container:Container, coordinate: tuple[str,int,int,int]) -> tuple[float|None,Equipment|None,float|None,float,float]:
         stack = self.getStack(coordinate[0],coordinate[1],coordinate[2])
         delta_container_mass = self.model.compareTopContainerMass(container,stack)
         equipment, distance = self.nearestEquipmentDistance(coordinate[0],coordinate[1],coordinate[2])

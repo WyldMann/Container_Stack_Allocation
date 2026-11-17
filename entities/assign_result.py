@@ -10,8 +10,8 @@ class CandidateEvaluation:
     coordinates: tuple[str, int, int, int]
     parameters: list[Parameter]
     delta_container_mass: float | None
-    equipment: Equipment
-    distance: float
+    equipment: Equipment | None
+    distance: float | None
     size_cluster_multiplier: float
     evaluation_score: float
     loader_access: LoaderAccessResult | None = None
@@ -51,15 +51,15 @@ class AssignResult:
     def getParameterNames(self) -> list[list[str]]:
         return [[parameter.getName() for parameter in candidate.parameters]
                 for candidate in self.sorted_candidate_evaluations]
-    def getBestEquipment(self) -> Equipment:
+    def getBestEquipment(self) -> Equipment | None:
         return self.getBestCandidate().equipment
     def getCoords(self) -> list[tuple[str,int,int,int]]:
         return [x.coordinates for x in self.sorted_candidate_evaluations]
     def getDeltaContainerMasses(self) -> list[float|None]:
         return [x.delta_container_mass for x in self.sorted_candidate_evaluations]
-    def getEquipments(self) -> list[Equipment]:
+    def getEquipments(self) -> list[Equipment | None]:
         return [x.equipment for x in self.sorted_candidate_evaluations]
-    def getDistances(self) -> list[float]:
+    def getDistances(self) -> list[float | None]:
         return [x.distance for x in self.sorted_candidate_evaluations]
     def getScores(self) -> list[float]:
         return [x.evaluation_score for x  in self.sorted_candidate_evaluations]

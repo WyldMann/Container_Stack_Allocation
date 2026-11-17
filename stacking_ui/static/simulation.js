@@ -400,7 +400,7 @@ function placementTrace(calculation, status) {
   }
   if (winning) {
     const label = status === "placed" ? "Selected location" : "Proposed location";
-    const decision = el("li", label + " · " + placementLocation(winning) + " · " + winning.equipment);
+    const decision = el("li", label + " · " + placementLocation(winning) + " · " + (winning.equipment ?? "No equipment"));
     decision.append(heuristicTable(heuristicRows(winning, multipliers)));
     stages.append(decision);
     if (calculation.winning_score_ties > 1) {
@@ -442,7 +442,7 @@ function placementTrace(calculation, status) {
       calculation.candidates.map(candidate => [
         placementLocation(candidate),
         candidate.selected ? (status === "placed" ? "Selected" : "Proposed") : "Alternative",
-        candidate.parameters.map(parameter => "P" + parameter).join(", ") || "—", candidate.equipment,
+        candidate.parameters.map(parameter => "P" + parameter).join(", ") || "—", candidate.equipment ?? "No equipment",
         candidate.equipment_outside_block ? "Outside block" : number(candidate.distance),
         number(candidate.mass_difference), ...(showLoaderAccess ? loaderAccessValues(candidate) : []),
         ...multipliers.map(key => number(candidate[key])), number(candidate.score)

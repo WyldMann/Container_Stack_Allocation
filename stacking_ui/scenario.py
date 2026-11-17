@@ -314,9 +314,12 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
     if not yard.blocks_by_id:
         add("yard_blocks", "No valid blocks are available for this branch.")
     unserved_blocks = [block for block in yard.blocks_by_id.values() if not yard.canServeBlock(block)]
-    severity = "error" if len(unserved_blocks) == len(yard.blocks_by_id) else "warning"
+    severity = "error" if yard.hasEquipment() and len(unserved_blocks) == len(yard.blocks_by_id) else "warning"
     for block in unserved_blocks:
-        add("master_equipment", f"Block {block.getCode()} has no RTG and no registered loader is available.",
+        message = f"Block {block.getCode()} has no RTG and no registered loader is available."
+        if not yard.hasEquipment():
+            message += " Placements will have no equipment."
+        add("master_equipment", message,
             severity=severity)
     for row in inputs["master_equipment"]:
         if row["equipment_code"] not in inputs["equipment_history"]:

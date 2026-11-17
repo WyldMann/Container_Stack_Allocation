@@ -111,8 +111,8 @@ class HeuristicModel:
                 self.lambda_delta_container_mass, delta_container_mass,
             )
 
-    def equipmentDistance(self, equipment_distance: float) -> float:
-        if not self.enable_equipment_distance:
+    def equipmentDistance(self, equipment_distance: float | None) -> float:
+        if equipment_distance is None or not self.enable_equipment_distance:
             return 1.0
 
         if equipment_distance == float('inf'):
@@ -142,7 +142,7 @@ class HeuristicModel:
         return destination, current, future
 
     #multiplicative weights
-    def evaluate(self,delta_container_mass:float|None, equipment_distance:float,
+    def evaluate(self,delta_container_mass:float|None, equipment_distance:float|None,
                  size_cluster_multiplier: float = 1.0) -> float:
         cluster_score = size_cluster_multiplier if self.enable_size_cluster else 1.0
         return (self.deltaContainerMass(delta_container_mass)

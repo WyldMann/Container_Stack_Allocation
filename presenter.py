@@ -124,7 +124,10 @@ class YardPresenter(Presenter):
             "Score": result.getScores()
         }))
         self.out("Container can be assigned to", toStrSlotRowTier(coordinates))
-        self.out("using", equipment, "currently in", toIDSlotRow(equipment.getCoordsStr()))
+        if equipment is None:
+            self.out("with no equipment")
+        else:
+            self.out("using", equipment, "currently in", toIDSlotRow(equipment.getCoordsStr()))
 
 class BadDataPresenter(Presenter):
 

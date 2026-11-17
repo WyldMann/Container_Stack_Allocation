@@ -120,9 +120,10 @@ independently. In browser-upload mode, the selected uploads supply the CSVs.
 Previews are limited to 2,000,000 tier cells per branch.
 
 Queue order follows the filtered CSV. Inbound records without branch coordinates
-are included in each selected branch, matching the current importer. Empty
-equipment data allows inspection, but a block without equipment is flagged
-before placement. Existing import warnings and errors appear in the preview.
+are included in each selected branch, matching the current importer. An
+equipment-free yard can run with null equipment and a neutral equipment-distance
+multiplier; no equipment is moved. Blocks without equipment are flagged in the
+preview. Existing import warnings and errors appear there too.
 
 "Source rows" counts the uploaded records. "Loaded records" counts the result
 after branch filtering, grouping, and latest equipment-history selection.

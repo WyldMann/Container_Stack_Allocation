@@ -111,14 +111,15 @@ class EquipmentMovementTests(unittest.TestCase):
         self.assertEqual(self.source.getLoaders(), [])
         self.assertEqual(self.destination.getLoaders(), [self.loader])
 
-    def test_assignment_without_equipment_returns_no_placement(self):
+    def test_assignment_without_equipment_uses_null_equipment(self):
         self.source.rtg = None
         self.source.removeLoader(self.loader)
         self.yard.master_loaders.clear()
-        trace = {}
-        self.assertIsNone(self.yard.assignContainer(make_container(container_size="20"), trace=trace))
-        self.assertEqual(trace["rejections"], {"no_available_equipment": trace["checked"]})
-        self.assertFalse(self.yard.containers)
+        result = self.yard.assign_and_place(make_container(container_size="20"))
+        self.assertIsNone(result.getBestEquipment())
+        self.assertIsNone(result.getDistances()[0])
+        self.assertEqual(len(self.yard.containers), 1)
+        self.assertFalse(self.yard.hasEquipment())
 
     def test_assignment_borrows_loader_from_nearest_block(self):
         yard = Yard(
