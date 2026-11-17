@@ -69,8 +69,9 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    settings**. Each editor's **Save** button writes its values to the
    corresponding project TOML.
 3. Click **Generate preview**. The top-down map places blocks using their
-   `POS_X` and `POS_Y` coordinates. Use **Fit yard** to see all blocks or
-   **100%** to read the stack grids at full size. Select any stack to inspect
+   `POS_X` and `POS_Y` coordinates. Use the mouse wheel over the map, the zoom
+   slider, or the **−** and **+** buttons to adjust its size. Right-click and drag
+   to pan the map. Select any stack to inspect
    its tiers and assigned parameters. Stack colors show
    the yard plan, and the numbers show occupied tiers over capacity. **Yard tier
    gaps** lists affected slots. Before starting a branch, **Fill gaps with dummy

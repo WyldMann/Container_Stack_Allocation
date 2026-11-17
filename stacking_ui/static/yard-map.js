@@ -186,11 +186,19 @@ function createYardMap(branch, branches = [branch]) {
   const legend = el("div", undefined, "yard-legend");
   legend.setAttribute("aria-label", "Map legend");
   const controls = el("div", undefined, "yard-map-controls");
-  const fit = button("Fit yard", "yard-map-zoom");
-  const full = button("Show yard at 100%", "yard-map-zoom");
-  fit.textContent = "Fit yard";
-  full.textContent = "100%";
-  controls.append(fit, full);
+  const zoomOut = button("Zoom out", "yard-map-zoom-button");
+  zoomOut.textContent = "−";
+  const zoomSlider = el("input", undefined, "yard-map-zoom-slider");
+  zoomSlider.type = "range";
+  zoomSlider.min = "1";
+  zoomSlider.max = "200";
+  zoomSlider.step = "any";
+  zoomSlider.setAttribute("aria-label", "Yard map zoom");
+  const zoomIn = button("Zoom in", "yard-map-zoom-button");
+  zoomIn.textContent = "+";
+  const zoomLevel = el("output", undefined, "yard-map-zoom-level");
+  zoomLevel.setAttribute("aria-live", "off");
+  controls.append(zoomOut, zoomSlider, zoomIn, zoomLevel);
   toolbar.append(legend, controls);
   const traceKey = el("div", undefined, "yard-trace-key");
   traceKey.hidden = true;
@@ -396,34 +404,80 @@ function createYardMap(branch, branches = [branch]) {
     view.block.occupied_tiers > current.block.occupied_tiers ? view : current);
   selectStack(initial, Math.max(0, initial.block.stacks.findIndex(stack => stack.tiers.length)));
 
+  let fitScale = 1;
+  let scale = 1;
   let fitted = true;
-  function resizeMap() {
-    const scale = fitted ? Math.min(1, (viewport.clientWidth || width) / width,
-      (viewport.clientHeight || height) / height) : 1;
+  function paintZoom(nextScale, keepCenter = false, pointer = null) {
+    const frame = viewport.getBoundingClientRect();
+    const oldExtent = extent.getBoundingClientRect();
+    const targetX = pointer?.x ?? frame.left + viewport.clientWidth / 2;
+    const targetY = pointer?.y ?? frame.top + viewport.clientHeight / 2;
+    const anchorX = !pointer && oldExtent.width <= viewport.clientWidth ? width / 2 :
+      Math.max(0, Math.min(width, (targetX - oldExtent.left) / scale));
+    const anchorY = !pointer && oldExtent.height <= viewport.clientHeight ? height / 2 :
+      Math.max(0, Math.min(height, (targetY - oldExtent.top) / scale));
+    scale = Math.max(fitScale, Math.min(2, nextScale));
+    fitted = scale <= fitScale + 0.0001;
     stage.style.transform = "scale(" + scale + ")";
-    extent.style.width = Math.floor(width * scale) + "px";
-    extent.style.height = Math.floor(height * scale) + "px";
-    fit.setAttribute("aria-pressed", String(fitted));
-    full.setAttribute("aria-pressed", String(!fitted));
+    extent.style.width = Math.ceil(width * scale) + "px";
+    extent.style.height = Math.ceil(height * scale) + "px";
+    zoomSlider.min = String(fitScale * 100);
+    zoomSlider.value = String(scale * 100);
+    zoomLevel.textContent = Math.round(scale * 100) + "%";
+    zoomSlider.setAttribute("aria-valuetext", zoomLevel.textContent);
+    zoomOut.disabled = fitted;
+    zoomIn.disabled = scale >= 2;
+    if (keepCenter) {
+      const newExtent = extent.getBoundingClientRect();
+      viewport.scrollLeft += newExtent.left + anchorX * scale - targetX;
+      viewport.scrollTop += newExtent.top + anchorY * scale - targetY;
+    }
   }
-  fit.addEventListener("click", () => {
-    fitted = true;
-    resizeMap();
-    viewport.scrollTop = 0;
-    viewport.scrollLeft = 0;
+  function resizeMap() {
+    fitScale = Math.min(1, (viewport.clientWidth || width) / width,
+      (viewport.clientHeight || height) / height);
+    paintZoom(fitted ? fitScale : scale);
+  }
+  zoomOut.addEventListener("click", () => paintZoom(scale / 1.25, true));
+  zoomIn.addEventListener("click", () => paintZoom(scale * 1.25, true));
+  zoomSlider.addEventListener("input", () => paintZoom(Number(zoomSlider.value) / 100, true));
+  viewport.addEventListener("wheel", event => {
+    if (!event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    event.preventDefault();
+    const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1);
+    paintZoom(scale * Math.exp(-delta * 0.0015), true, {x: event.clientX, y: event.clientY});
+  }, {passive: false});
+  let pan = null;
+  viewport.addEventListener("pointerdown", event => {
+    if (event.button !== 2 || pan) return;
+    event.preventDefault();
+    pan = {id: event.pointerId, x: event.clientX, y: event.clientY,
+      left: viewport.scrollLeft, top: viewport.scrollTop};
+    viewport.setPointerCapture(event.pointerId);
+    viewport.classList.add("yard-map-panning");
   });
+  viewport.addEventListener("pointermove", event => {
+    if (event.pointerId !== pan?.id) return;
+    event.preventDefault();
+    viewport.scrollLeft = pan.left - (event.clientX - pan.x);
+    viewport.scrollTop = pan.top - (event.clientY - pan.y);
+  });
+  function stopPan(event) {
+    if (event.pointerId !== pan?.id) return;
+    pan = null;
+    viewport.classList.remove("yard-map-panning");
+    if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
+  }
+  viewport.addEventListener("pointerup", stopPan);
+  viewport.addEventListener("pointercancel", stopPan);
+  viewport.addEventListener("lostpointercapture", stopPan);
+  viewport.addEventListener("contextmenu", event => event.preventDefault());
   function centerSelection() {
     const tile = selection.view.tiles[selection.index].getBoundingClientRect();
     const frame = viewport.getBoundingClientRect();
     viewport.scrollLeft += tile.left - frame.left + (tile.width - viewport.clientWidth) / 2;
     viewport.scrollTop += tile.top - frame.top + (tile.height - viewport.clientHeight) / 2;
   }
-  full.addEventListener("click", () => {
-    if (!fitted) return;
-    fitted = false;
-    resizeMap();
-    centerSelection();
-  });
   if (typeof ResizeObserver === "function") {
     const observer = new ResizeObserver(() => {
       if (viewport.isConnected) resizeMap();
