@@ -37,7 +37,7 @@ function comparisonStackInspector(block, row, slot, actual, reference, kind) {
   const referenceByTier = new Map(reference.map(tier => [tier.tier, tier]));
   const tiers = [...new Set([...actualByTier.keys(), ...referenceByTier.keys()])].sort((a, b) => b - a);
   const label = tier => tier?.dummy ? "Dummy tier" :
-    tier ? tier.container + " · " + tier.size + " ft" : "Empty";
+    tier ? tier.container + " · " + tier.size + " ft · Operation: " + (tier.operation || "—") : "Empty";
   const contents = table(["Tier", "Simulation", "Imported CSV"], tiers.map(tier => [
     tier, label(actualByTier.get(tier)), label(referenceByTier.get(tier))
   ]));

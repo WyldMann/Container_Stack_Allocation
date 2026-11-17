@@ -916,7 +916,8 @@ function renderInboundCard(card, row) {
   card.className = "inbound-card inbound-" + row.status;
   card.replaceChildren(el("span", "#" + row.position, "inbound-position"),
     el("strong", row.container_id || "Missing container ID"),
-    el("span", (row.size ? row.size + " ft · " : "") + row.status, "inbound-meta"));
+    el("span", (row.size ? row.size + " ft · " : "") +
+      "Operation: " + (row.operation || "—") + " · " + row.status, "inbound-meta"));
   if (row.reason && row.status !== "invalid") card.append(el("span", row.reason, "inbound-reason"));
 }
 

@@ -47,18 +47,21 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
   gap: 8px 16px;
   margin-bottom: 10px;
 }
-.yard-map-controls { display: flex; gap: 6px; }
-.yard-map-zoom {
-  padding: 5px 9px;
+.yard-map-controls { display: flex; align-items: center; gap: 7px; }
+.yard-map-zoom-button {
+  width: 29px;
+  height: 29px;
+  padding: 0;
   border: 1px solid var(--yard-line);
+  border-radius: 5px;
   background: #fff;
   color: var(--yard-navy);
-  font-size: 12px;
+  font-size: 18px;
+  line-height: 1;
 }
-.yard-map-zoom[aria-pressed="true"] {
-  border-color: #5b83a2;
-  background: #e8f1f8;
-}
+.yard-map-zoom-button:disabled { opacity: .4; cursor: default; }
+.yard-map-zoom-slider { width: 110px; accent-color: #285a8e; }
+.yard-map-zoom-level { min-width: 42px; color: var(--yard-navy); font-size: 12px; text-align: right; }
 .yard-trace-key {
   margin-bottom: 10px;
   padding: 6px 9px;
@@ -77,6 +80,8 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
   background-image: radial-gradient(#cfdddf 1px, transparent 1px);
   background-size: 10px 10px;
 }
+.yard-map-scroll.yard-map-panning,
+.yard-map-scroll.yard-map-panning * { cursor: grabbing; user-select: none; }
 .yard-map-extent { position: relative; overflow: hidden; margin-inline: auto; }
 .yard-map-stage { position: absolute; inset: 0 auto auto 0; transform-origin: top left; }
 .yard-block {
