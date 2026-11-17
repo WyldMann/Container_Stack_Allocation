@@ -27,19 +27,23 @@ STATIC = Path(__file__).with_name("static")
 ENTRY_PAGE = "container-stacking-simulator.html"
 
 
-def project_snapshot():
+def project_snapshot(*, branch_code=None):
     documents = read_project_tomls()
     input_text = documents["input_toml"]
     inputs = read_toml(input_text, "Stacking inputs")
     portable_input(inputs)  # Validate that every source is CSV.
     inputs.pop("sql", None)
     input_text = re.sub(r"(?ms)^[ \t]*\[sql(?:\.[^\]\n]+)?\][^\n]*\n.*?(?=^[ \t]*\[|\Z)", "", input_text)
+    if branch_code is not None:
+        inputs.setdefault("input", {}).setdefault("filters", {})["branch_code"] = [branch_code]
     base = DEFAULT_STACKING_INPUT_CONFIG_FILE.parent
     settings = parse_input_config(inputs, base_dir=base)
     files = settings["csv_files"]
     for name, path in files.items():
         if not path.is_relative_to(PROJECT_ROOT) or path.suffix.casefold() != ".csv":
             raise ValueError(f"{name} must be a CSV path inside the project.")
+        if not path.is_file():
+            raise FileNotFoundError(f"Missing CSV for {name}: {path}")
         inputs["csv"]["files"][name] = Path(os.path.relpath(path, base)).as_posix()
     # Preserve the editor comments whenever the source already uses portable paths.
     documents["input_toml"] = input_text if read_toml(input_text, "Stacking inputs") == inputs else dump_toml(inputs)
@@ -58,7 +62,7 @@ def project_snapshot():
     return documents, buffer.getvalue()
 
 
-def build(runtime, destination):
+def build(runtime, destination, *, branch_code=None):
     manifest = json.loads((runtime / "package.json").read_text(encoding="utf-8"))
     if manifest.get("name") != "pyodide" or manifest.get("version") != RUNTIME_VERSION:
         raise ValueError(f"Use the Pyodide {RUNTIME_VERSION} npm package.")
@@ -67,7 +71,7 @@ def build(runtime, destination):
         for name, mime in RUNTIME_FILES.items()
     }
     licenses = {name: (runtime / name).read_bytes() for name in ("LICENSE", "LICENSE-Python")}
-    documents, snapshot = project_snapshot()
+    documents, snapshot = project_snapshot(branch_code=branch_code)
     assets["project.zip"] = ["application/zip", base64.b64encode(snapshot).decode("ascii")]
 
     page = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -105,9 +109,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runtime", type=Path, help=f"Extracted Pyodide {RUNTIME_VERSION} npm package directory")
     parser.add_argument("output", type=Path, help="Destination ZIP file")
+    parser.add_argument("--branch-code", help="Branch filter to bundle instead of the project default")
     args = parser.parse_args()
     try:
-        build(args.runtime, args.output)
+        build(args.runtime, args.output, branch_code=args.branch_code)
     except (OSError, ValueError) as error:
         parser.exit(2, f"{error}\n")
     print(f"Standalone simulator saved to {args.output}")

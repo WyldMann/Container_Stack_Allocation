@@ -33,6 +33,10 @@
       <label><input id="source-upload" type="radio" name="file-source" value="upload"> Replace selected CSVs</label>
     </fieldset>
     <p id="source-description"></p>
+    <div class="actions">
+      <button id="choose-csv-folder" type="button" class="secondary">Select CSV folder</button>
+      <input id="load-csv-folder" type="file" webkitdirectory multiple hidden>
+    </div>
     <details id="stacking-inputs" open>
       <summary>Input configuration <span id="input-toml-source" class="toml-source" data-project-file="container_stacking_input.toml" aria-live="polite"></span></summary>
       <div class="actions toml-choose">

@@ -464,7 +464,7 @@ function createYardMap(branch, branches = [branch]) {
         "Slot " + two(candidate.slot);
       const state = chosen ? "Placed" : "Passed parameter selection";
       const rankLabel = candidate.rank == null ? "" : "Rank " + candidate.rank + " · ";
-      const description = rankLabel + slots + " · Tier " + candidate.tier + " · " + candidate.equipment + " · " + state;
+      const description = rankLabel + slots + " · Tier " + candidate.tier + " · " + (candidate.equipment ?? "No equipment") + " · " + state;
       const breakdown = heuristicRows(candidate, calculation.enabled_multipliers);
       for (const tile of footprint) {
         if (!traceTiles.has(tile)) traceTiles.set(tile, []);

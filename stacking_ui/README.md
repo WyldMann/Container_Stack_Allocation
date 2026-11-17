@@ -12,6 +12,10 @@ bundled CSV. **Input configuration** and **CSV column mappings** each offer
 **Load from TOML**. **Set default** remembers the current TOML in this browser
 for future visits to the same page. **Save as TOML** downloads a copy.
 **Save yard CSV** downloads **containers.csv**.
+Use **Select CSV folder** to import all nine CSVs named by the current input
+TOML at once. The browser asks you to choose the folder; a missing or ambiguous
+file leaves the previous selection intact. The bundled TOML already names the
+standard CSV files, so selecting a folder with those names needs no new TOML.
 
 **Currently loader accessible** checks whether the loader can reach the
 destination before placement. **Preserve access to occupied stacks** and
@@ -29,6 +33,14 @@ as **LICENSE-Python** in the extracted **package** directory. Then run:
 ```powershell
 .\.venv\Scripts\python.exe -m stacking_ui.standalone path\to\package output\container-stacking-standalone.zip
 ```
+
+To preset the standalone filter to JKT64 without adding any other CSVs, run:
+
+```powershell
+.\.venv\Scripts\python.exe -m stacking_ui.standalone path\to\package output\container-stacking-standalone.zip --branch-code JKT64
+```
+
+Select the JKT64 CSV folder in the browser before generating its preview.
 
 ## Project launcher
 

@@ -755,15 +755,46 @@ function buildDraft() {
   return draft;
 }
 
+function csvFolderPath(value) {
+  const literal = value.trim();
+  if (literal.length < 2 || literal[0] !== literal.at(-1) || !"\"'".includes(literal[0])) {
+    throw new Error("Each CSV path in the input TOML must be a quoted string.");
+  }
+  return literal.slice(1, -1).replaceAll("\\", "/").replace(/\/+/g, "/").toLowerCase();
+}
+
+function matchCsvFolder(selectedFiles) {
+  const entries = selectedFiles.filter(file => file.name.toLowerCase().endsWith(".csv")).map(file => ({
+    file, path: (file.webkitRelativePath || file.name).replaceAll("\\", "/").toLowerCase()
+  }));
+  const matches = new Map();
+  const missing = [];
+  for (const name of Object.keys(descriptions)) {
+    const field = tomlDocuments.input.csvPaths.get(name);
+    if (!field) throw new Error("The input TOML has no CSV path for " + name + ".");
+    const path = csvFolderPath(tomlFieldValue(field));
+    const filename = path.split("/").at(-1);
+    const exact = entries.filter(entry => path === entry.path || path.endsWith("/" + entry.path));
+    const candidates = exact.length ? exact : entries.filter(entry => entry.file.name.toLowerCase() === filename);
+    if (candidates.length > 1) throw new Error("Several files match " + name + ". Select a narrower CSV folder.");
+    if (!candidates.length) missing.push(name);
+    else matches.set(name, candidates[0].file);
+  }
+  if (missing.length) throw new Error("CSV folder is missing files for: " + missing.join(", ") + ".");
+  return matches;
+}
+
 function showDatasets() {
   const grid = $("datasets");
   const useFolder = $("source-folder").checked;
   $("source-description").textContent = standalone
-    ? (useFolder ? "Use the CSVs included in this package." : "Choose replacement UTF-8 CSVs. Datasets without a replacement use their bundled CSV.")
+    ? (useFolder ? "Use the CSVs included in this package, or select a CSV folder. Standard filenames use the bundled input configuration." :
+      "Choose replacement UTF-8 CSVs or select a folder. Standard filenames use the bundled input configuration.")
     : (useFolder
       ? "Use the prefilled CSV paths or edit them below. Relative paths start in config/container_stacking. Keep the quotes around each path."
       : "Choose a UTF-8 CSV for each dataset, or mark it explicitly empty.");
   grid.replaceChildren();
+  $("choose-csv-folder").hidden = !standalone && useFolder;
   for (const [name, [title, description]] of Object.entries(descriptions)) {
     const card = el("div", undefined, "dataset");
     card.append(el("strong", title), el("small", description));
@@ -1047,6 +1078,21 @@ for (const source of ["folder", "upload"]) {
     changed();
   });
 }
+const csvFolderPicker = $("load-csv-folder");
+$("choose-csv-folder").addEventListener("click", () => csvFolderPicker.click());
+csvFolderPicker.addEventListener("change", () => action(async () => {
+  const selectedFiles = Array.from(csvFolderPicker.files);
+  csvFolderPicker.value = "";
+  if (!selectedFiles.length) return;
+  const matches = matchCsvFolder(selectedFiles);
+  const selected = await Promise.all(Array.from(matches, async ([name, file]) =>
+    [name, {name: file.name, content: await readText(file)}]));
+  files = Object.fromEntries(selected);
+  $("source-upload").checked = true;
+  showDatasets();
+  changed();
+  message("Loaded " + selected.length + " CSVs from the selected folder.");
+}));
 for (const [kind, key] of Object.entries(tomlEditors)) {
   const setDefault = $("default-" + kind);
   if (standalone) {
