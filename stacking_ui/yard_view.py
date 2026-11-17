@@ -47,6 +47,7 @@ def stack_view(stack, row, slot):
             "container_id": container.getId(),
             "size": container.getContSize(),
             "fill": container.getContFill(),
+            "operation": container.getOpType(),
             "grade": container.getContGrade(),
             "weight": weight if weight is not None and isfinite(weight) else None,
             "anchor_slot": container.getCoordsInt()[3] + 1,

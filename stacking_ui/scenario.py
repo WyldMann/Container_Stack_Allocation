@@ -309,7 +309,8 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
                 status, reason = "invalid", str(error)
                 branch["issues"].append(issue("inbound_containers", reason, sources=origin, severity="warning"))
         branch["queue"].append({"position": index + 1, "container_id": row["container_id"],
-                                "size": row["container_size"], "status": status,
+                                "size": row["container_size"], "operation": row["operation_type"],
+                                "status": status,
                                 "reason": reason, "sources": origin})
     if not yard.blocks_by_id:
         add("yard_blocks", "No valid blocks are available for this branch.")

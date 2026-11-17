@@ -162,15 +162,15 @@ function createYardMap(branch, branches = [branch]) {
     for (let number = highestTier; number >= 1; number--) {
       const tier = tiers.get(number);
       if (!tier || tier.dummy) {
-        rows.push([number, tier ? "Occupied · Missing record" : "Empty", "—", "—", "—", "—"]);
+        rows.push([number, tier ? "Occupied · Missing record" : "Empty", "—", "—", "—", "—", "—"]);
         continue;
       }
       rows.push([
         number, tier.container_id, tier.size + " ft", {F: "Full", E: "Empty"}[tier.fill] ?? tier.fill,
-        tier.grade, tier.weight == null ? "—" : tier.weight.toLocaleString(),
+        tier.operation || "—", tier.grade, tier.weight == null ? "—" : tier.weight.toLocaleString(),
       ]);
     }
-    const contents = table(["Tier", "Container", "Size", "Fill", "Grade", "Weight"], rows);
+    const contents = table(["Tier", "Container", "Size", "Fill", "Operation", "Grade", "Weight"], rows);
     contents.classList.add("yard-tier-table");
     if (placed) contents.querySelectorAll("tbody tr")[highestTier - placed.tier].classList.add("yard-placed-tier");
     panel.append(contents);

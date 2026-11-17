@@ -134,7 +134,8 @@ def _occupied_slots(block):
             if not stack.occupancy():
                 continue
             tiers = [
-                {"tier": tier, "container": container.getId(), "size": container.getContSize()}
+                {"tier": tier, "container": container.getId(), "size": container.getContSize(),
+                 "operation": container.getOpType()}
                 if not isinstance(container, DummyContainer) else {"tier": tier, "dummy": True}
                 for tier, container in enumerate(stack.getContainers(), 1) if container is not None
             ]
