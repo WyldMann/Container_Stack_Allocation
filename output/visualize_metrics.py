@@ -17,10 +17,10 @@ from pathlib import Path
 import warnings
 
 
-branch = "JKT64"
+branch = ["JKT64", "JKT74"]
 
 WIB = timezone(timedelta(hours=7), "WIB")
-DEFAULT_INPUT = Path(__file__).resolve().parent / ("existing_yard_metrics_" + branch + ".jsonl")
+OUTPUT_DIRECTORY = Path(__file__).resolve().parent
 
 
 def load_records(path):
@@ -77,7 +77,7 @@ def equipment_codes(row):
     return tuple(sorted(set(codes), key=str.casefold))
 
 
-def plot_metrics(records):
+def plot_metrics(records, yard_branch=None):
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
     from matplotlib.ticker import PercentFormatter
@@ -100,7 +100,7 @@ def plot_metrics(records):
         layout="constrained", squeeze=False,
     )
     axes = axes[:, 0]
-    figure.suptitle(f"Yard metrics - {branch}", fontsize=16)
+    figure.suptitle(f"Yard metrics - {yard_branch}" if yard_branch else "Yard metrics", fontsize=16)
 
     for field, label in (
         ("avg_shifting_percentage", "Average shifting"),
@@ -145,10 +145,18 @@ def plot_metrics(records):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("input", nargs="?", type=Path, default=DEFAULT_INPUT)
-    parser.add_argument("--output", type=Path, help="Image destination (default: input filename with .png)")
+    parser.add_argument("input", nargs="?", type=Path,
+                        help="Single JSONL override (default: process every configured branch)")
+    parser.add_argument("--output", type=Path, help="Image destination for a single input (default: input filename with .png)")
     parser.add_argument("--show", action="store_true", help="Also open the plot window")
     args = parser.parse_args()
+    if args.output and args.input is None:
+        parser.error("--output requires a single input JSONL file")
+    jobs = (
+        [(None, args.input)] if args.input is not None else
+        [(yard_branch, OUTPUT_DIRECTORY / f"existing_yard_metrics_{yard_branch}.jsonl")
+         for yard_branch in dict.fromkeys(branch)]
+    )
     try:
         import matplotlib
         if not args.show:
@@ -156,20 +164,32 @@ def main():
         import matplotlib.pyplot as plt
     except ImportError:
         parser.error("Install matplotlib: python -m pip install -r requirements-visualization.txt")
-    output = args.output or args.input.with_suffix(".png")
-    if output.resolve() == args.input.resolve():
-        parser.error("Output must differ from the input JSONL file")
-    try:
-        records = load_records(args.input)
-        figure = plot_metrics(records)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        figure.savefig(output, dpi=160, bbox_inches="tight")
-    except (OSError, ValueError) as error:
-        parser.error(str(error))
-    print(f"Plotted {len(records)} records: {output.resolve()}")
+    errors = []
+    for yard_branch, input_path in jobs:
+        output = args.output or input_path.with_suffix(".png")
+        if output.resolve() == input_path.resolve():
+            parser.error("Output must differ from the input JSONL file")
+        figure = None
+        try:
+            records = load_records(input_path)
+            if yard_branch is None:
+                yard_branch = records[0].get("branch_code") or input_path.stem.removeprefix("existing_yard_metrics_")
+            figure = plot_metrics(records, yard_branch)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            figure.savefig(output, dpi=160, bbox_inches="tight")
+        except (OSError, ValueError) as error:
+            errors.append(f"{input_path}: {error}")
+            if figure is not None:
+                plt.close(figure)
+            continue
+        print(f"Plotted {len(records)} records: {output.resolve()}")
+        if not args.show:
+            plt.close(figure)
     if args.show:
         plt.show()
-    plt.close(figure)
+        plt.close("all")
+    if errors:
+        parser.error("\n".join(errors))
 
 
 if __name__ == "__main__":
