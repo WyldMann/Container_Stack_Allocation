@@ -138,43 +138,60 @@ function createPlacementGraphs(read) {
         note: "Zero distance " + score(peak) + " · Half-score distance " + score(peak / 2)};
     }},
     cluster: {axis: "Distance to one neighboring stack (yard grid units)", calculate() {
-      const on = flag("heuristic.enable_size_cluster", true);
-      const radius = on ? number("size_cluster_radius", 3, 0, Number.MAX_VALUE, true) : 0;
-      const bias = radius ? number("size_cluster_bias", 1, 0) : 0;
+      const legacyOn = flag("heuristic.enable_size_cluster", true);
+      const neighbors = [
+        {term: "reward", name: "Same-size reward", sign: 1, style: ""},
+        {term: "penalty", name: "Different-size penalty", sign: -1, style: "other"}
+      ].map(neighbor => {
+        const {term} = neighbor;
+        const on = flag("heuristic.enable_size_cluster_" + term, legacyOn);
+        const radius = on ? number("size_cluster_" + term + "_radius",
+          () => number("size_cluster_radius", 3, 0, Number.MAX_VALUE, true), 0, Number.MAX_VALUE, true) : 0;
+        return {...neighbor, on, radius,
+          bias: radius ? number("size_cluster_" + term + "_bias", () => number("size_cluster_bias", 1, 0), 0) : 0,
+          half: on ? number("hl_size_cluster_" + term + "_distance", () => number("hl_size_cluster_distance", 1.5)) : 1,
+          prior: on ? number("size_cluster_" + term + "_prior", () => number("size_cluster_prior", 2)) : 1};
+      });
+      const radius = Math.max(...neighbors.map(neighbor => neighbor.radius));
       const end = Math.max(4, radius, Math.min(Number.MAX_VALUE, radius * 1.25));
       const ticks = end <= 12 ? [0, 1, 2, end] : [0, end / 2, end];
       const base = {start: 0, end, ticks};
-      if (!on || radius === 0 || bias === 0) {
-        const state = !on ? "Scoring off" : radius === 0 ? "Search radius is zero" : "Clustering strength is zero";
+      if (neighbors.every(neighbor => !neighbor.on) || radius === 0 || neighbors.every(neighbor => neighbor.bias === 0)) {
+        const state = neighbors.every(neighbor => !neighbor.on) ? "Reward and penalty switches are off" :
+          radius === 0 ? "Active search radii are zero" : "Reward and penalty effects are off";
         return {...base, ...neutral(1, end, state + " · 1× for any neighbor.")};
       }
-      const half = number("hl_size_cluster_distance", 1.5);
-      const prior = number("size_cluster_prior", 2);
-      const neighbors = [{name: "Same size", sign: 1, style: ""}, {name: "Different size", sign: -1, style: "other"}];
-      const factor = (distance, sign) => {
+      const factor = (distance, {radius, bias, half, prior, sign}) => {
+        if (distance > radius || bias === 0) return 1;
         const evidence = 2 ** (-distance / half);
         return 2 ** (sign * bias * (evidence / (evidence + prior)));
       };
-      const lines = neighbors.map(({sign, style}) =>
-        series(radius === 1 ? [[1, factor(1, sign)]] : sample(1, radius, distance => factor(distance, sign)), style));
+      const lines = neighbors.flatMap(neighbor => {
+        const {radius, bias, style} = neighbor;
+        if (radius === 0 || bias === 0) return [series([[1, 1], [end, 1]], style)];
+        const inside = radius === 1 ? [[1, factor(1, neighbor)]] : sample(1, radius, distance => factor(distance, neighbor));
+        const outside = Math.hypot(radius, 1);
+        return [series(inside, style), ...(outside > radius && outside <= end ? [series([[outside, 1], [end, 1]], style)] : [])];
+      });
       // Integer row and slot offsets make (radius, 1) the first attainable distance beyond the cutoff.
       const firstOutside = Math.hypot(radius, 1);
       if (firstOutside > radius && firstOutside <= end) lines.push(series([[firstOutside, 1], [end, 1]], "neutral"));
       const markers = [];
       const comparison = [1, 2].map(distance => {
-        if (distance > radius) {
-          markers.push([distance, 1, "Distance " + distance + " · Outside radius · 1×", "neutral"]);
-          return "At " + distance + " · Outside radius, 1×";
-        }
-        const results = neighbors.map(({name, sign, style}) => {
-          const value = factor(distance, sign);
-          markers.push([distance, value, "Distance " + distance + " · " + name + " " + score(value), style]);
-          return name + " " + score(value);
+        const results = neighbors.map(neighbor => {
+          const {name, radius, style, on} = neighbor;
+          const value = factor(distance, neighbor);
+          const description = name + " " + score(value) + (!on ? " (off)" : distance > radius ? " (outside radius)" : "");
+          markers.push([distance, value, "Distance " + distance + " · " + description, style]);
+          return description;
         });
         return "At " + distance + " · " + results.join(", ");
       });
-      return {...base, guide: radius, lines, markers, keys: [...neighbors.map(({name, style}) => [name, style]),
-        ["Outside radius · 1×", "neutral"]], note: comparison.join(". ") + "."};
+      const guides = neighbors[0].radius === neighbors[1].radius ? [[radius, "Both radii", "neutral"]] :
+        neighbors.filter(neighbor => neighbor.radius > 0).map(({term, radius, style}) =>
+          [radius, term === "reward" ? "Reward radius" : "Penalty radius", style]);
+      return {...base, guides, lines, markers, keys: [...neighbors.map(({name, style}) => [name, style]),
+        ["Outside both radii · 1×", "neutral"]], note: comparison.join(". ") + "."};
     }}
   };
 
@@ -247,9 +264,9 @@ function createPlacementGraphs(read) {
         line(left, y(value), right, y(value));
         text(left - 7, y(value) + 4, label(value), "end");
       }
-      if (data.guide !== undefined) {
-        line(x(data.guide), top, x(data.guide), bottom, "guide");
-        text(x(data.guide), bottom + 37, "Radius");
+      for (const [position, caption, style] of data.guides ?? []) {
+        line(x(position), top, x(position), bottom, "guide " + style);
+        text(x(position), bottom + 37, caption);
       }
       const ticks = width < 320 && data.narrowTicks ? data.narrowTicks :
         data.ticks.filter((_, index) => right - left > 300 || data.ticks.length < 5 || index % 2 === 0);
