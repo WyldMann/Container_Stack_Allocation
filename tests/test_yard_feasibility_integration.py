@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from config import FeasibilitySettings, HeuristicSettings
 from entities import Container
@@ -89,6 +89,50 @@ class UnplannedStackSelectionTests(unittest.TestCase):
         self.assertEqual(max(parameter_scores.values()), 2)
         self.assertEqual(score, 0)
         self.assertEqual(coordinates, [('A', 0, 0, 0)])
+
+    def test_search_checks_all_top_score_ties_and_skips_lower_scores(self):
+        self.add_parameter(0, 2)
+        self.add_parameter(1, 1)
+        self.add_parameter(2, 2)
+        evaluator = self.yard.feasibility
+        with patch.object(evaluator, 'evaluate', wraps=evaluator.evaluate) as evaluate:
+            score, _, coordinates = self.yard.findCoordsCandidates(self.container)
+
+        self.assertEqual(score, 2)
+        self.assertEqual(coordinates, [('A', 0, 0, 0), ('A', 0, 2, 0)])
+        self.assertEqual([call.args[3] for call in evaluate.call_args_list], [0, 2])
+
+    def test_search_falls_back_to_next_positive_score_before_unplanned_stacks(self):
+        self.add_parameter(1, 3)
+        self.add_parameter(2, 5)
+        self.yard.getStack('A', 0, 2).addContainer(self.container, 0)
+        evaluator = self.yard.feasibility
+        with patch.object(evaluator, 'evaluate', wraps=evaluator.evaluate) as evaluate:
+            score, _, coordinates = self.yard.findCoordsCandidates(self.container)
+
+        self.assertEqual(score, 3)
+        self.assertEqual(coordinates, [('A', 0, 1, 0)])
+        self.assertEqual([call.args[3] for call in evaluate.call_args_list], [2, 1])
+
+    def test_trace_checks_lower_scores_and_preserves_winning_access_results(self):
+        self.add_parameter(0, 2)
+        self.add_parameter(1, 1)
+        self.add_parameter(2, 2)
+        self.yard.getStack('A', 0, 1).makeVoid()
+        access = {}
+        expected = self.yard.findCoordsCandidates(self.container, loader_access_results=access)
+        traced_access = {}
+        rejections = {}
+        evaluator = self.yard.feasibility
+        with patch.object(evaluator, 'evaluate', wraps=evaluator.evaluate) as evaluate:
+            actual = self.yard.findCoordsCandidates(
+                self.container, rejection_counts=rejections, loader_access_results=traced_access,
+            )
+
+        self.assertEqual(actual, expected)
+        self.assertEqual(traced_access, access)
+        self.assertEqual(rejections, {'stack_unavailable': 1})
+        self.assertEqual([call.args[3] for call in evaluate.call_args_list], [0, 1, 2])
 
 
 class AnomalousStackSelectionTests(unittest.TestCase):

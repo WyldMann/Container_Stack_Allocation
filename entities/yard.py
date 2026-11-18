@@ -467,16 +467,17 @@ class Yard:
         loader_access_results: dict[tuple[str, int, int, int], LoaderAccessResult] | None = None,
         require_equipment: bool = False,
     ) -> tuple[float, dict[str, float], list[tuple[str, int, int, int]]]:
-        """Find candidates, optionally requiring serving equipment for assignment."""
+        """Search score groups, or scan the full yard when collecting rejections."""
         max_score : float = 0
         candidate_coordinates : list[tuple[str,int,int,int]] = []
 
-        #evaluate params first
+        # Evaluate parameters once for this container.
         parameter_scores : dict[str,float] = {}
         for parameter in self.parameters.values():
             parameter_scores[str(parameter)] = parameter.evaluate(container)
         parameter_scores = dict(sorted(parameter_scores.items(), key=lambda item: item[1], reverse=True))
 
+        score_groups: dict[float, list[tuple[Block, int, int, float]]] = {}
         for block in self.blocks_by_id.values():
             if require_equipment and not self.canServeBlock(block):
                 if rejection_counts is not None:
@@ -485,47 +486,57 @@ class Yard:
                         len(row) for row in block.getSlots()
                     )
                 continue
-            loader_policy = self.loader_access_policies.get(block.getId())
-            # This loop only evaluates candidates; no context survives a placement.
-            loader_context = self.feasibility.prepare_loader_context(block, loader_policy)
             for row_index, slots in enumerate(block.getSlots()):
-                for slot_index,stack in enumerate(slots):
-
-                    # feasibility check
-                    result = self.feasibility.evaluate(
-                        container, block, row_index, slot_index,
-                        loader_policy=loader_policy,
-                        loader_context=loader_context,
-                    )
-                    current_coords = result.coordinates
-                    if current_coords is None:
-                        if rejection_counts is not None:
-                            reason = result.rejection_reason.value
-                            rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
-                        continue
-
-                    # candidate scoring
+                for slot_index, stack in enumerate(slots):
+                    parameters = stack.getParameters()
                     current_score = max(
-                        (parameter_scores[str(parameter)] for parameter in stack.getParameters()),
+                        (parameter_scores[str(parameter)] for parameter in parameters),
                         default=0,
                     )
-
-                    # if tie
-                    if max_score == current_score:
-                        # if container has no fulfillable parameters, put it in stacks with no parameters
-                        if max_score == 0 and stack.getParameters():
-                            continue
-                        candidate_coordinates.append(current_coords)
-                    # if new stack with better higher parameter score is found, reset coordscandidates with new max parameter score
-                    elif max_score < current_score:
-                        max_score = current_score
-                        candidate_coordinates = [current_coords]
-                        if loader_access_results is not None:
-                            loader_access_results.clear()
-                    else:
+                    if rejection_counts is None and (
+                        current_score < 0 or (current_score == 0 and parameters)
+                    ):
                         continue
-                    if loader_access_results is not None and result.loader_access is not None:
-                        loader_access_results[current_coords] = result.loader_access
+                    # A trace uses one group in yard order to count every rejection.
+                    group_score = current_score if rejection_counts is None else 0
+                    score_groups.setdefault(group_score, []).append(
+                        (block, row_index, slot_index, current_score)
+                    )
+
+        # Contexts belong to this read-only search and are prepared only as needed.
+        loader_contexts = {}
+        for group_score in sorted(score_groups, reverse=True):
+            for block, row_index, slot_index, current_score in score_groups[group_score]:
+                block_id = block.getId()
+                loader_policy = self.loader_access_policies.get(block_id)
+                if block_id not in loader_contexts:
+                    loader_contexts[block_id] = self.feasibility.prepare_loader_context(block, loader_policy)
+                result = self.feasibility.evaluate(
+                    container, block, row_index, slot_index,
+                    loader_policy=loader_policy,
+                    loader_context=loader_contexts[block_id],
+                )
+                current_coords = result.coordinates
+                if current_coords is None:
+                    if rejection_counts is not None:
+                        reason = result.rejection_reason.value
+                        rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+                    continue
+
+                if current_score < max_score:
+                    continue
+                if current_score == 0 and block.getStack(row_index, slot_index).getParameters():
+                    continue
+                if current_score > max_score:
+                    max_score = current_score
+                    candidate_coordinates = []
+                    if loader_access_results is not None:
+                        loader_access_results.clear()
+                candidate_coordinates.append(current_coords)
+                if loader_access_results is not None and result.loader_access is not None:
+                    loader_access_results[current_coords] = result.loader_access
+            if candidate_coordinates:
+                break
         return max_score,parameter_scores,candidate_coordinates
 
     def assignContainer(self, container, *, trace: dict | None = None) -> AssignResult | None:
