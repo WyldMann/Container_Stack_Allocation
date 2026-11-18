@@ -125,6 +125,9 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
 }
 .yard-view .yard-grid {
   --yard-grid-gap: 3px;
+  --yard-row-label-width: 31px;
+  width: calc(var(--yard-row-label-width) + 2 * var(--yard-grid-gap) +
+    var(--yard-slot-count) * (44px + var(--yard-grid-gap)));
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: var(--yard-grid-gap);
@@ -138,7 +141,7 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
   background: #f1f5f7;
 }
 .yard-grid thead th { padding: 2px; }
-.yard-grid th:first-child { width: 31px; }
+.yard-grid th:first-child { width: var(--yard-row-label-width); }
 .yard-view .yard-tile {
   display: block;
   width: 100%;

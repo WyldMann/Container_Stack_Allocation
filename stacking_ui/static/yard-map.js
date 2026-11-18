@@ -345,6 +345,7 @@ function createYardMap(branch, branches = [branch]) {
     const compliance = el("p", undefined, "yard-caption");
     heading.append(el("h4", "Block " + block.code), summary, occupancy, compliance);
     const grid = el("table", undefined, "yard-grid");
+    grid.style.setProperty("--yard-slot-count", block.slots);
     grid.setAttribute("aria-label", "Stack grid for block " + block.code);
     const head = el("thead");
     const columns = el("tr");
