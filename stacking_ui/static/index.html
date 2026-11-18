@@ -32,9 +32,14 @@
     </fieldset>
     <p id="source-description"></p>
     <div class="actions">
-      <button id="choose-csv-folder" type="button" class="secondary">Select CSV folder</button>
+      <button id="choose-csv-folder" type="button" class="secondary" aria-describedby="source-description" hidden>Select CSV folder</button>
       <input id="load-csv-folder" type="file" webkitdirectory multiple hidden>
     </div>
+    <div id="bundled-inputs" hidden>
+      <label for="bundled-branch">Yard branch</label>
+      <select id="bundled-branch"></select>
+    </div>
+    <div id="datasets" class="dataset-grid"></div>
     <details id="stacking-inputs" open>
       <summary>Input configuration <span id="input-toml-source" class="toml-source" data-project-file="container_stacking_input.toml" aria-live="polite"></span></summary>
       <div class="actions toml-choose">
@@ -45,7 +50,6 @@
       <input type="file" id="load-input" accept=".toml" hidden>
       <div id="input-toml" class="toml-lines"></div>
     </details>
-    <div id="datasets" class="dataset-grid"></div>
     <details>
       <summary>CSV column mappings <span id="mapping-toml-source" class="toml-source" data-project-file="csv_mapping.toml" aria-live="polite"></span></summary>
       <div class="actions toml-choose">

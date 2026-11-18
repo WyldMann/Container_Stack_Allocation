@@ -12,6 +12,10 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from config import DEFAULT_STACKING_INPUT_CONFIG_FILE
 from config.application.input_config import parse_input_config
+from config.csv_import.mapping_loader import parse_mapping
+from repository import CSVLoader, Repository
+from repository.branch_repository import BranchRepository
+from utils import strGeneralize
 
 from .configuration import PROJECT_ROOT, TOML_FILES, dump_toml, portable_input, read_project_tomls, read_toml
 
@@ -66,6 +70,30 @@ def project_snapshot(*, branch_code=None, data_dir=None):
     return documents, buffer.getvalue()
 
 
+def bundled_yard_branches(documents):
+    """List branches with yard blocks in the packaged CSVs."""
+    inputs = read_toml(documents["input_toml"], "Stacking inputs")
+    settings = parse_input_config(inputs, base_dir=DEFAULT_STACKING_INPUT_CONFIG_FILE.parent)
+    files = settings["csv_files"]
+    profiles = parse_mapping(read_toml(documents["mapping_toml"], "CSV mapping"))
+    blocks = Repository(CSVLoader(files["yard_blocks"]), profiles["yard_blocks"])
+    branches = BranchRepository(CSVLoader(files["terminal_branches"]), profiles["terminal_branches"])
+    yard_ids = {strGeneralize(row["branch_id"].strip()) for _, row in blocks.read_source_records()
+                if row["branch_id"].strip()}
+    choices = sorted(
+        [{"code": row["branch_code"].upper(), "name": row["branch_name"].strip()}
+         for row in branches.read_records()
+         if row["branch_code"] and strGeneralize(row["branch_id"]) in yard_ids],
+        key=lambda branch: branch["code"],
+    )
+    configured = settings["filters"].get("branch_code", [])
+    if isinstance(configured, str):
+        configured = [configured]
+    available = {branch["code"] for branch in choices}
+    default_code = next((code for code in configured if code in available), None)
+    return {"branches": choices, "default_code": default_code}
+
+
 def build(runtime, destination, *, branch_code=None, data_dir=None):
     manifest = json.loads((runtime / "package.json").read_text(encoding="utf-8"))
     if manifest.get("name") != "pyodide" or manifest.get("version") != RUNTIME_VERSION:
@@ -76,6 +104,7 @@ def build(runtime, destination, *, branch_code=None, data_dir=None):
     }
     licenses = {name: (runtime / name).read_bytes() for name in ("LICENSE", "LICENSE-Python")}
     documents, snapshot = project_snapshot(branch_code=branch_code, data_dir=data_dir)
+    yard_branches = bundled_yard_branches(documents)
     assets["project.zip"] = ["application/zip", base64.b64encode(snapshot).decode("ascii")]
 
     page = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -97,7 +126,8 @@ def build(runtime, destination, *, branch_code=None, data_dir=None):
         archive.writestr(ENTRY_PAGE, page)
         bundle_id = hashlib.sha256(snapshot).hexdigest()[:16]
         archive.writestr("defaults.js", "const STACKING_BUNDLE_ID = " + json.dumps(bundle_id) + ";\n"
-                         "const TOML_DEFAULTS = " + json.dumps(documents) + ";\n")
+                         "const TOML_DEFAULTS = " + json.dumps(documents) + ";\n"
+                         "const STACKING_YARD_BRANCHES = " + json.dumps(yard_branches) + ";\n")
         archive.writestr("runtime-assets.js", "let STACKING_RUNTIME = " + json.dumps(assets) + ";\n")
         for name in ("style.css", "yard-map.css", "yard-map.js", "yard-comparison-map.js",
                      "simulation.js", "placement-graphs.js", "app.js", "standalone.js"):
@@ -106,6 +136,7 @@ def build(runtime, destination, *, branch_code=None, data_dir=None):
             archive.writestr("licenses/" + name, content)
         archive.writestr("README.txt", f"Extract all files and open {ENTRY_PAGE} in Chrome or Microsoft Edge.\n"
                          "The package includes a copy of the CSVs and TOMLs from build time.\n"
+                         "When using bundled CSVs, choose a yard branch from the dropdown.\n"
                          "Use Replace selected CSVs or Load from TOML to use newer data.\n"
                          "Set default remembers a TOML in this browser for this page.\n"
                          "Save as TOML and Save yard CSV download files through the browser.\n")
