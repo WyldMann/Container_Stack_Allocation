@@ -815,13 +815,25 @@ function updateTomlSave(kind) {
 
 function buildDraft() {
   const useFolder = $("source-folder").checked;
+  const useBundled = standalone && useFolder;
+  let selectedFiles = files;
+  if (useFolder) {
+    selectedFiles = useBundled ? {} : Object.fromEntries(
+      Object.entries(files).filter(([, upload]) => upload.empty === true));
+  }
   const draft = {
     version: 1,
     file_source: standalone ? "bundle" : useFolder ? "folder" : "upload",
-    files: useFolder ? Object.fromEntries(Object.entries(files).filter(([, upload]) => upload.empty === true)) : files
+    files: selectedFiles
   };
   for (const [kind, key] of Object.entries(tomlEditors)) {
     draft[key] = editedToml(tomlDocuments[kind]);
+  }
+  if (useBundled) {
+    const branchCode = $("bundled-branch").value;
+    if (!branchCode) throw new Error("No yard branches are available in the bundled CSVs.");
+    draft.branch_codes = [branchCode];
+    draft.input_toml = bundledTomls.input_toml;
   }
   return draft;
 }
@@ -858,14 +870,26 @@ function matchCsvFolder(selectedFiles) {
 function showDatasets() {
   const grid = $("datasets");
   const useFolder = $("source-folder").checked;
-  $("source-description").textContent = standalone
-    ? (useFolder ? "Use the CSVs included in this package, or select a CSV folder. Standard filenames use the bundled input configuration." :
-      "Choose replacement UTF-8 CSVs or select a folder. Standard filenames use the bundled input configuration.")
-    : (useFolder
-      ? "Use the prefilled CSV paths or edit them below. Relative paths start in config/container_stacking. Keep the quotes around each path."
-      : "Choose a UTF-8 CSV for each dataset, or mark it explicitly empty.");
+  const useBundled = standalone && useFolder;
+  const description = $("source-description");
+  if (useBundled) {
+    description.textContent = "Using the nine CSVs included in this package.";
+  } else if (useFolder) {
+    description.textContent = "Use the prefilled CSV paths or edit them below. Relative paths start in config/container_stacking. Keep the quotes around each path.";
+  } else {
+    const individualHelp = standalone
+      ? "Choose individual UTF-8 CSVs to replace bundled files."
+      : "Choose a UTF-8 CSV for each dataset, or mark it explicitly empty.";
+    description.textContent = individualHelp +
+      " Selecting a CSV folder replaces all nine input files at once." +
+      " The folder must contain all nine CSVs named in Input configuration.";
+  }
+  $("choose-csv-folder").hidden = useFolder;
+  $("bundled-inputs").hidden = !useBundled;
+  $("stacking-inputs").hidden = useBundled;
+  grid.hidden = useBundled;
   grid.replaceChildren();
-  $("choose-csv-folder").hidden = !standalone && useFolder;
+  if (useBundled) return;
   for (const [name, [title, description]] of Object.entries(descriptions)) {
     const card = el("div", undefined, "dataset");
     card.append(el("strong", title), el("small", description));
@@ -917,6 +941,24 @@ function showDatasets() {
     card.append(filename, label);
     grid.append(card);
   }
+}
+
+function setupBundledBranches() {
+  const select = $("bundled-branch");
+  const {branches, default_code: defaultCode} = STACKING_YARD_BRANCHES;
+  for (const {code, name} of branches) {
+    const option = el("option", name ? code + " · " + name : code);
+    option.value = code;
+    select.append(option);
+  }
+  if (defaultCode) select.value = defaultCode;
+  if (!branches.length) {
+    const option = el("option", "No yard branches available");
+    option.value = "";
+    select.append(option);
+    select.disabled = true;
+  }
+  select.addEventListener("change", changed);
 }
 
 function table(headers, rows) {
@@ -1148,6 +1190,7 @@ for (const source of ["folder", "upload"]) {
   $("source-" + source).addEventListener("change", () => {
     showDatasets();
     changed();
+    message();
   });
 }
 const csvFolderPicker = $("load-csv-folder");
@@ -1163,7 +1206,7 @@ csvFolderPicker.addEventListener("change", () => action(async () => {
   $("source-upload").checked = true;
   showDatasets();
   changed();
-  message("Loaded " + selected.length + " CSVs from the selected folder.");
+  message("Replaced all " + selected.length + " input files with CSVs from the selected folder.");
 }));
 for (const [kind, key] of Object.entries(tomlEditors)) {
   const setDefault = $("default-" + kind);
@@ -1208,6 +1251,7 @@ for (const [kind, key] of Object.entries(tomlEditors)) {
     message("Loaded " + file.name + ".");
   });
 }
+if (standalone) setupBundledBranches();
 showDatasets();
 const tomlActions = $("project-toml-actions");
 tomlActions.hidden = !canReadProjectTomls;

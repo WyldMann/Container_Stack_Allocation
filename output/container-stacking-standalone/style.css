@@ -13,6 +13,10 @@
 .file-sources label { display: flex; align-items: center; gap: 7px; }
 .file-sources input { accent-color: var(--green); }
 .actions button[hidden] { display: none; }
+#choose-csv-folder { margin-bottom: 12px; }
+.dataset-grid[hidden] { display: none; }
+#bundled-inputs { margin-bottom: 16px; }
+#bundled-inputs label { display: block; margin-bottom: 4px; }
 #preview-status:empty { display: none; }
 .preview-branch { display: block; margin-bottom: 10px; }
 .preview-diagnostics {
