@@ -24,6 +24,38 @@ lose access after placement. Each rule has its own mode and enables its weight
 in **Heuristic** mode. The default unreachable destination multiplier is 0.25.
 Each access loss weight defaults to 1 per location that loses access.
 
+**Container size clustering** groups two independently configured terms:
+
+- Same-size reward: `2 ** (size_cluster_reward_bias * S / (S + size_cluster_reward_prior))`.
+- Different-size penalty: `2 ** (-size_cluster_penalty_bias * O / (O + size_cluster_penalty_prior))`.
+
+The clustering multiplier is reward × penalty. `S` sums
+`2 ** (-distance / hl_size_cluster_reward_distance)` for occupied matching
+stacks within `size_cluster_reward_radius`. `O` sums
+`2 ** (-distance / hl_size_cluster_penalty_distance)` for occupied
+different-size stacks within `size_cluster_penalty_radius`. Distances use
+the closest footprint cells in grid units. Stack height does not
+increase the evidence, 40 ft pairs count once, and the supporting footprint
+is excluded. Each prior must be positive; a larger prior makes its effect
+build more slowly. Each bias must be non-negative; zero disables that term.
+Each radius is a non-negative integer, and zero disables only its term.
+Each distance half-influence value must be positive.
+The green reward panel and brown penalty panel have separate controls and
+formula labels, with both effects shown in the shared graph below.
+`enable_size_cluster_reward` and `enable_size_cluster_penalty` independently
+switch each term on or off. Off contributes a neutral multiplier of 1,
+disables only that panel's numeric controls, and retains its configured values.
+Both switches start on in the project configuration.
+
+Older TOMLs can still use `size_cluster_bias`, `size_cluster_prior`,
+`size_cluster_radius`, and `hl_size_cluster_distance` as fallbacks for
+omitted reward or penalty settings. Explicit term settings
+take precedence, including zero. Scoring always uses the new independent
+denominators, so mixed-size neighborhoods can receive different scores
+from the former shared-denominator formula.
+The legacy `enable_size_cluster` supplies either term's switch when that
+term has no explicit switch. Explicit term switches override it independently.
+
 To build a new snapshot from the project root, extract the
 [Pyodide 0.27.7 npm archive](https://registry.npmjs.org/pyodide/-/pyodide-0.27.7.tgz).
 Save the [Pyodide license](https://github.com/pyodide/pyodide/blob/0.27.7/LICENSE)

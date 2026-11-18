@@ -94,17 +94,43 @@ const placementGroups = [
     "heuristic.equipment_outside_block_fallback_score": ["Equipment outside block score",
       "Use this score when the serving equipment is outside the block."]
   }},
-  {title: "Container size clustering", graph: "cluster", toggle: "heuristic.enable_size_cluster", options: {
-    "heuristic.enable_size_cluster": ["Score nearby container sizes",
-      "Favor placements near containers of the same size."],
-    "heuristic.size_cluster_radius": ["Search radius",
-      "Check nearby stacks within this many yard grid units. Zero turns off the clustering effect."],
-    "heuristic.hl_size_cluster_distance": ["Distance for half influence",
-      "A neighbor's influence halves at this distance, measured in yard grid units."],
-    "heuristic.size_cluster_prior": ["Clustering smoothing",
-      "Higher values reduce the influence of nearby container sizes."],
-    "heuristic.size_cluster_bias": ["Clustering strength",
-      "Controls the reward for matching sizes and penalty for different sizes. Zero turns off the clustering effect."]
+  {title: "Container size clustering", graph: "cluster",
+  description: "Encourages compact groups of same-size containers and separation between different sizes.",
+  formulaText: "Clustering multiplier = same-size reward × different-size penalty",
+  sections: [
+    {title: "Same-size reward", style: "reward", formula: "bₛ · S / (S + pₛ)",
+      description: "Favors placements near same-size stacks, helping matching containers form compact groups.",
+      evidenceDescription: "S is the distance-weighted total of same-size neighboring stacks. This term is at least 1×.",
+      toggle: "heuristic.enable_size_cluster_reward",
+      paths: ["heuristic.enable_size_cluster_reward", "heuristic.size_cluster_reward_radius", "heuristic.hl_size_cluster_reward_distance",
+        "heuristic.size_cluster_reward_bias", "heuristic.size_cluster_reward_prior"]},
+    {title: "Different-size penalty", style: "penalty", formula: "−bₒ · O / (O + pₒ)",
+      description: "Lowers scores near different-size stacks, encouraging separation between container sizes.",
+      evidenceDescription: "O is the distance-weighted total of different-size neighboring stacks. This term is at most 1×.",
+      toggle: "heuristic.enable_size_cluster_penalty",
+      paths: ["heuristic.enable_size_cluster_penalty", "heuristic.size_cluster_penalty_radius", "heuristic.hl_size_cluster_penalty_distance",
+        "heuristic.size_cluster_penalty_bias", "heuristic.size_cluster_penalty_prior"]}
+  ], options: {
+    "heuristic.enable_size_cluster_reward": ["Enable same-size reward",
+      "Reward matching neighbors. Off gives a neutral reward of 1× and keeps these settings for later."],
+    "heuristic.enable_size_cluster_penalty": ["Enable different-size penalty",
+      "Penalize different-size neighbors. Off gives a neutral penalty of 1× and keeps these settings for later."],
+    "heuristic.size_cluster_reward_radius": ["Reward search radius",
+      "Reward matching stacks within this many yard grid units. Zero disables only the reward."],
+    "heuristic.hl_size_cluster_reward_distance": ["Reward distance for half influence",
+      "A matching stack's evidence halves at this distance, measured in yard grid units."],
+    "heuristic.size_cluster_reward_bias": ["Reward strength (bₛ)",
+      "The reward approaches 2 raised to this value. Zero disables only the same-size reward."],
+    "heuristic.size_cluster_reward_prior": ["Reward smoothing (pₛ)",
+      "Positive denominator offset for same-size evidence. Higher values make the reward build more slowly."],
+    "heuristic.size_cluster_penalty_radius": ["Penalty search radius",
+      "Penalize different-size stacks within this many yard grid units. Zero disables only the penalty."],
+    "heuristic.hl_size_cluster_penalty_distance": ["Penalty distance for half influence",
+      "A different-size stack's evidence halves at this distance, measured in yard grid units."],
+    "heuristic.size_cluster_penalty_bias": ["Penalty strength (bₒ)",
+      "The penalty approaches 2 raised to the negative of this value. Zero disables only the different-size penalty."],
+    "heuristic.size_cluster_penalty_prior": ["Penalty smoothing (pₒ)",
+      "Positive denominator offset for different-size evidence. Higher values make the penalty build more slowly."]
   }}
 ];
 const placementOptions = Object.assign({}, ...placementGroups.map(group => group.options));
@@ -238,11 +264,13 @@ function addPlacementOption(rows, path, row, control) {
 function showPlacementGroups(editor, rows, graphs) {
   const groups = el("div", undefined, "placement-groups");
   const weightAndDistance = el("div", undefined, "placement-weight-distance");
-  for (const {title, description, options, optionRows, sideBySide, graph, rowGraphs} of placementGroups) {
-    const entries = Object.keys(options).flatMap(path => rows.get(path) ?? []);
+  for (const {title, description, formulaText, options, optionRows, sideBySide, graph, rowGraphs, sections} of placementGroups) {
+    const sectionPaths = new Set(sections?.flatMap(section => section.paths));
+    const entries = Object.keys(options).filter(path => !sectionPaths.has(path)).flatMap(path => rows.get(path) ?? []);
     const group = el("fieldset", undefined, "placement-group");
     group.append(el("legend", title));
     if (description) group.append(el("p", description, "placement-help"));
+    if (formulaText) group.append(el("p", formulaText, "cluster-formula"));
     if (optionRows) {
       for (const [index, paths] of optionRows.entries()) {
         const related = paths.flatMap(path => rows.get(path) ?? []);
@@ -254,6 +282,20 @@ function showPlacementGroups(editor, rows, graphs) {
       const list = el("div", undefined, "placement-options");
       list.append(...entries);
       group.append(list);
+    }
+    if (sections) {
+      const terms = el("div", undefined, "cluster-terms");
+      for (const section of sections) {
+        const term = el("section", undefined, "cluster-term " + section.style);
+        const formula = el("p", (section.style === "reward" ? "Reward" : "Penalty") + " = 2", "cluster-formula");
+        formula.append(el("sup", section.formula));
+        const controls = el("div", undefined, "placement-options");
+        controls.append(...section.paths.flatMap(path => rows.get(path) ?? []));
+        term.append(el("h4", section.title), el("p", section.description, "placement-help"),
+          formula, el("p", section.evidenceDescription, "placement-help"), controls);
+        terms.append(term);
+      }
+      group.append(terms);
     }
     if (graph) group.append(graphs[graph].element);
     if (sideBySide) {
@@ -297,12 +339,15 @@ function setPlacementInactive(option, inactive) {
 
 function updatePlacementDependencies(rows) {
   const isOff = path => rows.get(path)?.[0].querySelector('input[type="checkbox"]')?.checked === false;
-  for (const {toggle, options} of placementGroups) {
-    if (!toggle) continue;
-    const inactive = isOff(toggle);
-    for (const path of Object.keys(options)) {
-      if (path === toggle) continue;
-      for (const option of rows.get(path) ?? []) setPlacementInactive(option, inactive);
+  for (const {toggle, options, sections} of placementGroups) {
+    const dependencies = toggle ? [{toggle, paths: Object.keys(options)}] : sections ?? [];
+    for (const {toggle, paths} of dependencies) {
+      if (!toggle) continue;
+      const inactive = isOff(toggle);
+      for (const path of paths) {
+        if (path === toggle) continue;
+        for (const option of rows.get(path) ?? []) setPlacementInactive(option, inactive);
+      }
     }
   }
 }
@@ -457,10 +502,19 @@ function addBoundedRuleWeight(rows, fields, start, end, value, {key, defaultValu
   }});
 }
 
-function addMissingHeuristicScores(rows, fields, source, offset, legacyFallbackScore) {
+function addMissingHeuristicScores(rows, fields, source, offset, legacyFallbackScore, inline) {
   const separator = offset && source[offset - 1] !== "\n" ? "\n" : "";
   const fallbacks = fallbackScoreKeys.map(key => ({key, defaultValue: legacyFallbackScore}));
-  for (const setting of [...boundedRuleWeights, ...loaderScoringOptions, ...fallbacks]) {
+  const clustering = ["reward", "penalty"].flatMap(term => [
+    {key: "enable_size_cluster_" + term, boolean: true, defaultValue: inline.get("heuristic.enable_size_cluster") ?? "true"},
+    ...["radius", "bias", "prior"].map(parameter => ({
+      key: "size_cluster_" + term + "_" + parameter,
+      defaultValue: inline.get("heuristic.size_cluster_" + parameter) ??
+        ({radius: "3", bias: "1.0", prior: "2.0"})[parameter]
+    })),
+    {key: "hl_size_cluster_" + term + "_distance", defaultValue: inline.get("heuristic.hl_size_cluster_distance") ?? "1.5"}
+  ]);
+  for (const setting of [...boundedRuleWeights, ...loaderScoringOptions, ...fallbacks, ...clustering]) {
     const {key, defaultValue} = setting;
     const path = "heuristic." + key;
     if (rows.has(path)) continue;
@@ -470,16 +524,31 @@ function addMissingHeuristicScores(rows, fields, source, offset, legacyFallbackS
       continue;
     }
     const input = el("input");
-    input.type = "text";
-    input.inputMode = "decimal";
+    input.type = setting.boolean ? "checkbox" : "text";
+    if (setting.boolean) {
+      input.checked = defaultValue === "true";
+      input.setAttribute("role", "switch");
+    } else {
+      input.inputMode = "decimal";
+      input.value = defaultValue;
+    }
     input.spellcheck = false;
-    input.value = defaultValue;
     input.addEventListener("input", () => {
+      if (setting.boolean) updatePlacementDependencies(rows);
       updateTomlSave("config");
       changed();
     });
     const row = el("label", undefined, "toml-setting");
-    row.append(el("span"), input);
+    row.append(el("span"));
+    if (setting.boolean) {
+      const toggle = el("span", undefined, "toml-switch");
+      const track = el("span", undefined, "toml-switch-track");
+      track.setAttribute("aria-hidden", "true");
+      toggle.append(input, track);
+      row.append(toggle);
+    } else {
+      row.append(input);
+    }
     addPlacementOption(rows, path, row, input);
     fields.push({start: offset, end: offset, input,
       format: value => value === defaultValue ? "" : prefix + value + "\n"});
@@ -537,6 +606,8 @@ function showToml(kind, text, loadedFrom) {
     const legacyLoaderOption = kind === "config" && root === "feasibility" && parts.length === 2 &&
       (key === "loader_access" || key === "loader_access_mode");
     const legacyFallbackOption = kind === "config" && parts.length === 2 && optionPath === "heuristic.min_value";
+    const legacyClusterOption = kind === "config" && root === "heuristic" && parts.length === 2 &&
+      ["enable_size_cluster", "size_cluster_radius", "hl_size_cluster_distance", "size_cluster_prior", "size_cluster_bias"].includes(key);
     if (kind === "config" && root === "feasibility" && parts.length === 1) {
       if (table) feasibilityStart = Math.min(lineEnd + 1, source.length);
       else if (match) inlineFeasibility = true;
@@ -560,10 +631,10 @@ function showToml(kind, text, loadedFrom) {
       const boundary = tomlValueEnd(source, start);
       lineEnd = source.indexOf("\n", boundary);
       if (lineEnd === -1) lineEnd = source.length;
-      if ((visible && (kind !== "config" || knownOption || legacyLoaderOption || legacyFallbackOption)) || isCsvPath) {
+      if ((visible && (kind !== "config" || knownOption || legacyLoaderOption || legacyFallbackOption || legacyClusterOption)) || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
-        if (legacyFallbackOption) {
-          legacyFallbackScore = value;
+        if (legacyFallbackOption || legacyClusterOption) {
+          if (legacyFallbackOption) legacyFallbackScore = value;
           inlinePlacement.set(optionPath, value);
           offset = statementStart = lineEnd + 1;
           continue;
@@ -667,7 +738,7 @@ function showToml(kind, text, loadedFrom) {
         fields.push({start: feasibilityStart, end: feasibilityStart, input: control.input});
       }
     }
-    if (!inlineHeuristic) addMissingHeuristicScores(placementRows, fields, source, heuristicStart, legacyFallbackScore);
+    if (!inlineHeuristic) addMissingHeuristicScores(placementRows, fields, source, heuristicStart, legacyFallbackScore, inlinePlacement);
     fields.sort((a, b) => a.start - b.start || a.end - b.end);
     updateRuleControls(ruleControls, placementRows);
     updatePlacementDependencies(placementRows);
