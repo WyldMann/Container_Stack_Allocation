@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
+from config import HeuristicSettings
 from entities.assign_result import AssignResult, CandidateEvaluation
 from entities.equipment import RTG
 from entities.heuristic_model import HeuristicModel
@@ -67,6 +68,111 @@ class SizeClusteringTests(unittest.TestCase):
         before = self.cluster(container, coordinate)
         self.yard.getStack('A', 2, 1).addContainer(container, 1)
         self.assertEqual(self.cluster(container, coordinate), before)
+
+    def test_mixed_neighbors_use_separate_denominators_and_strengths(self):
+        self.yard.model = HeuristicModel(HeuristicSettings(
+            hl_size_cluster_distance=1,
+            size_cluster_reward_bias=1, size_cluster_reward_prior=0.5,
+            size_cluster_penalty_bias=3, size_cluster_penalty_prior=1.5,
+        ))
+        self.occupy(2, 2, '20')
+        self.occupy(1, 3, '40')
+        # Both neighbors have evidence 0.5. Reward = sqrt(2), penalty = 2 ** -0.75.
+        self.assertAlmostEqual(self.cluster(self.container('20'), ('A', 2, 3, 0)), 2 ** -0.25)
+
+    def test_reward_and_penalty_use_their_own_distance_decay(self):
+        self.yard.model = HeuristicModel(HeuristicSettings(
+            hl_size_cluster_reward_distance=1, hl_size_cluster_penalty_distance=0.5,
+        ))
+        self.occupy(2, 2, '20')
+        self.occupy(1, 3, '40')
+        # At distance 1, matching evidence is 0.5 and different-size evidence is 0.25.
+        self.assertAlmostEqual(self.cluster(self.container('20'), ('A', 2, 3, 0)),
+                               2 ** (0.5 / 2.5 - 0.25 / 2.25))
+
+    def test_reward_and_penalty_switches_independently_control_scoring(self):
+        self.occupy(2, 2, '20')
+        self.occupy(1, 3, '40')
+        cases = ((True, True, 2 ** -0.25), (True, False, 2 ** 0.5),
+                 (False, True, 2 ** -0.75), (False, False, 1))
+        for reward, penalty, expected in cases:
+            with self.subTest(reward=reward, penalty=penalty):
+                self.yard.model = HeuristicModel(HeuristicSettings(
+                    enable_size_cluster_reward=reward, enable_size_cluster_penalty=penalty,
+                    hl_size_cluster_distance=1,
+                    size_cluster_reward_bias=1, size_cluster_reward_prior=0.5,
+                    size_cluster_penalty_bias=3, size_cluster_penalty_prior=1.5,
+                ))
+                multiplier = self.cluster(self.container('20'), ('A', 2, 3, 0))
+                self.assertAlmostEqual(multiplier, expected)
+                self.assertAlmostEqual(self.yard.model.evaluate(0, 0, multiplier), 100 * expected)
+
+    def test_each_radius_filters_only_its_own_neighbor_type(self):
+        self.occupy(2, 1, '20')
+        self.occupy(0, 3, '40')
+        for reward_radius, penalty_radius, expected in ((1, 2, 2 ** -0.2), (2, 1, 2 ** 0.2)):
+            with self.subTest(reward_radius=reward_radius, penalty_radius=penalty_radius):
+                self.yard.model = HeuristicModel(HeuristicSettings(
+                    size_cluster_reward_radius=reward_radius, size_cluster_penalty_radius=penalty_radius,
+                    hl_size_cluster_reward_distance=2, hl_size_cluster_penalty_distance=2,
+                ))
+                self.assertAlmostEqual(self.cluster(self.container('20'), ('A', 2, 3, 0)), expected)
+
+    def test_zero_radius_disables_only_its_own_term(self):
+        self.occupy(2, 2, '20')
+        self.occupy(1, 3, '40')
+        coordinate = ('A', 2, 3, 0)
+        for term, expected in (('reward', 2 ** -0.2), ('penalty', 2 ** 0.2)):
+            with self.subTest(term=term):
+                self.yard.model = HeuristicModel(HeuristicSettings(
+                    **{f'size_cluster_{term}_radius': 0},
+                    hl_size_cluster_reward_distance=1, hl_size_cluster_penalty_distance=1,
+                ))
+                self.assertAlmostEqual(self.cluster(self.container('20'), coordinate), expected)
+
+    def test_other_term_distance_does_not_change_single_size_neighborhood(self):
+        self.occupy(2, 2, '20')
+        coordinate = ('A', 2, 3, 0)
+        before = self.cluster(self.container('20'), coordinate)
+        self.yard.model = HeuristicModel(HeuristicSettings(hl_size_cluster_penalty_distance=100))
+        self.assertEqual(self.cluster(self.container('20'), coordinate), before)
+
+    def test_different_size_evidence_does_not_change_reward(self):
+        self.yard.model = HeuristicModel(HeuristicSettings(size_cluster_penalty_bias=0))
+        self.occupy(2, 2, '20')
+        before = self.cluster(self.container('20'), ('A', 2, 3, 0))
+        self.occupy(1, 3, '40')
+        self.assertGreater(before, 1)
+        self.assertEqual(self.cluster(self.container('20'), ('A', 2, 3, 0)), before)
+
+    def test_same_size_evidence_does_not_change_penalty(self):
+        self.yard.model = HeuristicModel(HeuristicSettings(size_cluster_reward_bias=0))
+        self.occupy(1, 3, '40')
+        before = self.cluster(self.container('20'), ('A', 2, 3, 0))
+        self.occupy(2, 2, '20')
+        self.assertLess(before, 1)
+        self.assertEqual(self.cluster(self.container('20'), ('A', 2, 3, 0)), before)
+
+    def test_term_smoothing_only_changes_its_own_neighbor_type(self):
+        self.occupy(2, 2, '20')
+        candidate = self.container('20')
+        coordinate = ('A', 2, 3, 0)
+        before = self.cluster(candidate, coordinate)
+        self.yard.model = HeuristicModel(HeuristicSettings(size_cluster_penalty_prior=100))
+        self.assertEqual(self.cluster(candidate, coordinate), before)
+        self.yard.model = HeuristicModel(HeuristicSettings(size_cluster_reward_prior=100))
+        self.assertLess(self.cluster(candidate, coordinate), before)
+
+    def test_equal_balanced_terms_and_zero_strengths_are_neutral(self):
+        self.yard.model = HeuristicModel(HeuristicSettings(hl_size_cluster_distance=1))
+        self.occupy(2, 2, '20')
+        self.occupy(1, 3, '40')
+        coordinate = ('A', 2, 3, 0)
+        self.assertEqual(self.cluster(self.container('20'), coordinate), 1)
+        self.yard.model = HeuristicModel(HeuristicSettings(
+            size_cluster_reward_bias=0, size_cluster_penalty_bias=0,
+        ))
+        self.assertEqual(self.cluster(self.container('40'), coordinate), 1)
 
     def test_own_supporting_footprint_is_excluded(self):
         for container_size in ('20', '40'):

@@ -14,7 +14,9 @@ class HeuristicModel:
         settings = self.settings
         self.enable_delta_container_mass = settings.enable_delta_container_mass
         self.enable_equipment_distance = settings.enable_equipment_distance
-        self.enable_size_cluster = settings.enable_size_cluster
+        self.enable_size_cluster_reward = settings.enable_size_cluster_reward
+        self.enable_size_cluster_penalty = settings.enable_size_cluster_penalty
+        self.enable_size_cluster = self.enable_size_cluster_reward or self.enable_size_cluster_penalty
         self.w_delta_container_mass = settings.w_delta_container_mass
         self.hl_delta_container_mass = settings.hl_delta_container_mass
         self.lambda_delta_container_mass = math.log(2) / self.hl_delta_container_mass
@@ -29,10 +31,14 @@ class HeuristicModel:
             settings.equipment_outside_block_fallback_score or settings.min_value
         )
         self.no_delta_container_mass_value = settings.no_delta_container_mass_value
-        self.size_cluster_radius = settings.size_cluster_radius
-        self.hl_size_cluster_distance = settings.hl_size_cluster_distance
-        self.size_cluster_prior = settings.size_cluster_prior
-        self.size_cluster_bias = settings.size_cluster_bias
+        self.size_cluster_reward_radius = settings.size_cluster_reward_radius
+        self.hl_size_cluster_reward_distance = settings.hl_size_cluster_reward_distance
+        self.size_cluster_reward_prior = settings.size_cluster_reward_prior
+        self.size_cluster_reward_bias = settings.size_cluster_reward_bias
+        self.size_cluster_penalty_radius = settings.size_cluster_penalty_radius
+        self.hl_size_cluster_penalty_distance = settings.hl_size_cluster_penalty_distance
+        self.size_cluster_penalty_prior = settings.size_cluster_penalty_prior
+        self.size_cluster_penalty_bias = settings.size_cluster_penalty_bias
 
     @staticmethod
     def compareTopContainerMass(container:Container, stack:Stack) -> float | None:
@@ -48,7 +54,7 @@ class HeuristicModel:
 
     def sizeCluster(self, container: Container, block: Block,
                     coordinate: tuple[str,int,int,int]) -> float:
-        """Return the clustering score multiplier from neighborhood affinity.
+        """Multiply independent same-size reward and different-size penalty.
 
         Count stacks independently of height and paired 40-ft slots only once.
         Distances are measured between the closest cells of each footprint,
@@ -60,7 +66,10 @@ class HeuristicModel:
         rows = block.getSlots()
         container_size = container.getContSize()
         candidate_slots = (coordinate[2] - 1, coordinate[2]) if container_size == '40' else (coordinate[2],)
-        radius = self.size_cluster_radius
+        radius = max(
+            self.size_cluster_reward_radius if self.enable_size_cluster_reward else 0,
+            self.size_cluster_penalty_radius if self.enable_size_cluster_penalty else 0,
+        )
         same = other = 0.0
         seen: set[tuple[int,int]] = set()
 
@@ -81,17 +90,17 @@ class HeuristicModel:
                     continue
                 distance = min(math.hypot(row_index - coordinate[1], s - c)
                                for s in neighbor_slots for c in candidate_slots)
-                if distance > radius:
-                    continue
-                evidence = 2 ** (-distance / self.hl_size_cluster_distance)
                 if mode == container_size:
-                    same += evidence
+                    if self.enable_size_cluster_reward and distance <= self.size_cluster_reward_radius:
+                        same += 2 ** (-distance / self.hl_size_cluster_reward_distance)
                 else:
-                    other += evidence
+                    if self.enable_size_cluster_penalty and distance <= self.size_cluster_penalty_radius:
+                        other += 2 ** (-distance / self.hl_size_cluster_penalty_distance)
 
-        affinity = (same - other) / (same + other + self.size_cluster_prior)
-        multiplier = 2 ** (self.size_cluster_bias * affinity)
-        return multiplier
+        reward_exponent = self.size_cluster_reward_bias * (same / (same + self.size_cluster_reward_prior))
+        penalty_exponent = self.size_cluster_penalty_bias * (other / (other + self.size_cluster_penalty_prior))
+        # Combining exponents avoids overflow in large, offsetting terms.
+        return 2 ** (reward_exponent - penalty_exponent)
 
     @staticmethod
     def decayFormula(lambda_: float, variable:float) -> float:

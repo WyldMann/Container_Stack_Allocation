@@ -19,6 +19,12 @@ from entities.yard import Yard
 from config.application.config_loader import parse_config
 
 
+FACTOR_SWITCHES = (
+    'enable_delta_container_mass', 'enable_equipment_distance', 'enable_size_cluster',
+    'enable_size_cluster_reward', 'enable_size_cluster_penalty',
+)
+
+
 class HeuristicConfigTests(unittest.TestCase):
     def load_text(self, text):
         with tempfile.TemporaryDirectory() as directory:
@@ -39,8 +45,24 @@ class HeuristicConfigTests(unittest.TestCase):
         self.assertEqual(result.heuristic.size_cluster_radius, 0)
         self.assertEqual(result.heuristic.hl_delta_container_mass, 5000)
 
-    def test_default_file_matches_default_settings(self):
-        self.assertEqual(load_config(DEFAULT_CONFIG_FILE), ApplicationSettings())
+    def test_project_file_configures_independent_clustering_terms(self):
+        document = tomllib.loads(DEFAULT_CONFIG_FILE.read_text(encoding='utf-8'))['heuristic']
+        settings = load_config(DEFAULT_CONFIG_FILE).heuristic
+        for term in ('reward', 'penalty'):
+            for parameter in ('radius', 'prior', 'bias'):
+                name = f'size_cluster_{term}_{parameter}'
+                self.assertIn(name, document)
+                self.assertEqual(getattr(settings, name), document[name])
+            name = f'hl_size_cluster_{term}_distance'
+            self.assertIn(name, document)
+            self.assertEqual(getattr(settings, name), document[name])
+        self.assertNotIn('size_cluster_radius', document)
+        self.assertNotIn('hl_size_cluster_distance', document)
+        self.assertNotIn('size_cluster_prior', document)
+        self.assertNotIn('size_cluster_bias', document)
+        self.assertNotIn('enable_size_cluster', document)
+        self.assertTrue(document['enable_size_cluster_reward'])
+        self.assertTrue(document['enable_size_cluster_penalty'])
 
     def test_unknown_options_and_wrong_section_type_are_rejected(self):
         for text in ('[heuristic]\nunknown = 1\n', 'heuristic = false\n'):
@@ -50,15 +72,16 @@ class HeuristicConfigTests(unittest.TestCase):
 
     def test_invalid_numeric_values_are_rejected(self):
         for field in fields(HeuristicSettings):
-            if field.type is bool:
+            if field.name in FACTOR_SWITCHES:
                 continue
             values = ('true', '"1"', '[]', '-1')
-            if field.name == 'size_cluster_radius':
+            if field.name.endswith('_radius'):
                 values += ('1.5',)
             else:
                 values += ('nan', 'inf', '-inf')
                 if field.name not in (
-                    'size_cluster_bias', 'loader_inaccessible_destination_multiplier',
+                    'size_cluster_bias', 'size_cluster_reward_bias', 'size_cluster_penalty_bias',
+                    'loader_inaccessible_destination_multiplier',
                     'loader_occupied_access_loss_weight', 'loader_future_access_loss_weight',
                     'unsafe_stacking_multiplier', 'overcapacity_tier_multiplier',
                     'no_delta_container_mass_value', 'heavier_container_fallback_score',
@@ -75,6 +98,33 @@ class HeuristicConfigTests(unittest.TestCase):
         self.assertEqual(model.deltaContainerMass(None), 0)
         self.assertEqual(model.evaluate(None, 0), 0)
         self.assertEqual(model.deltaContainerMass(0), settings.w_delta_container_mass)
+
+    def test_clustering_settings_use_legacy_fallbacks_only_for_omitted_values(self):
+        settings = self.load_text(
+            '[heuristic]\nsize_cluster_prior = 4\nsize_cluster_bias = 3\n'
+            'size_cluster_radius = 4\nhl_size_cluster_distance = 2\n'
+            'size_cluster_reward_prior = 1\nsize_cluster_penalty_bias = 0\n'
+            'size_cluster_reward_radius = 0\nhl_size_cluster_penalty_distance = 0.25\n'
+        )
+        self.assertEqual(settings.heuristic.size_cluster_reward_prior, 1)
+        self.assertEqual(settings.heuristic.size_cluster_reward_bias, 3)
+        self.assertEqual(settings.heuristic.size_cluster_penalty_prior, 4)
+        self.assertEqual(settings.heuristic.size_cluster_penalty_bias, 0)
+        self.assertEqual(settings.heuristic.size_cluster_reward_radius, 0)
+        self.assertEqual(settings.heuristic.size_cluster_penalty_radius, 4)
+        self.assertEqual(settings.heuristic.hl_size_cluster_reward_distance, 2)
+        self.assertEqual(settings.heuristic.hl_size_cluster_penalty_distance, 0.25)
+        self.assertEqual(parse_config(settings.to_document()).heuristic, settings.heuristic)
+
+    def test_independent_clustering_settings_round_trip_through_toml(self):
+        settings = self.load_text(
+            '[heuristic]\nsize_cluster_reward_bias = 0\nsize_cluster_reward_prior = 0.5\n'
+            'size_cluster_penalty_bias = 3\nsize_cluster_penalty_prior = 4\n'
+            'size_cluster_reward_radius = 2\nsize_cluster_penalty_radius = 5\n'
+            'hl_size_cluster_reward_distance = 0.25\nhl_size_cluster_penalty_distance = 2\n'
+        )
+        from stacking_ui.configuration import dump_toml
+        self.assertEqual(self.load_text(dump_toml(settings.to_document())).heuristic, settings.heuristic)
 
     def test_loader_weights_allow_zero_and_limit_destination_multiplier(self):
         for name in (
@@ -96,22 +146,38 @@ class HeuristicConfigTests(unittest.TestCase):
                 self.load_text(f'[heuristic]\nunsafe_stacking_multiplier = {value}\n')
 
     def test_factor_switches_accept_booleans_and_preserve_other_defaults(self):
-        for name in ('enable_delta_container_mass', 'enable_equipment_distance', 'enable_size_cluster'):
+        for name in FACTOR_SWITCHES:
             for enabled in (True, False):
                 with self.subTest(name=name, enabled=enabled):
                     result = self.load_text(f'[heuristic]\n{name} = {str(enabled).lower()}\n')
                     self.assertEqual(result.heuristic, HeuristicSettings(**{name: enabled}))
 
     def test_factor_switches_reject_non_booleans(self):
-        for name in ('enable_delta_container_mass', 'enable_equipment_distance', 'enable_size_cluster'):
+        for name in FACTOR_SWITCHES:
             for value in ('0', '1', '1.0', '"false"', '[]', 'nan', 'inf'):
                 with self.subTest(name=name, value=value):
                     with self.assertRaises(ConfigurationError):
                         self.load_text(f'[heuristic]\n{name} = {value}\n')
-            for value in (0, 1, 1.0, 'false', None):
+            invalid = (0, 1, 1.0, 'false')
+            if name not in ('enable_size_cluster_reward', 'enable_size_cluster_penalty'):
+                invalid += (None,)
+            for value in invalid:
                 with self.subTest(name=name, direct_value=value):
                     with self.assertRaises(TypeError):
                         HeuristicSettings(**{name: value})
+
+    def test_separate_switches_override_legacy_switch_and_round_trip(self):
+        for legacy in (True, False):
+            for term in ('reward', 'penalty'):
+                with self.subTest(legacy=legacy, term=term):
+                    settings = self.load_text(
+                        f'[heuristic]\nenable_size_cluster = {str(legacy).lower()}\n'
+                        f'enable_size_cluster_{term} = {str(not legacy).lower()}\n'
+                    )
+                    other = 'penalty' if term == 'reward' else 'reward'
+                    self.assertEqual(getattr(settings.heuristic, f'enable_size_cluster_{term}'), not legacy)
+                    self.assertEqual(getattr(settings.heuristic, f'enable_size_cluster_{other}'), legacy)
+                    self.assertEqual(parse_config(settings.to_document()).heuristic, settings.heuristic)
 
     def test_disabled_factors_still_validate_numeric_settings(self):
         with self.assertRaises(ConfigurationError):
@@ -220,11 +286,16 @@ class ConfiguredHeuristicModelTests(unittest.TestCase):
         model.decayFormula.assert_not_called()
 
     def test_disabled_clustering_skips_neighborhood_scan(self):
-        model = HeuristicModel(HeuristicSettings(enable_size_cluster=False))
-        container, block = Mock(), Mock()
-        self.assertEqual(model.sizeCluster(container, block, ('A', 1, 2, 0)), 1.0)
-        block.getSlots.assert_not_called()
-        container.getContSize.assert_not_called()
+        for settings in (HeuristicSettings(enable_size_cluster=False), HeuristicSettings(
+            enable_size_cluster_reward=False, enable_size_cluster_penalty=False,
+        )):
+            with self.subTest(settings=settings):
+                model = HeuristicModel(settings)
+                container, block = Mock(), Mock()
+                self.assertEqual(model.sizeCluster(container, block, ('A', 1, 2, 0)), 1.0)
+                self.assertEqual(model.evaluate(0, 0, 0.5), 100)
+                block.getSlots.assert_not_called()
+                container.getContSize.assert_not_called()
 
     def test_all_factors_disabled_ignore_fallbacks_and_supplied_multiplier(self):
         model = HeuristicModel(HeuristicSettings(

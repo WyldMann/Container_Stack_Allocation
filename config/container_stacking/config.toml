@@ -20,7 +20,6 @@ loader_future_access_loss_weight = 0.15
 # Disabled factors skip scoring and contribute a neutral multiplier of 1.
 enable_delta_container_mass = true
 enable_equipment_distance = false
-enable_size_cluster = true
 
 # Maximum mass-compatibility score, reached when the incoming
 # container and the supporting top container have equal masses.
@@ -46,18 +45,27 @@ min_value = 0.001
 # Mass-compatibility score when either container's mass is unknown.
 no_delta_container_mass_value = 0.1
 
-# Maximum neighborhood distance considered for size clustering,
-# measured between the closest footprint cells in grid units.
-# Zero produces a neutral clustering multiplier.
-size_cluster_radius = 1
+# Same-size reward = 2 ** (bias * S / (S + prior)).
+# S is the distance-weighted total of occupied same-size stacks.
+enable_size_cluster_reward = true
+# Search radius in closest-footprint grid units. Zero disables only the reward.
+size_cluster_reward_radius = 1
+# Distance at which a matching stack's evidence halves. Must be positive.
+hl_size_cluster_reward_distance = 0.5
+# Larger prior makes the reward build more slowly; it must be positive.
+size_cluster_reward_prior = 2.0
+# Reward approaches 2 ** bias. Zero disables only the reward.
+size_cluster_reward_bias = 2.0
 
-# Neighbor distance at which its clustering contribution halves.
-hl_size_cluster_distance = 0.5
-
-# Positive smoothing value that pulls clustering towards neutral.
-# Larger values reduce the influence of neighboring container sizes.
-size_cluster_prior = 2.0
-
-# Strength of the clustering reward for matching sizes and penalty
-# for different sizes. Zero produces a neutral multiplier of 1.
-size_cluster_bias = 2.0
+# Different-size penalty = 2 ** (-bias * O / (O + prior)).
+# O is the distance-weighted total of occupied different-size stacks.
+enable_size_cluster_penalty = true
+# Search radius in closest-footprint grid units. Zero disables only the penalty.
+size_cluster_penalty_radius = 4
+# Distance at which a different-size stack's evidence halves. Must be positive.
+hl_size_cluster_penalty_distance = 0.5
+# Larger prior makes the penalty build more slowly; it must be positive.
+size_cluster_penalty_prior = 2.0
+# Penalty approaches 2 ** (-bias). Zero disables only the penalty.
+size_cluster_penalty_bias = 2.0
+# Clustering multiplier = same-size reward * different-size penalty.

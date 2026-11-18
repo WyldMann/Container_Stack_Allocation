@@ -11,13 +11,24 @@ class HeuristicSettings:
     hl_equipment_distance: float = 5.0
     min_value: float = 0.001
     no_delta_container_mass_value: float = 0.1
+    # Legacy values supply either independent setting when it is omitted.
     size_cluster_radius: int = 3
     hl_size_cluster_distance: float = 1.5
     size_cluster_prior: float = 2.0
     size_cluster_bias: float = 1.0
+    size_cluster_reward_radius: int | None = None
+    hl_size_cluster_reward_distance: float | None = None
+    size_cluster_reward_prior: float | None = None
+    size_cluster_reward_bias: float | None = None
+    size_cluster_penalty_radius: int | None = None
+    hl_size_cluster_penalty_distance: float | None = None
+    size_cluster_penalty_prior: float | None = None
+    size_cluster_penalty_bias: float | None = None
     enable_delta_container_mass: bool = True
     enable_equipment_distance: bool = True
     enable_size_cluster: bool = True
+    enable_size_cluster_reward: bool | None = None
+    enable_size_cluster_penalty: bool | None = None
     loader_inaccessible_destination_multiplier: float = 0.25
     loader_occupied_access_loss_weight: float = 1.0
     loader_future_access_loss_weight: float = 1.0
@@ -27,11 +38,25 @@ class HeuristicSettings:
     equipment_outside_block_fallback_score: float | None = None
 
     def __post_init__(self) -> None:
-        radius = self.size_cluster_radius
-        if type(radius) is not int:
-            raise TypeError("size_cluster_radius must be an integer.")
-        if radius < 0:
-            raise ValueError("size_cluster_radius must be non-negative.")
+        for term in ("reward", "penalty"):
+            name = f"enable_size_cluster_{term}"
+            if getattr(self, name) is None:
+                object.__setattr__(self, name, self.enable_size_cluster)
+            for parameter in ("radius", "prior", "bias"):
+                name = f"size_cluster_{term}_{parameter}"
+                if getattr(self, name) is None:
+                    object.__setattr__(self, name, getattr(self, f"size_cluster_{parameter}"))
+            name = f"hl_size_cluster_{term}_distance"
+            if getattr(self, name) is None:
+                object.__setattr__(self, name, self.hl_size_cluster_distance)
+
+        radius_names = ("size_cluster_radius", "size_cluster_reward_radius", "size_cluster_penalty_radius")
+        for name in radius_names:
+            radius = getattr(self, name)
+            if type(radius) is not int:
+                raise TypeError(f"{name} must be an integer.")
+            if radius < 0:
+                raise ValueError(f"{name} must be non-negative.")
 
         for field in fields(self):
             name = field.name
@@ -40,11 +65,11 @@ class HeuristicSettings:
                 "heavier_container_fallback_score", "equipment_outside_block_fallback_score",
             ):
                 continue
-            if field.type is bool:
+            if field.type is bool or name in ("enable_size_cluster_reward", "enable_size_cluster_penalty"):
                 if type(value) is not bool:
                     raise TypeError(f"{name} must be a boolean.")
                 continue
-            if name == "size_cluster_radius":
+            if name in radius_names:
                 continue
             if type(value) not in (int, float):
                 raise TypeError(f"{name} must be numeric.")
@@ -61,7 +86,8 @@ class HeuristicSettings:
                 if not 0 <= value <= 1:
                     raise ValueError(f"{name} must be between 0 and 1.")
             elif name in (
-                "size_cluster_bias", "loader_occupied_access_loss_weight",
+                "size_cluster_bias", "size_cluster_reward_bias", "size_cluster_penalty_bias",
+                "loader_occupied_access_loss_weight",
                 "loader_future_access_loss_weight", "no_delta_container_mass_value",
                 "heavier_container_fallback_score",
             ):
