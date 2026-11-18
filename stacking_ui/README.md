@@ -42,6 +42,16 @@ To preset the standalone filter to JKT64 without adding any other CSVs, run:
 
 Select the JKT64 CSV folder in the browser before generating its preview.
 
+To include the BigYard CSVs directly in the package and open JKT64 by default:
+
+```powershell
+.\.venv\Scripts\python.exe -m stacking_ui.standalone .venv\yard-stacking-pyodide-0.27.7\package output\container-stacking-standalone.zip --data-dir data_container_stacking\bigyard --branch-code JKT64
+```
+
+The data directory must be inside the project and contain the nine CSV filenames
+used by the input TOML. The ZIP includes those CSVs, so selecting a folder in the
+browser is unnecessary.
+
 ## Project launcher
 
 Double-click `stacking_ui/open_setup.cmd` on Windows, or run the following from

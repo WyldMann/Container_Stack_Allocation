@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import hashlib
 from io import BytesIO
 import json
 import os
@@ -27,7 +28,7 @@ STATIC = Path(__file__).with_name("static")
 ENTRY_PAGE = "container-stacking-simulator.html"
 
 
-def project_snapshot(*, branch_code=None):
+def project_snapshot(*, branch_code=None, data_dir=None):
     documents = read_project_tomls()
     input_text = documents["input_toml"]
     inputs = read_toml(input_text, "Stacking inputs")
@@ -39,6 +40,9 @@ def project_snapshot(*, branch_code=None):
     base = DEFAULT_STACKING_INPUT_CONFIG_FILE.parent
     settings = parse_input_config(inputs, base_dir=base)
     files = settings["csv_files"]
+    if data_dir is not None:
+        directory = Path(data_dir).resolve()
+        files = {name: directory / path.name for name, path in files.items()}
     for name, path in files.items():
         if not path.is_relative_to(PROJECT_ROOT) or path.suffix.casefold() != ".csv":
             raise ValueError(f"{name} must be a CSV path inside the project.")
@@ -62,7 +66,7 @@ def project_snapshot(*, branch_code=None):
     return documents, buffer.getvalue()
 
 
-def build(runtime, destination, *, branch_code=None):
+def build(runtime, destination, *, branch_code=None, data_dir=None):
     manifest = json.loads((runtime / "package.json").read_text(encoding="utf-8"))
     if manifest.get("name") != "pyodide" or manifest.get("version") != RUNTIME_VERSION:
         raise ValueError(f"Use the Pyodide {RUNTIME_VERSION} npm package.")
@@ -71,7 +75,7 @@ def build(runtime, destination, *, branch_code=None):
         for name, mime in RUNTIME_FILES.items()
     }
     licenses = {name: (runtime / name).read_bytes() for name in ("LICENSE", "LICENSE-Python")}
-    documents, snapshot = project_snapshot(branch_code=branch_code)
+    documents, snapshot = project_snapshot(branch_code=branch_code, data_dir=data_dir)
     assets["project.zip"] = ["application/zip", base64.b64encode(snapshot).decode("ascii")]
 
     page = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -91,7 +95,9 @@ def build(runtime, destination, *, branch_code=None):
 
     with ZipFile(destination, "w", ZIP_DEFLATED) as archive:
         archive.writestr(ENTRY_PAGE, page)
-        archive.writestr("defaults.js", "const TOML_DEFAULTS = " + json.dumps(documents) + ";\n")
+        bundle_id = hashlib.sha256(snapshot).hexdigest()[:16]
+        archive.writestr("defaults.js", "const STACKING_BUNDLE_ID = " + json.dumps(bundle_id) + ";\n"
+                         "const TOML_DEFAULTS = " + json.dumps(documents) + ";\n")
         archive.writestr("runtime-assets.js", "let STACKING_RUNTIME = " + json.dumps(assets) + ";\n")
         for name in ("style.css", "yard-map.css", "yard-map.js", "yard-comparison-map.js",
                      "simulation.js", "placement-graphs.js", "app.js", "standalone.js"):
@@ -110,9 +116,10 @@ def main():
     parser.add_argument("runtime", type=Path, help=f"Extracted Pyodide {RUNTIME_VERSION} npm package directory")
     parser.add_argument("output", type=Path, help="Destination ZIP file")
     parser.add_argument("--branch-code", help="Branch filter to bundle instead of the project default")
+    parser.add_argument("--data-dir", type=Path, help="Directory containing the nine CSVs to bundle")
     args = parser.parse_args()
     try:
-        build(args.runtime, args.output, branch_code=args.branch_code)
+        build(args.runtime, args.output, branch_code=args.branch_code, data_dir=args.data_dir)
     except (OSError, ValueError) as error:
         parser.exit(2, f"{error}\n")
     print(f"Standalone simulator saved to {args.output}")
