@@ -103,7 +103,7 @@
   globalThis.stepStackingSimulation = step => request({...step, op: "step"});
   globalThis.repairStackingTierGaps = repair => request({...repair, op: "repair_tier_gaps"});
   globalThis.compareStackingYard = comparison => request({...comparison, op: "compare_yard"});
-  const defaultStorageKey = key => "container-stacking:default:" + key;
+  const defaultStorageKey = key => "container-stacking:default:" + STACKING_BUNDLE_ID + ":" + key;
   globalThis.readStackingTomlDefault = key => {
     try {
       return localStorage.getItem(defaultStorageKey(key));
