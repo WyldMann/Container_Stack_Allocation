@@ -165,7 +165,7 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
         for origin, raw, scope in source_records[name]:
             if not in_scope(scope):
                 continue
-            row = {key: strGeneralize(value) for key, value in raw.items()}
+            row = Repository.normalize_record(raw, profiles[name])
             if name == "terminal_branches":
                 row = {key: value.strip() for key, value in raw.items()}
             if profiles[name].branch_kind == "code" and row.get("branch_id", "").strip().upper() == code:
@@ -198,7 +198,7 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
         for origin, raw, scope in source_records[name]:
             if not in_scope(scope):
                 continue
-            row = {key: strGeneralize(value) for key, value in raw.items()}
+            row = Repository.normalize_record(raw, profiles[name])
             if name == "existing_containers":
                 row_branch = row["branch_id"].strip().upper()
                 expected = code if profiles[name].branch_kind == "code" else branch_id

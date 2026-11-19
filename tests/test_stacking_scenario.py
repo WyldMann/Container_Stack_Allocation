@@ -74,6 +74,53 @@ class ScenarioTests(unittest.TestCase):
         self.assertTrue(preview["ready"], preview)
         json.dumps(preview, allow_nan=False)
 
+    def test_sd179_mixed_case_dummy_loader_is_registered_and_used(self):
+        self.payload["branch_codes"] = ["SD179"]
+        self.rows["terminal_branches"] = [dict(
+            branch_id="15", terminal_id="13", branch_code="SD179", branch_name="Surabaya",
+        )]
+        self.rows["yard_blocks"] = [self.rows["yard_blocks"][0] | dict(
+            block_id=block_id, branch_id="15", terminal_id="13", block_code=code,
+        ) for block_id, code in (("60", "Repair"), ("59", "G"))]
+        self.rows["existing_containers"] = []
+        self.rows["master_equipment"] = [dict(equipment_code="SL.Dummy.SD179", equipment_type="SL")]
+        self.rows["equipment_history"] = [dict(
+            equipment_code="SL.Dummy.SD179", branch_id="SD179", block_code="Repair",
+            row_no="1", slot_no="1", move_time="",
+        )]
+        self.write_files()
+
+        scenario = prepare_scenario(self.payload)
+        branch, = scenario["branches"]
+        loader, = branch["yard"].master_loaders
+        self.assertEqual(loader.getCode(), "SL.DUMMY.SD179")
+        self.assertEqual(loader.getCoords(), ("60", 0, 0))
+        self.assertTrue(all(branch["yard"].canServeBlock(block)
+                            for block in branch["yard"].blocks_by_id.values()))
+        self.assertEqual(branch["issues"], [])
+        self.assertTrue(public_preview(scenario)["ready"])
+        simulation = Simulation(scenario)
+        step = simulation.step(simulation.id, "SD179", 1)
+        self.assertEqual(step["row"]["status"], "placed")
+        selected, = [candidate for candidate in step["calculation"]["candidates"] if candidate["selected"]]
+        self.assertEqual(selected["equipment"], "SL.DUMMY.SD179")
+
+    def test_zero_prefixed_branch_codes_preserve_containers_and_diagnostic_sources(self):
+        self.payload["branch_codes"] = ["00SD179"]
+        self.rows["terminal_branches"][0]["branch_code"] = "00SD179"
+        self.rows["existing_containers"][0]["branch_id"] = "00sd179"
+        self.rows["equipment_history"][0]["branch_id"] = "00sd179"
+        self.rows["inbound_containers"][0].update(branch_id="00sd179", move_time="invalid date")
+        self.write_files()
+        scenario = prepare_scenario(self.payload)
+        branch, = scenario["branches"]
+        self.assertEqual(list(branch["yard"].containers), ["OLD"])
+        self.assertEqual(len(branch["queue"]), 2)
+        self.assertEqual(branch["queue"][0]["status"], "invalid")
+        self.assertEqual(branch["queue"][0]["sources"], [{"file": "inbound_containers.csv", "line": 2}])
+        problem, = branch["issues"]
+        self.assertEqual(problem["sources"], [{"file": "inbound_containers.csv", "line": 2}])
+
     def test_multiple_branches_get_independent_yards_and_unscoped_inbound(self):
         self.rows["terminal_branches"].append(dict(branch_id="3", terminal_id="1", branch_code="JKT64", branch_name="Second yard"))
         self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {"block_id": "11", "branch_id": "3"})

@@ -93,6 +93,43 @@ class SQLLoaderTests(unittest.TestCase):
         self.assertEqual(EquipmentMoveRepository(loader, self.profiles["equipment_history"]).read_locations(),
                          {"RTG1": ("BR", "A", 1, 2)})
 
+    def test_yard_equipment_normalization_matches_csv_and_groups_before_latest_selection(self):
+        headers = ["ALAT", "BRANCH", "BLOK", "ROW", "SLOT", "MOVE_DATE"]
+        loader = self.loader(headers, [
+            ("SL.Dummy.SD179", "SD179", "Repair", 1, 1, None),
+            ("sl.dummy.sd179", "SD179", "000Repair", 2, 3, datetime(2026, 10, 21)),
+        ])
+        actual = EquipmentMoveRepository(loader, self.profiles["equipment_history"]).read_yard_locations()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "equipment.csv"
+            path.write_text(
+                ",".join(headers) + "\n"
+                "SL.Dummy.SD179,SD179,Repair,1,1,\n"
+                "sl.dummy.sd179,SD179,000Repair,2,3,2026-10-21 00:00:00\n",
+                encoding="utf-8",
+            )
+            expected = EquipmentMoveRepository(
+                CSVLoader(path), self.profiles["equipment_history"],
+            ).read_yard_locations()
+        self.assertEqual(actual, {"SL.DUMMY.SD179": ("SD179", "REPAIR", 1, 2)})
+        self.assertEqual(actual, expected)
+
+    def test_branch_codes_keep_leading_zeroes_in_csv_and_sql_records(self):
+        profile = self.profiles["existing_containers"]
+        fields = profile.schema.fields
+        record = dict(branch_id="00sd179", container_id="BOX", block_code="Repair")
+        headers = [profile.columns.get(field, field) for field in fields]
+        values = [record.get(field, "") for field in fields]
+        loader = self.loader(headers, [values])
+        actual = Repository(loader, profile).read_records()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "containers.csv"
+            path.write_text(",".join(headers) + "\n" + ",".join(values) + "\n", encoding="utf-8")
+            expected = Repository(CSVLoader(path), profile).read_records()
+        self.assertEqual(actual, expected)
+        self.assertEqual(actual[0]["branch_id"], "00SD179")
+        self.assertEqual(actual[0]["block_code"], "REPAIR")
+
     def test_mixed_timezone_values_report_source_context(self):
         loader = self.loader(
             ["ALAT", "BRANCH", "BLOK", "ROW", "SLOT", "MOVE_DATE"],

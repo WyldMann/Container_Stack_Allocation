@@ -339,6 +339,25 @@ class CSVReaderMappingTests(unittest.TestCase):
             {"rtg01": ("001", "a", 1, 2)},
         )
 
+    def test_yard_equipment_block_codes_match_normalized_yard_blocks(self):
+        for block_code in ("Repair", "rEpAiR", "000Repair"):
+            with self.subTest(block_code=block_code):
+                text = (
+                    "ALAT,BRANCH,BLOK,ROW,SLOT,MOVE_DATE\n"
+                    f"SL.Dummy.SD179,SD179,{block_code},1,1,\n"
+                )
+                self.assertEqual(
+                    self.read_text(EquipmentMoveRepository, text, "equipment_history",
+                                   method="read_yard_locations"),
+                    {"SL.DUMMY.SD179": ("SD179", "REPAIR", 0, 0)},
+                )
+                # Raw movement readers retain the original source spellings.
+                self.assertEqual(
+                    self.read_text(EquipmentMoveRepository, text, "equipment_history",
+                                   method="read_locations"),
+                    {"SL.Dummy.SD179": ("SD179", block_code, 0, 0)},
+                )
+
     def test_incompatible_profile_is_rejected(self):
         with self.assertRaisesRegex(InputError, "does not define"):
             self.read_text(

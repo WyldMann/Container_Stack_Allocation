@@ -169,6 +169,45 @@ class InputFilterTests(unittest.TestCase):
                 self.assertIs(block.getStack(0, 0).getContainer(0), yard.containers["BOX_A"])
                 self.assertEqual(block.getRTG().getCode(), "EQ_JKT74")
 
+    def test_equipment_block_normalization_works_for_branch_codes_and_ids(self):
+        self.data["yard_blocks"][0]["block_code"] = "Repair"
+        self.write_records("yard_blocks", self.data["yard_blocks"])
+        self.write_records("master_equipment", [dict(equipment_code="sl.dummy", equipment_type="SL")])
+        settings = self.settings()
+        mapping = settings["mapping_files"]["csv"].read_text(encoding="utf-8")
+        for branch_kind, branch in (("code", " jkt74 "), ("id", "002")):
+            with self.subTest(branch_kind=branch_kind):
+                path = self.root / "equipment_mapping.toml"
+                path.write_text(mapping.replace(
+                    '[csv.equipment_history]\nbranch_kind = "code"',
+                    f'[csv.equipment_history]\nbranch_kind = "{branch_kind}"',
+                ), encoding="utf-8")
+                settings["mapping_files"]["csv"] = path
+                self.write_records("equipment_history", [
+                    dict(equipment_code="SL.Dummy", branch_id=branch, block_code="000rEpAiR",
+                         row_no="1", slot_no="1", move_time=""),
+                ])
+                inputs = load_yard_inputs(settings, include_shifting=False)
+                self.assertEqual(inputs["equipment_history"], {"SL.DUMMY": ("2", "REPAIR", 0, 0)})
+                yard = Yard(inputs["yard_blocks"], equipment_input=inputs["master_equipment"],
+                            equipment_locations_input=inputs["equipment_history"])
+                loader, = yard.master_loaders
+                self.assertEqual(loader.getCoords(), ("10", 0, 0))
+
+    def test_branch_codes_keep_leading_zeroes_when_loading_containers(self):
+        self.data["terminal_branches"][0]["branch_code"] = "00JKT74"
+        for name in ("existing_containers", "equipment_history"):
+            for row in self.data[name]:
+                if row["branch_id"] == "JKT74":
+                    row["branch_id"] = "00jkt74"
+            self.write_records(name, self.data[name])
+        self.write_records("terminal_branches", self.data["terminal_branches"])
+        self.set_filters('branch_code = "00JKT74"')
+        inputs = load_yard_inputs(self.settings(), include_shifting=False)
+        self.assertEqual({row["container_id"] for row in inputs["existing_containers"]}, {"BOX_A", "BOX_C"})
+        self.assertEqual({row["branch_id"] for row in inputs["existing_containers"]}, {"2"})
+        self.assertEqual(inputs["equipment_history"], {"EQ_JKT74": ("2", "B", 0, 0)})
+
     def test_missing_branch_fails_before_loading_other_inputs(self):
         self.set_filters('branch_code = "MISSING"')
         opened = []

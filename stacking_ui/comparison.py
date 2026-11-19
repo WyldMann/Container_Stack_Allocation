@@ -51,7 +51,7 @@ def _read_snapshot(branch, name, text):
         else:
             matches = strGeneralize(value) == strGeneralize(branch_id)
         if matches:
-            record = {key: strGeneralize(value) for key, value in raw.items()}
+            record = Repository.normalize_record(raw, profile)
             record["branch_id"] = branch_id
             selected.append((int(location.rsplit(", line ", 1)[1]), record))
     if records and not selected:

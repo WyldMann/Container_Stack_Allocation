@@ -119,9 +119,17 @@ class Repository:
             else:
                 yield record, position
 
+    @staticmethod
+    def normalize_record(record, profile=None):
+        """Normalize yard fields while preserving leading zeroes in branch codes."""
+        normalized = {key: strGeneralize(value) for key, value in record.items()}
+        if profile is not None and profile.branch_kind == "code" and "branch_id" in record:
+            normalized["branch_id"] = record["branch_id"].strip().upper()
+        return normalized
+
     def read_records(self) -> list[dict[str, str]]:
         return [
-            {key: strGeneralize(value) for key, value in record.items()}
+            self.normalize_record(record, self.profile)
             for _, record in self._iter_rows()
         ]
 
@@ -175,8 +183,12 @@ class EquipmentMoveRepository(Repository):
     required_fields = ("equipment_code", "branch_id", "block_code", "row_no", "slot_no", "move_time")
 
     def read_yard_locations(self) -> dict[str, tuple[str, str, int, int]]:
-        """Group movements using the same equipment IDs as the yard master data."""
-        return self.read_locations(normalize_equipment_code=True)
+        """Match master equipment IDs and yard block codes before yard scoping."""
+        locations = self.read_locations(normalize_equipment_code=True)
+        return {
+            equipment: (branch, strGeneralize(block), row, slot)
+            for equipment, (branch, block, row, slot) in locations.items()
+        }
 
     def read_locations(self, *, normalize_equipment_code: bool = False) -> dict[str, tuple[str, str, int, int]]:
         result = {}
