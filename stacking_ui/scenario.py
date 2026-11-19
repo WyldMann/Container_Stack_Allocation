@@ -322,10 +322,6 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
             message += " Placements will have no equipment."
         add("master_equipment", message,
             severity=severity)
-    for row in inputs["master_equipment"]:
-        if row["equipment_code"] not in inputs["equipment_history"]:
-            add("master_equipment", "Equipment has no selected location and is not registered in the yard.",
-                row, severity="warning")
     branch["summary"] = {"blocks": len(yard.blocks_by_id), "existing_containers": len(yard.containers)}
     if branch["inbound_available"]:
         branch["summary"].update(inbound_containers=len(branch["queue"]),

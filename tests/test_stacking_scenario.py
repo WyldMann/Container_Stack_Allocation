@@ -548,6 +548,49 @@ class ScenarioTests(unittest.TestCase):
         self.assertIn("max_tier", problem["message"])
         self.assertEqual(problem["sources"][0]["line"], 2)
 
+    def test_shared_master_equipment_does_not_warn_for_other_branches(self):
+        self.payload["branch_codes"] = ["JKT74", "JKT64", "SD179"]
+        for branch_id, code, block_id, block_code, equipment, equipment_type in (
+            ("1", "JKT64", "11", "B", "RTG2", "RTG"),
+            ("15", "SD179", "60", "Repair", "SL.Dummy.SD179", "SL"),
+        ):
+            self.rows["terminal_branches"].append(dict(
+                branch_id=branch_id, terminal_id="1", branch_code=code, branch_name=code,
+            ))
+            self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | dict(
+                branch_id=branch_id, block_id=block_id, block_code=block_code,
+            ))
+            self.rows["master_equipment"].append(dict(equipment_code=equipment, equipment_type=equipment_type))
+            self.rows["equipment_history"].append(dict(
+                equipment_code=equipment, branch_id=code, block_code=block_code,
+                row_no="1", slot_no="1", move_time="",
+            ))
+        mapping = tomllib.loads(self.payload["mapping_toml"])
+        for branch_kind in ("code", "id"):
+            with self.subTest(branch_kind=branch_kind):
+                mapping["csv"]["equipment_history"]["branch_kind"] = branch_kind
+                self.payload["mapping_toml"] = dump_toml(mapping)
+                if branch_kind == "id":
+                    for row, branch_id in zip(self.rows["equipment_history"], ("2", "1", "15")):
+                        row["branch_id"] = branch_id
+                preview = self.preview()
+                self.assertTrue(preview["ready"], preview)
+                self.assertEqual(preview["issues"], [])
+                for branch in preview["branches"]:
+                    self.assertEqual(branch["issues"], [], branch["branch_code"])
+                    self.assertEqual(branch["counts"]["equipment_history"], 1)
+
+    def test_invalid_selected_equipment_location_keeps_actionable_warnings(self):
+        self.rows["equipment_history"][0]["row_no"] = "invalid"
+        preview = self.preview()
+        branch, = preview["branches"]
+        invalid, = [problem for problem in branch["issues"] if problem["dataset"] == "equipment_history"]
+        self.assertIn("row_no must be an integer", invalid["message"])
+        self.assertEqual(invalid["sources"], [{"file": "equipment_history.csv", "line": 2}])
+        equipment_warning, = [problem for problem in branch["issues"] if problem["dataset"] == "master_equipment"]
+        self.assertIn("Block A has no RTG and no registered loader", equipment_warning["message"])
+        self.assertEqual(equipment_warning["severity"], "warning")
+
     def test_missing_equipment_uses_null_and_keeps_distance_disabled(self):
         self.rows["master_equipment"] = []
         self.rows["equipment_history"] = []
