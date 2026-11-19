@@ -13,6 +13,7 @@ from shifting_report_calculation import EXISTING_YARD_DATASETS
 from repository import CSVLoader, InputError, load_yard_inputs
 from repository.shifting_repository import ShiftingRepository
 from tests.shifting_fixtures import write_report
+from tests import test_main_existing as main_tests
 
 
 HEADER = "cy_name,shifting_code,lifting_count,shifting_count"
@@ -104,6 +105,12 @@ class ShiftingRepositoryTests(unittest.TestCase):
 class ShiftingInputTests(unittest.TestCase):
     def setUp(self):
         self.document = tomllib.loads(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
+        fixture = main_tests.ExistingYardMainTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture_files = tomllib.loads(fixture.input_path.read_text(encoding="utf-8"))["csv"]["files"]
+        for name in EXISTING_YARD_DATASETS:
+            self.document["csv"]["files"][name] = fixture_files[name]
         self.document["input"]["sources"] = dict.fromkeys(EXISTING_YARD_DATASETS, "csv")
         self.document["input"]["filters"] = {"branch_code": "JKT74"}
         self.document["csv"].pop("shifting_workbook_file", None)

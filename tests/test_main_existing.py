@@ -28,7 +28,7 @@ class ExistingYardMainTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.root = Path(directory.name)
+        self.root = Path(directory.name).resolve()
         self.input_path = self.root / "input.toml"
         self.shifting_path = self.root / "shifting.xlsx"
         self.mapping_path = self.root / "shifting_block_mapping.toml"
@@ -44,8 +44,41 @@ class ExistingYardMainTests(unittest.TestCase):
         template = template.replace('shifting_summary = "csv"', 'shifting_summary = "xlsx"')
         template = template.replace('# shifting_workbook_file =', 'shifting_workbook_file =')
         template = template.replace('# shifting_workbook_sheet =', 'shifting_workbook_sheet =')
-        configured_containers = tomllib.loads(template)["csv"]["files"]["existing_containers"]
-        template = template.replace(configured_containers, "../../data_shifting_calculation/containers.csv")
+        # Keep report/import tests independent of moved or refreshed local exports.
+        profiles = load_mapping(DEFAULT_CSV_MAPPING_FILE, source="csv")
+        rows = {
+            "terminal_branches": [dict(branch_id="2", terminal_id="1", branch_code="JKT74",
+                                       branch_name="CY 219 (Lini 2)")],
+            "yard_blocks": [dict(block_id=block_id, branch_id="2", terminal_id="1", block_code=code,
+                                 row_count="11", slot_count="11", max_tier="6", pos_x="0", pos_y="0")
+                            for block_id, code in (("10", "B"), ("11", "C"))],
+            "existing_containers": [dict(container_id=f"BOX_{code}_{row}", branch_id="JKT74", block_code=code,
+                                         container_size="20", row_no=str(row), slot_no="1", tier_no="1")
+                                    for code in ("B", "C") for row in range(1, 11)],
+            "parameters": [dict(parameter_id="P", parameter_name="Twenty-foot", container_size="20",
+                                container_size_score="1", terminal_id="1", branch_id="2")],
+            "yard_planning": [dict(parameter_id="P", block_id=block, row_no=str(row), slot_no="1",
+                                   terminal_id="1", branch_id="2")
+                              for block in ("10", "11") for row in range(1, 11)],
+            "removed_slots": [],
+            "master_equipment": [dict(equipment_code=code, equipment_type=kind)
+                                 for code, kind in (("RS MDL 32", "RS"), ("SL", "SL"))],
+            "equipment_history": [dict(equipment_code=code, branch_id="JKT74", block_code=block,
+                                       row_no="1", slot_no="1", move_time="")
+                                  for code, block in (("RS MDL 32", "B"), ("SL", "C"))],
+        }
+        configured_files = tomllib.loads(template)["csv"]["files"]
+        for dataset, records in rows.items():
+            profile = profiles[dataset]
+            path = self.root / Path(configured_files[dataset]).name
+            columns = {field: profile.columns.get(field, field) for field in profile.schema.fields}
+            columns.update(profile.filter_columns)
+            with path.open("w", encoding="utf-8", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=list(dict.fromkeys(columns.values())))
+                writer.writeheader()
+                for record in records:
+                    writer.writerow({columns[field]: value for field, value in record.items()})
+            template = template.replace(configured_files[dataset], path.as_posix())
         # Legacy weekly fixtures supply their own benchmark; production uses daily dates.
         template = template.replace('[input.sources]', '''[shifting_period]
 benchmark_week = 40
