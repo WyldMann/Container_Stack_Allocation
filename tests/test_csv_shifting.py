@@ -154,6 +154,39 @@ class CSVOperationsTests(unittest.TestCase):
         rows = self.load([operation(), operation(document="101"), operation()])
         self.assertEqual(rows[0].lifting_count, 3)
 
+    def test_temporarily_blacklisted_operation_cannot_anchor_or_count_in_window(self):
+        self.mapping.write_text('[JKT74]\nSL = "B"\n"RS MDL" = "C"\n', encoding="utf-8")
+        for granularity in ("daily", "weekly"):
+            for timestamp in ("27-11-2026 17:45", "27/11/2026 17:45"):
+                with self.subTest(granularity=granularity, timestamp=timestamp):
+                    blocked = operation(identifier="62", document="65155", activity="Lift Off Discharge",
+                                        timestamp=timestamp, equipment=" rs mdl ", branch=" jkt74 ")
+                    self.assertEqual(self.load([blocked], period_granularity=granularity), [])
+                    rows = self.load([blocked, operation()], period_granularity=granularity)
+                    self.assertEqual({row.period_end for row in rows}, {LATEST})
+                    self.assertEqual(sum(row.lifting_count for row in rows), 1)
+                    self.assertEqual(sum(row.shifting_count for row in rows), 0)
+
+    def test_temporary_blacklist_preserves_corrected_dates_and_other_operation_identities(self):
+        self.mapping.write_text('[JKT74]\nSL = "B"\n"RS MDL" = "C"\n', encoding="utf-8")
+        original = dict(identifier="62", document="65155", activity="Lift Off Discharge",
+                        timestamp="27-11-2026 17:45", equipment="RS MDL")
+        activities = {"lifting": ("Lift Off Discharge",), "shifting": ("Shifting Delivery",)}
+        for changed in (
+            dict(timestamp="19-11-2026 17:45"), dict(document="65156"),
+            dict(identifier="63"), dict(equipment="SL"), dict(activity="Shifting Delivery"),
+        ):
+            with self.subTest(changed=changed):
+                rows = self.load([operation(**(original | changed))], activities=activities)
+                self.assertEqual(sum(row.lifting_count + row.shifting_count for row in rows), 1)
+        self.mapping.write_text('[OTHER]\n"RS MDL" = "C"\n', encoding="utf-8")
+        write_csv(self.path, [operation(**original, branch="OTHER")])
+        rows = load_csv_shifting_summary(
+            self.path, activities, CY, "OTHER", self.mapping,
+            [{"block_id": "11", "block_code": "C"}],
+        )
+        self.assertEqual(rows[0].lifting_count, 1)
+
     def test_multiple_codes_can_contribute_to_one_block(self):
         self.mapping.write_text(f'["{CY}"]\nSL = "B"\nRS = "B"\n', encoding="utf-8")
         rows = self.load([operation(), operation(equipment="RS", activity="Shifting Delivery")])

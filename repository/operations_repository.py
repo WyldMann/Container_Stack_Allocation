@@ -13,6 +13,14 @@ from .shifting_dates import WIB
 from .shifting_repository import ShiftingSummary, resolve_shifting_blocks
 
 
+# Temporary exclusion pending correction of the future-dated source operation.
+# Match its full identity so reordered exports and reused IDs remain safe.
+TEMPORARILY_EXCLUDED_OPERATIONS = frozenset({
+    ("JKT74", "65155", "62", "rs mdl", "LIFT OFF DISCHARGE",
+     int(datetime(2026, 11, 27, 17, 45, tzinfo=WIB).timestamp())),
+})
+
+
 class OperationsRepository(Repository):
     required_fields = (
         "DTL_ID", "DOC_ID", "ACTIVITY", "ACTIVITY_DATE_TIME", "KODE_CABANG", "ALAT",
@@ -41,6 +49,10 @@ class OperationsRepository(Repository):
                     f"{location}: ACTIVITY_DATE_TIME must be DD-MM-YYYY HH:MM "
                     "or DD/MM/YYYY HH:MM in WIB."
                 ) from error
+            if (row["KODE_CABANG"].strip().upper(), row["DOC_ID"].strip(),
+                    row["DTL_ID"].strip(), code, row["ACTIVITY"].upper(),
+                    timestamp) in TEMPORARILY_EXCLUDED_OPERATIONS:
+                continue
             yield timestamp, code, row["ACTIVITY"]
 
     def read_summaries(self, cy_name, mapping, blocks, activities, *,

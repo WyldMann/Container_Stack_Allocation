@@ -58,6 +58,13 @@ whole-row equality because those have not been established as global operation
 keys. Include all relevant operations for the requested window, not a sample or
 a limited query result.
 
+Temporary exclusion: `repository/operations_repository.py` skips the JKT74 operation
+with `DOC_ID=65155`, `DTL_ID=62`, equipment `RS MDL`, activity `Lift Off Discharge`,
+and timestamp `27-11-2026 17:45` WIB (originally CSV line 269545). It is excluded
+from both window selection and counting. The source CSV is preserved; a corrected
+timestamp is accepted. Remove its `TEMPORARILY_EXCLUDED_OPERATIONS` entry after
+the source date is verified and corrected.
+
 ## Counting rules
 
 - Resolve the selected branch through `terminal_branches`; match `KODE_CABANG`
