@@ -149,7 +149,7 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
   --yard-grid-gap: 3px;
   --yard-row-label-width: 31px;
   width: calc(var(--yard-row-label-width) + 2 * var(--yard-grid-gap) +
-    var(--yard-slot-count) * (44px + var(--yard-grid-gap)));
+    var(--yard-slot-count) * (90px + var(--yard-grid-gap)));
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: var(--yard-grid-gap);

@@ -140,7 +140,7 @@
   border: 1px solid var(--comparison-border);
   border-radius: 5px;
 }
-.comparison-slot { position: relative; width: 36px; min-height: 34px; padding: 0; font-variant-numeric: tabular-nums; }
+.comparison-slot { position: relative; width: 85px; height: 34px; padding: 0; font-variant-numeric: tabular-nums; }
 .comparison-swatch { width: 13px; height: 13px; border-radius: 3px; }
 .comparison-slot-same { --comparison-fill: #f1f4f2; --comparison-ink: #374e45; --comparison-border: #cbd6cf; }
 .comparison-slot-changed { --comparison-fill: #ffefcd; --comparison-ink: #6e430e; --comparison-border: #c1934c; }

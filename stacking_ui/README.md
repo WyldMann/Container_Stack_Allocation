@@ -176,8 +176,12 @@ installed Codex runtime when available. Each editor shows its loaded file and of
 2. Under **Simulation settings**, edit the prefilled values in **Placement
    settings**. Each editor's **Save** button writes its values to the
    corresponding project TOML.
-3. Click **Generate preview**. The top-down map places blocks using their
-   `POS_X` and `POS_Y` coordinates. Use the mouse wheel over the map, the zoom
+3. Click **Generate preview**. The top-down map uses a compact schematic layout.
+   `POS_X` and `POS_Y` determine the general arrangement, with near-aligned blocks
+   grouped into rows and columns and excessive distances replaced by compact gaps.
+   Blocks sharing a position form a compact cluster. Original coordinates still
+   supply simulation distances, and stack tiles keep their 20 ft proportions.
+   Use the mouse wheel over the map, the zoom
    slider, or the **−** and **+** buttons to adjust its size. Right-click and drag
    to pan the map. Select any stack to inspect
    its tiers and assigned parameters. Stack colors show
@@ -257,4 +261,10 @@ Run the scenario tests with
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest tests.test_stacking_scenario
+```
+
+Check the schematic layout's spacing, alignment, and coordinate preservation with:
+
+```powershell
+node --test tests/test_yard_map_layout.cjs
 ```
