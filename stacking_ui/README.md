@@ -195,15 +195,22 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    yard and inbound queue.
    The initial
    yard can still be inspected when the inbound CSV is missing. The page also
-   shows the incoming containers in a horizontal queue above the map, in CSV
-   order. **Save yard CSV** opens a Save As dialog for `containers.csv` with
-   the yards in the preview, including placements completed so far.
-4. Click **Start simulation**, then **Next container** to process one CSV row at
-   a time, or **Run to end** to process all remaining rows without pausing.
-   Invalid rows stay in the queue and are skipped. Each placement marks
+   shows the incoming containers in a horizontal queue above the map. Drag a
+   remaining card and release it when the capped line marks the desired gap. Click a card or
+   press **Tab** until the card shows a green outline.
+   Press **Alt + Left Arrow** or **Alt + Right Arrow** to move it. The simulation
+   follows the new order, including changes made between steps. **Save yard CSV**
+   opens a Save As dialog for `containers.csv` with the yards in the preview,
+   including placements completed so far.
+4. **Generate preview** shows the suggested assignment for the current container.
+   Drag another card into the first remaining position to make it current and
+   see its suggestion. **Place container** commits the displayed assignment and
+   shows the next container's suggestion. When a row is invalid or has no
+   qualifying location, **Skip container** advances the queue. **Run to end**
+   processes the remaining rows automatically. Each placement marks
    the destination on the map with its tier. A 40 ft stack spans both slots
-   as one tile. **Assignment trace** shows the decision after each step and
-   lets you revisit earlier rows. Expand **Show calculation details** for the
+   as one tile. Use **View assignment** to revisit completed rows or return to
+   the current suggestion. Expand **Show calculation details** for the
    rejection reasons, parameter scores, and candidates in yard order.
    The map outlines locations that passed feasibility and parameter selection,
    with the chosen placement in purple and rank badges for the top five.
@@ -244,7 +251,9 @@ the same placement engine as the command-line program. Each branch advances
 independently. In browser-upload mode, the selected uploads supply the CSVs.
 Previews are limited to 2,000,000 tier cells per branch.
 
-Queue order follows the filtered CSV. Inbound records without branch coordinates
+Each branch starts in filtered CSV order. Reordering applies to that branch
+for the current preview. Generating a fresh preview restores CSV order.
+Inbound records without branch coordinates
 are included in each selected branch, matching the current importer. An
 equipment-free yard can run with null equipment and a neutral equipment-distance
 multiplier; no equipment is moved. Blocks without equipment are flagged in the

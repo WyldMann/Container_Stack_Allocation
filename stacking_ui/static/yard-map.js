@@ -689,10 +689,10 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       const anchorTile = view.tiles[anchor];
       const footprint = new Set([anchorTile]);
       if (row.size === "40") footprint.add(view.tiles[anchor - 1]);
-      const chosen = candidate.selected && row.status === "placed";
+      const chosen = candidate.selected && (row.status === "placed" || row.status === "suggested");
       const slots = row.size === "40" ? "Slots " + two(candidate.slot - 1) + "–" + two(candidate.slot) :
         "Slot " + two(candidate.slot);
-      const state = chosen ? "Placed" : "Passed parameter selection";
+      const state = chosen ? (row.status === "suggested" ? "Suggested placement" : "Placed") : "Passed parameter selection";
       const rankLabel = candidate.rank == null ? "" : "Rank " + candidate.rank + " · ";
       const description = rankLabel + slots + " · Tier " + candidate.tier + " · " + (candidate.equipment ?? "No equipment") + " · " + state;
       const breakdown = heuristicRows(candidate, calculation.enabled_multipliers);
@@ -720,11 +720,11 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       (calculation.checked - rejected) + " of " + calculation.checked + " locations passed feasibility" :
       "No placement search";
     traceKey.replaceChildren(
-      el("strong", "Trace #" + row.position + " · " + (row.container_id || "Missing container ID")),
+      el("strong", (row.status === "suggested" ? "Suggestion #" : "Trace #") + row.position + " · " + (row.container_id || "Missing container ID")),
       el("span", context + (historical ? " · Earlier trace on the current yard" : "")),
       el("span", candidates.length ?
         candidates.length + " passed parameter selection · Badges mark the top five · Select a location for its score" +
-          (row.status === "placed" ? " · Purple marks the placement" : "") :
+          (row.status === "suggested" ? " · Purple marks the suggestion" : row.status === "placed" ? " · Purple marks the placement" : "") :
         "No locations passed parameter selection")
     );
     if (target) {

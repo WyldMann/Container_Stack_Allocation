@@ -1,17 +1,138 @@
 "use strict";
 
-function simulationView(run, branches, id, onStart) {
+function enableQueueReordering(panel, run, id, accessBusy, onCurrentChange) {
+  const track = panel.querySelector(".inbound-track");
+  const hint = el("span", " · Drag a card and release it at the insertion marker. Click a remaining card or press Tab until it has a green outline. Hold Alt and press ← or → to move it.");
+  panel.querySelector("p").append(hint);
+  const feedback = el("p", undefined, "inbound-feedback");
+  feedback.setAttribute("role", "status");
+  panel.append(feedback);
+  let dragged = null;
+  let target = null;
+
+  // A gap is the number of cards to its left, including any processed cards.
+  function insertionGap(x) {
+    let left = 0;
+    let right = track.children.length;
+    while (left < right) {
+      const index = Math.floor((left + right) / 2);
+      const card = track.children[index];
+      const bounds = card.getBoundingClientRect();
+      const center = Math.floor(bounds.left + bounds.width / 2);
+      // Directly over the center, dropping takes the hovered card's position.
+      if (x < center || (x === center && card.value < dragged.value)) right = index;
+      else left = index + 1;
+    }
+    return left >= run.processed ? left : null;
+  }
+
+  function markGap(gap) {
+    const end = track.children.length;
+    const card = gap === null ? null : track.children[Math.min(gap, end - 1)];
+    if (card !== target) target?.removeAttribute("data-drop-edge");
+    target = card;
+    if (card) card.dataset.dropEdge = gap === end ? "after" : "before";
+  }
+
+  function endDrag() {
+    markGap(null);
+    dragged?.classList.remove("inbound-dragging");
+    dragged = null;
+  }
+
+  function move(from, to) {
+    const {queue} = run.branch;
+    if (from === to || from <= run.processed || to <= run.processed || to > queue.length || accessBusy()) return;
+    return action(async () => {
+      const reordered = queue.slice();
+      const [moved] = reordered.splice(from - 1, 1);
+      reordered.splice(to - 1, 0, moved);
+      const order = reordered.slice(run.processed).map(row => row.input_position);
+      await globalThis.reorderStackingQueue({id, branch: run.branch.branch_code, order});
+      run.branch.queue = reordered;
+      for (let position = Math.min(from, to); position <= Math.max(from, to); position++) {
+        const row = reordered[position - 1];
+        row.position = position;
+        renderInboundCard(track.children[position - 1], row);
+      }
+      track.children[to - 1].focus();
+      feedback.classList.remove("not-ready");
+      feedback.textContent = (moved.container_id || "Inbound row") + " moved to #" + to + ".";
+      if (reordered[run.processed] !== queue[run.processed]) await onCurrentChange();
+    }, message => {
+      feedback.classList.add("not-ready");
+      feedback.textContent = message;
+    });
+  }
+
+  track.addEventListener("keydown", event => {
+    const card = event.target.closest(".inbound-card");
+    if (!card?.draggable || !event.altKey || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    move(card.value, card.value + (event.key === "ArrowLeft" ? -1 : 1));
+  });
+  track.addEventListener("dragstart", event => {
+    const card = event.target.closest(".inbound-card");
+    if (!card?.draggable || busy || accessBusy()) {
+      event.preventDefault();
+      return;
+    }
+    dragged = card;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(card.value));
+    card.classList.add("inbound-dragging");
+  });
+  track.addEventListener("dragover", event => {
+    if (!dragged) return;
+    const gap = insertionGap(event.clientX);
+    markGap(gap);
+    if (gap === null) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  });
+  track.addEventListener("dragleave", event => {
+    if (!track.contains(event.relatedTarget)) markGap(null);
+  });
+  track.addEventListener("drop", event => {
+    if (!dragged) return;
+    event.preventDefault();
+    const gap = insertionGap(event.clientX);
+    const from = dragged.value;
+    endDrag();
+    if (gap !== null) move(from, gap < from ? gap + 1 : gap);
+  });
+  track.addEventListener("dragend", endDrag);
+
+  return function refresh() {
+    const canMove = run.branch.queue.length - run.processed >= 2;
+    hint.hidden = !canMove;
+    track.tabIndex = canMove ? -1 : 0;
+    for (const card of track.children) {
+      card.draggable = canMove && card.value > run.processed;
+      if (card.draggable) card.tabIndex = 0;
+      else card.removeAttribute("tabindex");
+    }
+    feedback.textContent = "";
+  };
+}
+
+async function simulationView(run, branches, id, onStart) {
   const {branch} = run;
   const root = el("div");
   const queue = inboundQueue(branch);
   const track = queue.querySelector(".inbound-track");
   const map = createYardMap(branch, branches, {
     editable: run.processed === 0 && typeof globalThis.updateStackingBlockAccess === "function",
-    onChange: (block, side, value) => globalThis.updateStackingBlockAccess({
-      id, branch: branch.branch_code, policies: [{block_id: block.id, ...block.loader_access, [side]: value}]
-    }),
+    onChange: async (block, side, value) => {
+      await globalThis.updateStackingBlockAccess({
+        id, branch: branch.branch_code, policies: [{block_id: block.id, ...block.loader_access, [side]: value}]
+      });
+      await loadSuggestion();
+    },
     onSave: block => globalThis.saveStackingBlockAccess({id, branch: branch.branch_code, block_id: block.id})
   });
+  const refreshQueue = typeof globalThis.reorderStackingQueue === "function" ?
+    enableQueueReordering(queue, run, id, map.accessBusy, loadSuggestion) : null;
   const controls = el("div", undefined, "simulation-controls actions");
   const progress = el("strong");
   progress.setAttribute("aria-live", "polite");
@@ -33,11 +154,15 @@ function simulationView(run, branches, id, onStart) {
   const outcome = el("div", undefined, "simulation-outcome");
   const traceLabel = el("label", undefined, "simulation-trace-picker");
   const tracePicker = el("select");
-  traceLabel.append(el("strong", "Assignment trace"), tracePicker);
+  const currentOption = el("option", "Current container");
+  currentOption.value = "current";
+  tracePicker.append(currentOption);
+  traceLabel.append(el("strong", "View assignment"), tracePicker);
+  const heading = el("h3");
   const status = el("p");
   status.setAttribute("role", "status");
   const details = el("div");
-  outcome.append(traceLabel, status, details);
+  outcome.append(heading, traceLabel, status, details);
   const comparison = el("div", undefined, "yard-comparison");
   const comparisonStatus = el("p");
   comparisonStatus.setAttribute("role", "status");
@@ -74,15 +199,48 @@ function simulationView(run, branches, id, onStart) {
   }
   run.traces.forEach(appendTraceOption);
 
+  let suggestionError = "";
+  async function loadSuggestion() {
+    run.suggestion = null;
+    suggestionError = "";
+    tracePicker.value = "current";
+    showTrace();
+    try {
+      run.suggestion = await globalThis.suggestStackingAssignment({id, branch: branch.branch_code});
+    } catch (error) {
+      suggestionError = error.message;
+    }
+    showTrace();
+  }
+
   function showTrace() {
-    const trace = run.traces[Number(tracePicker.value)];
+    const current = tracePicker.value === "current";
+    const trace = current ? run.suggestion : run.traces[Number(tracePicker.value)];
+    heading.textContent = current ? "Suggested assignment" : "Assignment trace";
+    next.hidden = !current || (!trace && !suggestionError);
+    runToEnd.hidden = !current || !trace;
+    if (!trace) {
+      next.textContent = "Retry suggestion";
+      status.classList.toggle("not-ready", Boolean(suggestionError));
+      status.textContent = suggestionError || "Calculating the suggested assignment…";
+      details.replaceChildren();
+      map.showTrace(null);
+      return;
+    }
     const {row, location, calculation} = trace;
     const label = "#" + row.position + " " + (row.container_id || "Missing container ID");
     status.classList.remove("not-ready");
-    status.textContent = location ? label + " placed · " + location :
-      label + (row.status === "invalid" ? " skipped · " : " unplaced · ") + row.reason;
-    details.replaceChildren(...(calculation ? [placementTrace(calculation, row.status)] : []));
-    map.showTrace(trace, row.position !== run.processed);
+    if (current) {
+      const winner = calculation?.candidates.find(candidate => candidate.selected);
+      next.textContent = winner ? "Place container" : "Skip container";
+      status.textContent = winner ? label + " · " + placementLocation(winner, row.size) :
+        label + " · " + row.reason;
+    } else {
+      status.textContent = location ? label + " placed · " + location :
+        label + (row.status === "invalid" ? " skipped · " : " unplaced · ") + row.reason;
+    }
+    details.replaceChildren(...(calculation ? [placementTrace(calculation, row.status, row.size)] : []));
+    map.showTrace(trace, !current && row.position !== run.processed);
   }
   tracePicker.addEventListener("change", showTrace);
   viewTrace.addEventListener("click", () => {
@@ -97,39 +255,39 @@ function simulationView(run, branches, id, onStart) {
       run.processed + " of " + branch.queue.length + " processed · " + run.placed + " placed";
   }
 
-  function update() {
+  async function update() {
+    refreshQueue?.();
     map.setAccessEditable(run.processed === 0 && typeof globalThis.updateStackingBlockAccess === "function");
     const done = finished();
     updateProgress();
-    next.textContent = run.processed ? "Next container" : "Start simulation";
-    next.hidden = runToEnd.hidden = done;
     compare.hidden = !done || typeof globalThis.compareStackingYard !== "function";
     map.element.querySelector("h3").textContent = done ? "Final yard map" : "Yard map";
     const card = track.children[done ? run.processed - 1 : run.processed];
     if (card) {
       if (!done) card.setAttribute("aria-current", "step");
       const revealCurrent = () => {
-        track.scrollLeft += card.getBoundingClientRect().left - track.getBoundingClientRect().left - 2;
+        track.scrollLeft += card.getBoundingClientRect().left - track.getBoundingClientRect().left -
+          parseFloat(getComputedStyle(track).paddingLeft);
       };
       if (track.isConnected) revealCurrent();
       else requestAnimationFrame(revealCurrent);
     }
-    outcome.hidden = !run.last;
     viewTrace.hidden = traceLabel.hidden = !run.last;
-    if (run.last) {
-      tracePicker.value = String(run.processed - 1);
-      showTrace();
-    }
+    currentOption.hidden = done;
+    tracePicker.value = done ? String(run.processed - 1) : "current";
+    if (!done && !run.suggestion) await loadSuggestion();
+    else showTrace();
   }
 
   async function stepForward() {
     const step = await globalThis.stepStackingSimulation({
-      id, branch: branch.branch_code, position: run.processed + 1
+      id, branch: branch.branch_code, position: run.processed + 1, suggestion_id: run.suggestion?.suggestion_id
     });
     const card = track.children[run.processed];
     card.removeAttribute("aria-current");
     renderInboundCard(card, step.row);
     branch.queue[run.processed] = step.row;
+    run.suggestion = null;
     run.processed++;
     if (run.processed === 1) onStart();
     run.placed += Number(step.row.status === "placed");
@@ -146,6 +304,7 @@ function simulationView(run, branches, id, onStart) {
     if (map.accessBusy()) return;
     return action(async () => {
       map.setAccessEditable(false);
+      track.inert = true;
       const start = run.processed;
       if (toEnd) {
         runToEnd.textContent = "Running…";
@@ -158,9 +317,10 @@ function simulationView(run, branches, id, onStart) {
           updateProgress();
         }
       } finally {
+        track.inert = false;
         runToEnd.textContent = "Run to end";
-        update();
-        if (run.processed > start) map.markPlacement(run.last.placement, true);
+        if (run.processed > start) map.markPlacement(run.last.placement);
+        await update();
       }
     }, (text, error) => {
       outcome.hidden = false;
@@ -169,10 +329,10 @@ function simulationView(run, branches, id, onStart) {
     });
   }
 
-  next.addEventListener("click", () => advance(false));
+  next.addEventListener("click", () => run.suggestion ? advance(false) : action(loadSuggestion));
   runToEnd.addEventListener("click", () => advance(true));
-  update();
   if (run.last?.placement) map.markPlacement(run.last.placement);
+  await update();
   return root;
 }
 
@@ -322,8 +482,8 @@ function yardComparisonResults(result) {
   return panel;
 }
 
-function placementLocation(placement) {
-  const slot = placement.stacks?.length === 2 ? "Slots " + (placement.slot - 1) + "–" + placement.slot :
+function placementLocation(placement, size) {
+  const slot = placement.stacks?.length === 2 || size === "40" ? "Slots " + (placement.slot - 1) + "–" + placement.slot :
     "Slot " + placement.slot;
   return "Block " + placement.block + " · Row " + placement.row + " · " + slot + " · Tier " + placement.tier;
 }
@@ -374,7 +534,7 @@ function heuristicTable(rows) {
   return breakdown;
 }
 
-function placementTrace(calculation, status) {
+function placementTrace(calculation, status, size) {
   const number = traceNumber;
   const multipliers = calculation.enabled_multipliers ?? Object.keys(multiplierLabels);
   const reasons = {
@@ -409,7 +569,7 @@ function placementTrace(calculation, status) {
   }
   if (winning) {
     const label = status === "placed" ? "Selected location" : "Proposed location";
-    const decision = el("li", label + " · " + placementLocation(winning) + " · " + (winning.equipment ?? "No equipment"));
+    const decision = el("li", label + " · " + placementLocation(winning, size) + " · " + (winning.equipment ?? "No equipment"));
     decision.append(heuristicTable(heuristicRows(winning, multipliers)));
     stages.append(decision);
     if (calculation.winning_score_ties > 1) {
@@ -449,7 +609,7 @@ function placementTrace(calculation, status) {
         ...(showLoaderAccess ? loaderAccessLabels : []),
         ...multipliers.map(key => multiplierLabels[key]), "Heuristic score"],
       calculation.candidates.map(candidate => [
-        placementLocation(candidate),
+        placementLocation(candidate, size),
         candidate.selected ? (status === "placed" ? "Selected" : "Proposed") : "Alternative",
         candidate.parameters.map(parameter => "P" + parameter).join(", ") || "—", candidate.equipment ?? "No equipment",
         candidate.equipment_outside_block ? "Outside block" : number(candidate.distance),

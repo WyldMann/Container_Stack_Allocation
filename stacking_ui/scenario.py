@@ -312,7 +312,8 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
             except PlacementRejected as error:
                 status, reason = "invalid", str(error)
                 branch["issues"].append(issue("inbound_containers", reason, sources=origin, severity="warning"))
-        branch["queue"].append({"position": index + 1, "container_id": row["container_id"],
+        branch["queue"].append({"position": index + 1, "input_position": index + 1,
+                                "container_id": row["container_id"],
                                 "size": row["container_size"], "operation": row["operation_type"],
                                 "condition": row["container_condition"], "grade": row["container_grade"],
                                 "weight": weight, "status": status,

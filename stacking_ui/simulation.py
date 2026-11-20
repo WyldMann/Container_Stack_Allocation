@@ -173,6 +173,7 @@ class Simulation:
         self.id = uuid4().hex
         self.branches = {}
         self.last_steps = {}
+        self._suggestions = {}
         if any(problem["severity"] == "error" and problem["dataset"] != "inbound_containers"
                for problem in scenario["issues"]):
             return
@@ -183,50 +184,97 @@ class Simulation:
                                 for problem in branch["issues"])):
                 self.branches[branch["branch_code"]] = branch
 
-    def step(self, simulation_id, branch_code, position):
+    def _active_branch(self, simulation_id, branch_code):
         if simulation_id != self.id:
             raise SimulationError("Generate a new preview to start a simulation.")
         if not isinstance(branch_code, str) or branch_code not in self.branches:
             raise SimulationError("This branch has no runnable inbound queue.")
+        return self.branches[branch_code]
+
+    def reorder_queue(self, simulation_id, branch_code, order):
+        branch = self._active_branch(simulation_id, branch_code)
+        queue = branch["queue"]
+        previous = self.last_steps.get(branch_code)
+        processed = previous["row"]["position"] if previous else 0
+        remaining = {row["input_position"]: row for row in queue[processed:]}
+        if (not isinstance(order, list) or len(order) != len(remaining)
+                or any(type(key) is not int for key in order) or set(order) != remaining.keys()):
+            raise SimulationError("The new order must include each remaining inbound row exactly once.")
+        if order and order[0] != queue[processed]["input_position"]:
+            self.invalidate_suggestion(branch_code)
+        queue[processed:] = [dict(remaining[key], position=position)
+                             for position, key in enumerate(order, processed + 1)]
+
+    def invalidate_suggestion(self, branch_code):
+        self._suggestions.pop(branch_code, None)
+
+    def suggest(self, simulation_id, branch_code):
+        branch = self._active_branch(simulation_id, branch_code)
+        if branch_code in self._suggestions:
+            return self._suggestions[branch_code][0]
+        previous = self.last_steps.get(branch_code)
+        index = previous["row"]["position"] if previous else 0
+        if index == len(branch["queue"]):
+            return None
+        row = dict(branch["queue"][index])
+        suggestion = {"suggestion_id": uuid4().hex, "row": row, "calculation": None}
+        result = None
+        if row["status"] == "pending":
+            yard = branch["yard"]
+            container = Container(**branch["inputs"]["inbound_containers"][row["input_position"] - 1])
+            search = {}
+            try:
+                result = yard.assignContainer(container, trace=search)
+            except PlacementRejected as error:
+                row.update(status="unplaced", reason=str(error))
+            else:
+                suggestion["calculation"] = _calculation(yard, search, result)
+                if result is None:
+                    row.update(status="unplaced", reason="No stack qualified under the current placement rules.")
+                else:
+                    row["status"] = "suggested"
+        self._suggestions[branch_code] = (suggestion, result)
+        return suggestion
+
+    def step(self, simulation_id, branch_code, position, suggestion_id=None):
+        branch = self._active_branch(simulation_id, branch_code)
         if type(position) is not int:
             raise SimulationError("An inbound queue position is required.")
 
-        branch = self.branches[branch_code]
         previous = self.last_steps.get(branch_code)
         if previous and position == previous["row"]["position"]:
+            if suggestion_id is not None and suggestion_id != previous["suggestion_id"]:
+                raise SimulationError("The current suggestion has changed.")
             return previous
         next_position = previous["row"]["position"] + 1 if previous else 1
         if position != next_position or position > len(branch["queue"]):
             raise SimulationError("That row is outside the next step of this simulation.")
 
-        row = dict(branch["queue"][position - 1])
-        outcome = {"row": row, "placement": None, "calculation": None}
-        if row["status"] == "pending":
+        suggestion = self.suggest(simulation_id, branch_code)
+        if suggestion_id is not None and suggestion_id != suggestion["suggestion_id"]:
+            raise SimulationError("The current suggestion has changed.")
+        row = dict(suggestion["row"])
+        outcome = {**suggestion, "row": row, "placement": None}
+        result = self._suggestions[branch_code][1]
+        if result is not None:
             yard = branch["yard"]
-            container = Container(**branch["inputs"]["inbound_containers"][position - 1])
-            search = {}
             try:
-                result = yard.assignContainer(container, trace=search)
-                outcome["calculation"] = _calculation(yard, search, result)
-                if result is not None:
-                    yard.placeContainerWithAssignResult(result)
+                yard.placeContainerWithAssignResult(result)
             except PlacementRejected as error:
                 row.update(status="unplaced", reason=str(error))
             else:
-                if result is None:
-                    row.update(status="unplaced", reason="No stack qualified under the current placement rules.")
-                else:
-                    row["status"] = "placed"
-                    coordinates = result.getBestCoordinate()
-                    proposal = PlacementProposal(*coordinates, container.getContSize())
-                    outcome["placement"] = {
-                        **_location(yard, coordinates),
-                        "container_id": container.getId(),
-                        "parameter_compliance": yard.getBlockByID(proposal.block_id).parameterCompliance(),
-                        "stacks": [
-                            stack_view(yard.getStack(block_id, r, s), r + 1, s + 1)
-                            for block_id, r, s in proposal.footprint
-                        ],
-                    }
+                row["status"] = "placed"
+                coordinates = result.getBestCoordinate()
+                proposal = PlacementProposal(*coordinates, result.container.getContSize())
+                outcome["placement"] = {
+                    **_location(yard, coordinates),
+                    "container_id": result.container.getId(),
+                    "parameter_compliance": yard.getBlockByID(proposal.block_id).parameterCompliance(),
+                    "stacks": [
+                        stack_view(yard.getStack(block_id, r, s), r + 1, s + 1)
+                        for block_id, r, s in proposal.footprint
+                    ],
+                }
         self.last_steps[branch_code] = outcome
+        self.invalidate_suggestion(branch_code)
         return outcome

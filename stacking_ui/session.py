@@ -74,8 +74,13 @@ class SimulationSession:
             return {"preview": preview, "simulation": {
                 "id": self.simulation.id, "branches": list(self.simulation.branches),
             }}
+        if operation == "suggest" and self.simulation is not None:
+            return self.simulation.suggest(request.get("id"), request.get("branch"))
         if operation == "step" and self.simulation is not None:
-            return self.simulation.step(request.get("id"), request.get("branch"), request.get("position"))
+            return self.simulation.step(request.get("id"), request.get("branch"), request.get("position"),
+                                        request.get("suggestion_id"))
+        if operation == "reorder_queue" and self.simulation is not None:
+            return self.simulation.reorder_queue(request.get("id"), request.get("branch"), request.get("order"))
         if operation == "repair_tier_gaps":
             return self.repair_tier_gaps(request.get("id"), request.get("branch"))
         if operation == "compare_yard":
@@ -99,6 +104,7 @@ class SimulationSession:
         if set(policies) - set(branch["yard"].blocks_by_id):
             raise SimulationError("Block accessibility refers to an unknown block in this branch.")
         branch["yard"].loader_access_policies.update(policies)
+        simulation.invalidate_suggestion(code)
         return {block_id: asdict(policy) for block_id, policy in policies.items()}
 
     def block_access_path(self):
@@ -169,6 +175,7 @@ class SimulationSession:
             yard = branch["yard"]
             yard.fillDummyContainer()
             yard.anomalyCheck()
+            self.simulation.invalidate_suggestion(branch_code)
             branch["tier_gap_repair_attempted"] = True
         return public_branch(branch)
 

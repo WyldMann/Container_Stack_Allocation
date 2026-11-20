@@ -42,15 +42,17 @@
 .inbound-queue h3 { margin: 0; }
 .inbound-queue p { margin: 4px 0 8px; font-size: 13px; }
 .inbound-track {
+  --queue-gap: 14px;
   display: flex;
   align-items: stretch;
-  gap: 8px;
+  gap: var(--queue-gap);
   overflow-x: auto;
   list-style: none;
   margin: 0;
-  padding: 2px 2px 8px;
+  padding: 4px var(--queue-gap) 8px;
 }
 .inbound-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -69,6 +71,35 @@
 .inbound-placed { border-color: #a9cdbf; background: #edf7f1; }
 .inbound-unplaced { border-color: #d4bb8c; background: #fff8e9; }
 .inbound-card[aria-current="step"] { outline: 2px solid #496a9a; outline-offset: -2px; }
+.inbound-card[aria-current="step"] .inbound-position::before { content: "Current · "; color: #395780; }
+.inbound-card[draggable="true"] { cursor: grab; user-select: none; }
+.inbound-card[draggable="true"] .inbound-position::after {
+  content: "";
+  float: right;
+  width: 8px;
+  height: 12px;
+  background: radial-gradient(circle, #657d74 1px, transparent 1.5px) 0 0 / 4px 4px;
+}
+.inbound-dragging > * { opacity: .55; }
+.inbound-card[data-drop-edge]::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  top: -3px;
+  bottom: -3px;
+  width: 10px;
+  transform: translateX(-50%);
+  color: #19312f;
+  border-block: 3px solid currentColor;
+  background: linear-gradient(currentColor, currentColor) center / 3px 100% no-repeat;
+}
+.inbound-card[data-drop-edge="before"]::after { left: calc(-1px - var(--queue-gap) / 2); }
+.inbound-card[data-drop-edge="after"]::after { left: calc(100% + 1px + var(--queue-gap) / 2); }
+@media (forced-colors: active) {
+  .inbound-card[data-drop-edge]::after { forced-color-adjust: none; color: CanvasText; }
+}
+.inbound-card[draggable="true"]:focus:not(.inbound-dragging) { outline: 3px solid var(--green); outline-offset: -3px; }
+.inbound-feedback:empty { margin: 0; }
 .simulation-controls {
   position: sticky;
   top: 0;
@@ -168,6 +199,7 @@
   margin-bottom: 8px;
 }
 .simulation-trace-picker select { padding: 3px 6px; font-size: 13px; }
+.simulation-trace-picker[hidden] { display: none; }
 .simulation-trace-stages { margin: 4px 0; padding-left: 22px; font-size: 13px; }
 .heuristic-breakdown { margin: 4px 0 8px; max-width: 360px; }
 .heuristic-breakdown table { font-size: 12px; font-variant-numeric: tabular-nums; }

@@ -6,7 +6,7 @@ const descriptions = {
   yard_blocks: ["Yard blocks", "Dimensions, tier limits, and block positions."],
   block_accessibility: ["Block accessibility", "Loader entry and working space at each border. Optional; defaults to all borders open."],
   existing_containers: ["Current containers", "The current yard snapshot."],
-  inbound_containers: ["Inbound containers", "Containers to assign, in CSV order."],
+  inbound_containers: ["Inbound containers", "CSV rows set the initial queue order."],
   removed_slots: ["Removed slots", "Locations unavailable for stacking."],
   parameters: ["Parameters", "Matching criteria and their scores."],
   yard_planning: ["Yard planning", "Parameters assigned to yard locations."],
@@ -1244,6 +1244,7 @@ function previewStatus(text, error = false) {
 }
 
 function renderInboundCard(card, row) {
+  card.value = row.position;
   card.className = "inbound-card inbound-" + row.status;
   card.replaceChildren(el("span", "#" + row.position, "inbound-position"),
     el("strong", row.container_id || "Missing container ID"),
@@ -1264,9 +1265,9 @@ function inboundQueue(branch) {
     panel.append(el("p", "No incoming containers."));
     return panel;
   }
-  panel.append(el("p", branch.queue.length + " containers · CSV order"));
+  panel.append(el("p", branch.queue.length + (branch.queue.length === 1 ? " container" : " containers")));
   const track = el("ol", undefined, "inbound-track");
-  track.setAttribute("aria-label", "Incoming containers in CSV order");
+  track.setAttribute("aria-label", "Incoming containers in processing order");
   track.tabIndex = 0;
   for (const row of branch.queue) {
     const card = el("li");
@@ -1305,11 +1306,11 @@ function tierGapOverview(branch, repair) {
   return panel;
 }
 
-function previewOverview(branches, simulation, sharedIssues) {
+async function previewOverview(branches, simulation, sharedIssues) {
   const overview = el("div");
   const selectedView = el("div");
   const runs = new Map();
-  function showBranch(branch) {
+  async function showBranch(branch) {
     const gapPanel = el("div");
     function renderGaps() {
       const canRepair = simulation && !runs.get(branch)?.processed &&
@@ -1318,7 +1319,7 @@ function previewOverview(branches, simulation, sharedIssues) {
         const repaired = await globalThis.repairStackingTierGaps({id: simulation.id, branch: branch.branch_code});
         Object.assign(branch, repaired);
         runs.delete(branch);
-        showBranch(branch);
+        await showBranch(branch);
         previewStatus("Updated tier gaps for " + branch.branch_code + ".");
       }, previewStatus) : null;
       const panel = tierGapOverview(branch, repair);
@@ -1331,7 +1332,7 @@ function previewOverview(branches, simulation, sharedIssues) {
       if (!runs.has(branch)) {
         runs.set(branch, {branch: structuredClone(branch), processed: 0, placed: 0, invalid: 0, last: null, traces: []});
       }
-      selectedView.replaceChildren(...diagnostics, simulationView(runs.get(branch), branches, simulation.id, renderGaps));
+      selectedView.replaceChildren(...diagnostics, await simulationView(runs.get(branch), branches, simulation.id, renderGaps));
       return;
     }
     const map = createYardMap(branch, branches, {
@@ -1359,16 +1360,16 @@ function previewOverview(branches, simulation, sharedIssues) {
       option.value = index;
       select.append(option);
     }
-    select.addEventListener("change", () => showBranch(branches[Number(select.value)]));
+    select.addEventListener("change", () => action(() => showBranch(branches[Number(select.value)]), previewStatus));
     label.append(select);
     overview.append(label);
   }
-  showBranch(branches[0]);
+  await showBranch(branches[0]);
   overview.append(selectedView);
   return overview;
 }
 
-function showPreview(result, simulation) {
+async function showPreview(result, simulation) {
   if (result?.version !== 1 || result.kind !== "stacking-preview") {
     throw new Error("The preview response has an unexpected format.");
   }
@@ -1378,7 +1379,7 @@ function showPreview(result, simulation) {
     el("h3", heading, result.ready ? "ready" : "not-ready"),
   ];
   if (result.branches.length) {
-    content.push(previewOverview(result.branches, simulation, result.issues));
+    content.push(await previewOverview(result.branches, simulation, result.issues));
   } else {
     const inputIssues = issueOverview(result.issues);
     if (inputIssues) content.push(inputIssues);
@@ -1501,7 +1502,7 @@ $("generate-preview").addEventListener("click", () => action(async () => {
   if (canReadProjectTomls && await refreshProjectTomls()) changed();
   previewStatus("Generating preview...");
   const {preview, simulation} = await globalThis.generateStackingPreview(buildDraft());
-  showPreview(preview, simulation);
+  await showPreview(preview, simulation);
 }, previewStatus));
 $("save-yard").addEventListener("click", () => action(async () => {
   const path = await globalThis.saveStackingYard();

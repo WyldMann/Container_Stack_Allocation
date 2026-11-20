@@ -147,6 +147,10 @@ class ScenarioTests(unittest.TestCase):
                 self.assertEqual(len(first["queue"]), 2)
                 self.assertEqual(len(second["queue"]), 3)
                 self.assertEqual(second["queue"][-1]["sources"][0]["line"], 4)
+                simulation = Simulation(result)
+                simulation.reorder_queue(simulation.id, "JKT64", [3, 1, 2])
+                self.assertEqual([row["container_id"] for row in first["queue"]], ["NEW1", "NEW2"])
+                self.assertEqual(simulation.step(simulation.id, "JKT64", 1)["row"]["container_id"], "SCOPED")
 
     def test_existing_container_import_and_diagnostics_use_selected_branches(self):
         self.rows["terminal_branches"].append(dict(
@@ -321,6 +325,90 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual([row["status"] for row in branch["queue"]], ["pending", "pending", "invalid", "invalid"])
         self.assertEqual([row["sources"][0]["line"] for row in branch["queue"]], [2, 3, 4, 5])
         self.assertEqual([item["sources"][0]["line"] for item in branch["issues"]], [4, 5])
+
+    def test_suggest_reorder_and_confirm_only_the_displayed_assignment(self):
+        self.rows["inbound_containers"].append(dict(container_id="OLD", container_size="20"))
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        suggest = {"op": "suggest", **request}
+        reorder = {"op": "reorder_queue", **request}
+        confirm = {"op": "step", **request, "position": 1}
+        initial_yard = session.request({"op": "yard_csv"})
+
+        first = session.request(suggest)
+        self.assertEqual((first["row"]["container_id"], first["row"]["status"]), ("NEW1", "suggested"))
+        session.request(reorder | {"order": [1, 3, 2]})
+        self.assertEqual(session.request(suggest), first)
+        self.assertFalse(session.simulation.last_steps)
+        session.request(reorder | {"order": [2, 3, 1]})
+        current = session.request(suggest)
+        self.assertEqual(current["row"]["container_id"], "NEW2")
+        with self.assertRaisesRegex(SimulationError, "suggestion has changed"):
+            session.request(confirm | {"suggestion_id": first["suggestion_id"]})
+        self.assertEqual(session.request({"op": "yard_csv"}), initial_yard)
+
+        placed = session.request(confirm | {"suggestion_id": current["suggestion_id"]})
+        self.assertEqual(placed["row"]["status"], "placed")
+        winner, = [candidate for candidate in current["calculation"]["candidates"] if candidate["selected"]]
+        for field in ("block", "row", "slot", "tier"):
+            self.assertEqual(placed["placement"][field], winner[field])
+        self.assertEqual(current["row"]["status"], "suggested")
+        self.assertEqual(session.request(confirm | {"suggestion_id": current["suggestion_id"]}), placed)
+        self.assertEqual(session.request(suggest)["row"]["status"], "invalid")
+        session.request(confirm | {"position": 2})
+        self.assertEqual(session.request(suggest)["row"]["container_id"], "NEW1")
+        session.request(confirm | {"position": 3})
+        self.assertIsNone(session.request(suggest))
+
+    def test_suggestions_refresh_after_changes_to_yard_access_or_tier_gaps(self):
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        suggest = {"op": "suggest", **request}
+        for change in ({"op": "update_block_access", "policies": [
+                dict(block_id="10", above=False, below=True, left=True, right=True)]},
+                {"op": "repair_tier_gaps"}):
+            before = session.request(suggest)
+            session.request(change | request)
+            with self.assertRaisesRegex(SimulationError, "suggestion has changed"):
+                session.request({"op": "step", **request, "position": 1, "suggestion_id": before["suggestion_id"]})
+            self.assertNotEqual(session.request(suggest)["suggestion_id"], before["suggestion_id"])
+        self.assertFalse(session.simulation.last_steps)
+
+    def test_queue_reordering_preserves_source_rows_placements_and_step_history(self):
+        self.rows["inbound_containers"].append(dict(container_id="NEW1", container_size="40"))
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        reorder = {"op": "reorder_queue", **request}
+        step = {"op": "step", **request}
+        session.request(reorder | {"order": [2, 1, 3]})
+        session.request(reorder | {"order": [2, 1, 3]})
+        first = session.request(step | {"position": 1})
+        self.assertEqual(first["row"]["sources"][0]["line"], 3)
+        self.assertEqual(first["placement"]["container_id"], "NEW2")
+        self.assertEqual(len(first["placement"]["stacks"]), 2)
+
+        session.request(reorder | {"order": [3, 1]})
+        for order in ([2, 1, 3], [2, 1], [1, 1], [1], [3, True], None):
+            with self.subTest(order=order), self.assertRaises(SimulationError):
+                session.request(reorder | {"order": order})
+        for stale in ({"id": "old"}, {"branch": "unknown"}):
+            with self.subTest(stale=stale), self.assertRaises(SimulationError):
+                session.request(reorder | {"order": [1, 3]} | stale)
+        self.assertEqual(session.request(step | {"position": 1}), first)
+        skipped = session.request(step | {"position": 2})
+        self.assertEqual((skipped["row"]["position"], skipped["row"]["status"]), (2, "invalid"))
+        self.assertEqual(skipped["row"]["sources"][0]["line"], 4)
+        last = session.request(step | {"position": 3})
+        self.assertEqual(last["placement"]["container_id"], "NEW1")
+        self.assertEqual(len(last["placement"]["stacks"]), 1)
+        self.assertEqual(last["row"]["sources"][0]["line"], 2)
+        with self.assertRaises(SimulationError):
+            session.request(reorder | {"order": [1]})
 
     def test_simulation_skips_invalid_rows_and_places_each_footprint_once(self):
         self.rows["inbound_containers"].insert(0, dict(container_id="OLD", container_size="20"))

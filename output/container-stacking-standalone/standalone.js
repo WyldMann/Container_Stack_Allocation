@@ -127,6 +127,8 @@
     return download(archive.name, bytes, "application/zip");
   };
   globalThis.stepStackingSimulation = step => request({...step, op: "step"});
+  globalThis.suggestStackingAssignment = input => request({...input, op: "suggest"});
+  globalThis.reorderStackingQueue = edit => request({...edit, op: "reorder_queue"});
   globalThis.repairStackingTierGaps = repair => request({...repair, op: "repair_tier_gaps"});
   globalThis.compareStackingYard = comparison => request({...comparison, op: "compare_yard"});
   const defaultStorageKey = key => "container-stacking:default:" + STACKING_BUNDLE_ID + ":" + key;
