@@ -84,6 +84,7 @@ class HeuristicConfigTests(unittest.TestCase):
                     'loader_inaccessible_destination_multiplier',
                     'loader_occupied_access_loss_weight', 'loader_future_access_loss_weight',
                     'unsafe_stacking_multiplier', 'overcapacity_tier_multiplier',
+                    'stacking_safety_limit_multiplier',
                     'no_delta_container_mass_value', 'heavier_container_fallback_score',
                 ):
                     values += ('0',)

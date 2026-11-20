@@ -645,7 +645,7 @@ class Yard:
         score_destination = settings.effective_destination_loader_access_mode == "heuristic"
         score_current = settings.effective_occupied_loader_access_mode == "heuristic"
         score_future = settings.effective_future_loader_access_mode == "heuristic"
-        score_stacking_safety = settings.effective_stacking_safety_mode == "heuristic"
+        score_stacking_safety = settings.effective_stacking_safety_mode in ("heuristic", "combined")
         score_capacity = settings.stack_capacity_mode == "heuristic"
         prioritize_current_access = settings.prioritize_current_loader_access
         candidates = []
@@ -667,8 +667,13 @@ class Yard:
             )
             mass, equipment, distance, cluster, score = self.modelEval(container, coordinate)
             stacking_safety = 1.0
-            if score_stacking_safety and not block.safeMaxima(row, slot):
-                stacking_safety = self.model.settings.unsafe_stacking_multiplier
+            if score_stacking_safety:
+                difference = block.pyramidHeightDifference(
+                    row, slot, neighbors=settings.stacking_safety_neighbors, container_size=container.getContSize(),
+                )
+                stacking_safety = self.model.stackingSafetyMultiplier(
+                    difference, settings.stacking_safety_penalty_start, settings.stacking_safety_maxima,
+                )
             overcapacity_tiers = 0
             capacity_multiplier = 1.0
             if score_capacity:

@@ -26,6 +26,41 @@ lose access after placement. Each rule has its own mode and enables its weight
 in **Heuristic** mode. The default unreachable destination multiplier is 0.25.
 Each access loss weight defaults to 1 per location that loses access.
 
+**Pyramid stacking** has two independent switches, both on by default:
+**Decrease score** applies the declining score curve, and **Enforce maximum
+difference** rejects placements beyond `stacking_safety_maxima`. Turning off
+the decrease gives a score multiplier of 1; turning off the bound allows larger
+differences at the curve's endpoint score. Turning both off skips the pyramid
+rule and keeps its settings for later. The difference is the post-placement height
+above the tallest considered neighbor, with ground height zero as the fallback.
+The score is 1 through `feasibility.stacking_safety_penalty_start` (default `1`),
+then declines linearly to `heuristic.stacking_safety_limit_multiplier` (default
+`0.25`) at `feasibility.stacking_safety_maxima` (default `2`). Differences above
+the maximum are rejected; the maximum itself remains feasible.
+
+The penalty start must be a whole number from zero to one below the maximum.
+The maximum must be a positive whole number, and the multiplier must be between
+zero and one. The UI clamps thresholds to this range and keeps the previous
+value for blank or fractional entries. The switches save through
+`feasibility.stacking_safety_mode`: both on is `combined`, decrease only is
+`heuristic`, bound only is `feasibility`, and both off is `off`. Older boolean or mode settings
+continue to select their corresponding mode; the old
+`heuristic.unsafe_stacking_multiplier` supplies the endpoint multiplier when
+the new multiplier is omitted. Heuristic mode now uses the declining curve
+instead of the former pass/fail score step.
+
+The switches around the stack square select which neighbor sides provide pyramid
+support. **Up** and **Down** default on; **Left** and **Right** default off,
+including in older TOMLs that omit these settings. Configure them with
+`stacking_safety_neighbor_up`, `stacking_safety_neighbor_down`,
+`stacking_safety_neighbor_left`, and `stacking_safety_neighbor_right` under
+`[feasibility]`. Up/down follow the previous/next row in the yard grid.
+For 40 ft containers, up/down consider both slots along the footprint, and
+left/right are outside the complete footprint. At least one enabled neighbor
+must support a placement above the isolated-stack height limit. With all four
+sides off, that height limit still applies. Turning the pyramid rule off retains
+the selected sides for later.
+
 **Container size clustering** groups two independently configured terms:
 
 - Same-size reward: `2 ** (size_cluster_reward_bias * S / (S + size_cluster_reward_prior))`.

@@ -21,9 +21,9 @@ const tomlDocuments = {};
 const ruleModes = ["off", "heuristic", "feasibility"];
 const ruleModeKeys = ["stacking_safety_mode", "stack_capacity_mode", "loader_destination_access_mode",
   "preserve_occupied_loader_access_mode", "preserve_future_loader_access_mode"];
-const stackingScoringOption = {key: "unsafe_stacking_multiplier", mode: "stacking", defaultValue: "0.25",
-  label: "Pyramid violation multiplier",
-  description: "Multiply the placement score by this value (0–1) when the pyramid check fails. One removes the penalty."};
+const stackingScoringOption = {key: "stacking_safety_limit_multiplier", mode: "stacking", defaultValue: "0.25",
+  label: "Score at maximum difference",
+  description: "The score declines linearly to this multiplier (0–1) at the maximum difference. Enable the bound to reject larger differences."};
 const capacityScoringOption = {key: "overcapacity_tier_multiplier", mode: "capacity", defaultValue: "0.01",
   label: "Per extra tier multiplier",
   description: "Apply this multiplier (0–1) once per tier above nominal capacity. One removes the penalty."};
@@ -40,16 +40,25 @@ const loaderScoringOptions = [
     label: "Future access loss weight",
     description: "Higher values penalize cutting off future receiving options more. Zero removes this score penalty."}
 ];
+const stackingNeighborDefaults = {up: true, down: true, left: false, right: false};
+const stackingNeighborPaths = Object.keys(stackingNeighborDefaults).map(direction => "feasibility.stacking_safety_neighbor_" + direction);
 const placementGroups = [
   {title: "Stack capacity", graph: "capacity", options: {
     "feasibility.stack_capacity_mode": ["Enforce stack height limit",
       "Feasibility enforces the tier limit. Heuristic allows overcapacity with a score penalty. Off allows overcapacity without a capacity penalty."],
     "heuristic.overcapacity_tier_multiplier": [capacityScoringOption.label, capacityScoringOption.description]
   }},
-  {title: "Stacking safety", graph: "pyramid", options: {
+  {title: "Stacking safety", graph: "pyramid", neighborSwitches: true, options: {
     "feasibility.stacking_safety_mode": ["Pyramid stacking",
-      "Off skips the check. Heuristic lowers the score for placements that fail it. Feasibility rejects those placements."],
-    "heuristic.unsafe_stacking_multiplier": [stackingScoringOption.label, stackingScoringOption.description]
+      "Decrease score applies the curve. Enforce maximum difference rejects placements above the maximum. Turn off either one or both."],
+    "feasibility.stacking_safety_penalty_start": ["Start reducing score",
+      "Full score up to this tier difference after placement. Enter a whole number from 0 to one below the maximum difference."],
+    "feasibility.stacking_safety_maxima": ["Maximum tier difference",
+      "The curve reaches its endpoint here. With the bound enabled, larger differences are rejected; otherwise the endpoint score continues. Minimum 1."],
+    ...Object.fromEntries(Object.keys(stackingNeighborDefaults).map(direction =>
+      ["feasibility.stacking_safety_neighbor_" + direction, [direction[0].toUpperCase() + direction.slice(1),
+        "Consider the " + direction + " side of the stack footprint for pyramid support."]])),
+    "heuristic.stacking_safety_limit_multiplier": [stackingScoringOption.label, stackingScoringOption.description]
   }},
   {title: "Loader reachability and access preservation", description:
     "Off skips the rule. Heuristic scores it. Feasibility rejects placements that fail it. These rules apply to loader-served blocks.",
@@ -264,8 +273,9 @@ function addPlacementOption(rows, path, row, control) {
 function showPlacementGroups(editor, rows, graphs) {
   const groups = el("div", undefined, "placement-groups");
   const weightAndDistance = el("div", undefined, "placement-weight-distance");
-  for (const {title, description, formulaText, options, optionRows, sideBySide, graph, rowGraphs, sections} of placementGroups) {
+  for (const {title, description, formulaText, options, optionRows, sideBySide, graph, rowGraphs, sections, neighborSwitches} of placementGroups) {
     const sectionPaths = new Set(sections?.flatMap(section => section.paths));
+    if (neighborSwitches) for (const path of stackingNeighborPaths) sectionPaths.add(path);
     const entries = Object.keys(options).filter(path => !sectionPaths.has(path)).flatMap(path => rows.get(path) ?? []);
     const group = el("fieldset", undefined, "placement-group");
     group.append(el("legend", title));
@@ -281,6 +291,7 @@ function showPlacementGroups(editor, rows, graphs) {
     } else {
       const list = el("div", undefined, "placement-options");
       list.append(...entries);
+      if (neighborSwitches) list.append(pyramidNeighborSwitches(rows));
       group.append(list);
     }
     if (sections) {
@@ -308,6 +319,27 @@ function showPlacementGroups(editor, rows, graphs) {
   editor.replaceChildren(groups);
 }
 
+function pyramidNeighborSwitches(rows) {
+  const panel = el("div", undefined, "pyramid-neighbor-editor");
+  const title = el("h4", "Considered neighbors");
+  title.id = "pyramid-neighbor-label";
+  const diagram = el("div", undefined, "pyramid-neighbor-grid");
+  diagram.setAttribute("role", "group");
+  diagram.setAttribute("aria-labelledby", title.id);
+  const stack = el("div", "Stack", "pyramid-neighbor-stack");
+  stack.setAttribute("aria-hidden", "true");
+  diagram.append(stack);
+  for (const direction of Object.keys(stackingNeighborDefaults)) {
+    for (const option of rows.get("feasibility.stacking_safety_neighbor_" + direction) ?? []) {
+      option.classList.add("pyramid-neighbor", "pyramid-neighbor-" + direction);
+      option.querySelector("input").setAttribute("aria-label", "Consider " + direction + " neighbor");
+      diagram.append(option);
+    }
+  }
+  panel.append(title, el("p", "Any enabled side can provide support. With all sides off, measure height above the ground.", "placement-help"), diagram);
+  return panel;
+}
+
 function readInlinePlacementOptions(options, section, literal) {
   if (!literal.startsWith("{") || !literal.endsWith("}")) return;
   const body = literal.slice(1, -1);
@@ -324,9 +356,13 @@ function readInlinePlacementOptions(options, section, literal) {
 function placementGraphValue(rows, inline, path) {
   const option = rows.get(path)?.[0];
   if (!option) return inline.get(path);
+  if (path === "feasibility.stacking_safety_mode" && tomlDocuments.config.ruleControls.stacking_safety_mode?.switches) {
+    return JSON.stringify(tomlDocuments.config.ruleControls.stacking_safety_mode.mode);
+  }
   const selectedMode = option.querySelector("input[type=radio]:checked");
   if (selectedMode) return JSON.stringify(selectedMode.value);
   const number = option.querySelector("input[type=number]");
+  if (number?.dataset.currentValue !== undefined) return number.dataset.currentValue;
   if (number) return number.getAttribute("aria-invalid") === "true" ? "" : number.value;
   const input = option.querySelector("input, textarea");
   return input ? tomlFieldValue(input) : undefined;
@@ -358,8 +394,9 @@ function ruleModeSwitch(controls, rows, key, prefix, value, fallback = "feasibil
   if (key.startsWith("preserve_future_")) fallback = null;
   const original = value === null ? "" : prefix + value;
   const initial = value === null || (legacy && value === "true") ? fallback :
-    legacy ? "off" : value.match(/^["']{1,3}(off|heuristic|feasibility)["']{1,3}$/)?.[1];
+    legacy ? "off" : value.match(/^["']{1,3}(off|heuristic|feasibility|combined)["']{1,3}$/)?.[1];
   if (initial === undefined || (legacy && value !== "true" && value !== "false")) return null;
+  if (initial === "combined" && modeKey !== "stacking_safety_mode") return null;
 
   const modePrefix = legacy ? prefix.replace(/(["']?)([ \t]*=[ \t]*)$/, "_mode$1$2") : prefix;
   const input = el("input");
@@ -377,7 +414,32 @@ function ruleModeSwitch(controls, rows, key, prefix, value, fallback = "feasibil
     input.value = mode === initial && !explicit ? original :
       modePrefix + JSON.stringify(mode) + (value === null ? "\n" : "");
   };
-  for (const mode of ruleModes) {
+  if (modeKey === "stacking_safety_mode") {
+    group.className = "pyramid-rule-switches";
+    group.setAttribute("role", "group");
+    control.switches = [];
+    for (const [feature, title] of [["decay", "Decrease score"], ["bound", "Enforce maximum difference"]]) {
+      const choice = el("input");
+      choice.type = "checkbox";
+      choice.setAttribute("role", "switch");
+      choice.dataset.feature = feature;
+      const option = el("label", undefined, "pyramid-feature-switch");
+      const toggle = el("span", undefined, "toml-switch");
+      const track = el("span", undefined, "toml-switch-track");
+      track.setAttribute("aria-hidden", "true");
+      toggle.append(choice, track);
+      option.append(el("span", title), toggle);
+      group.append(option);
+      control.switches.push(choice);
+      choice.addEventListener("change", () => {
+        const [decay, bound] = control.switches.map(input => input.checked);
+        control.select(decay ? (bound ? "combined" : "heuristic") : (bound ? "feasibility" : "off"));
+        updateRuleControls(controls, rows);
+        updateTomlSave("config");
+        changed();
+      });
+    }
+  } else for (const mode of ruleModes) {
     const choice = el("input");
     choice.type = "radio";
     choice.name = modeKey;
@@ -414,17 +476,29 @@ function updateRuleControls(controls, rows) {
       choice.disabled = busy;
     }
   }
+  for (const choice of stacking?.switches ?? []) {
+    choice.checked = choice.dataset.feature === "decay" ?
+      ["heuristic", "combined"].includes(stacking.mode) : ["feasibility", "combined"].includes(stacking.mode);
+    choice.disabled = busy;
+  }
   if (controls.ignoreFull) setPlacementInactive(controls.ignoreFull, occupiedMode === "off");
+  for (const path of ["feasibility.stacking_safety_maxima", ...stackingNeighborPaths]) {
+    for (const option of rows.get(path) ?? []) setPlacementInactive(option, stacking?.mode === "off");
+  }
+  for (const option of rows.get("feasibility.stacking_safety_penalty_start") ?? []) {
+    setPlacementInactive(option, !["heuristic", "combined"].includes(stacking?.mode));
+  }
   const effectiveModes = {stacking: stacking?.mode, capacity: capacity?.mode, destination: destination?.mode,
     occupied: occupiedMode, future: future?.mode ?? occupiedMode};
   for (const {key, mode: scoringMode} of [...boundedRuleWeights, ...loaderScoringOptions]) {
     for (const option of rows.get("heuristic." + key) ?? []) {
-      setPlacementInactive(option, effectiveModes[scoringMode] !== "heuristic");
+      setPlacementInactive(option, effectiveModes[scoringMode] !== "heuristic" &&
+        !(scoringMode === "stacking" && effectiveModes.stacking === "combined"));
     }
   }
 }
 
-function addBoundedRuleWeight(rows, fields, start, end, value, {key, defaultValue, label}, prefix = "") {
+function addBoundedRuleWeight(rows, fields, start, end, value, {key, defaultValue, label, previousValue}, prefix = "") {
   const slider = el("input");
   slider.type = "range";
   slider.min = "0";
@@ -445,9 +519,13 @@ function addBoundedRuleWeight(rows, fields, start, end, value, {key, defaultValu
 
   const literal = value ?? defaultValue;
   const initial = Number(literal.replaceAll("_", ""));
-  const valid = /^[+-]?(?:0|[1-9](?:_?\d)*)(?:\.\d(?:_?\d)*)?(?:e[+-]?\d(?:_?\d)*)?$/i.test(literal) &&
-    initial >= 0 && initial <= 1;
-  syncValue(valid ? initial : Number(defaultValue));
+  const numeric = /^[+-]?(?:0|[1-9](?:_?\d)*)(?:\.\d(?:_?\d)*)?(?:e[+-]?\d(?:_?\d)*)?$/i.test(literal);
+  const valid = numeric && initial >= 0 && initial <= 1;
+  const pyramid = key === "stacking_safety_limit_multiplier";
+  const fallback = Number(previousValue ?? defaultValue);
+  const repaired = numeric && Number.isFinite(initial) ? Math.max(0, Math.min(1, initial)) :
+    Number.isFinite(fallback) ? Math.max(0, Math.min(1, fallback)) : 0.25;
+  syncValue(valid ? initial : pyramid ? repaired : Number(defaultValue));
 
   const control = el("span", undefined, "toml-range");
   control.append(slider, number);
@@ -456,11 +534,11 @@ function addBoundedRuleWeight(rows, fields, start, end, value, {key, defaultValu
   const option = addPlacementOption(rows, "heuristic." + key, row, slider);
   number.setAttribute("aria-describedby", slider.getAttribute("aria-describedby"));
   const warning = el("p", "The TOML value must be a number from 0 to 1. Use either control to replace it.", "placement-help");
-  warning.hidden = valid;
-  if (!valid) number.setAttribute("aria-invalid", "true");
+  warning.hidden = valid || pyramid;
+  if (!valid && !pyramid) number.setAttribute("aria-invalid", "true");
   option.append(warning);
 
-  let edited = false;
+  let edited = pyramid && !valid;
   function applyValue(next) {
     syncValue(next);
     edited = true;
@@ -520,7 +598,9 @@ function addMissingHeuristicScores(rows, fields, source, offset, legacyFallbackS
     if (rows.has(path)) continue;
     const prefix = separator + (offset ? key : path) + " = ";
     if (boundedRuleWeights.includes(setting)) {
-      addBoundedRuleWeight(rows, fields, offset, offset, null, setting, prefix);
+      const fallbackSetting = setting === stackingScoringOption ?
+        {...setting, defaultValue: inline.get("heuristic.unsafe_stacking_multiplier") ?? defaultValue} : setting;
+      addBoundedRuleWeight(rows, fields, offset, offset, null, fallbackSetting, prefix);
       continue;
     }
     const input = el("input");
@@ -555,7 +635,132 @@ function addMissingHeuristicScores(rows, fields, source, offset, legacyFallbackS
   }
 }
 
+function addStackingSafetyMaxima(rows, fields, start, end, value, prefix = "", previousValue = "2", key = "stacking_safety_maxima") {
+  const path = "feasibility." + key;
+  const soft = key === "stacking_safety_penalty_start";
+  const minimum = soft ? 0n : 1n;
+  const hard = rows.get("feasibility.stacking_safety_maxima")?.[0]?.querySelector("input")?.dataset.currentValue ?? "2";
+  const defaultValue = soft ? String(Math.min(1, Number(hard) - 1)) : "2";
+  const input = el("input");
+  input.type = "number";
+  input.min = String(minimum);
+  input.step = "1";
+  input.required = true;
+  input.inputMode = "numeric";
+  const literal = value ?? defaultValue;
+  const integer = /^[+-]?(?:0|[1-9](?:_?\d)*)$|^0x[\da-fA-F](?:_?[\da-fA-F])*$|^0o[0-7](?:_?[0-7])*$|^0b[01](?:_?[01])*$/;
+  input.value = integer.test(literal) ? BigInt(literal.replaceAll("_", "")).toString() : literal;
+  function normalizedValue() {
+    if (input.value !== "" && input.valueAsNumber < Number(minimum)) return String(minimum);
+    return /^\d+$/.test(input.value) && BigInt(input.value) >= minimum ? BigInt(input.value).toString() : null;
+  }
+  let currentValue = normalizedValue() ?? previousValue;
+  let edited = !integer.test(literal) || BigInt(literal.replaceAll("_", "")) < minimum;
+  input.value = currentValue;
+  input.dataset.currentValue = currentValue;
+  input.spellcheck = false;
+  const row = el("label", undefined, "toml-setting");
+  row.append(el("span"), input);
+  const option = addPlacementOption(rows, path, row, input);
+  const warning = el("p", "Enter a whole number of " + minimum + " or greater.", "placement-help error");
+  warning.id = input.getAttribute("aria-describedby") + "-error";
+  input.setAttribute("aria-describedby", input.getAttribute("aria-describedby") + " " + warning.id);
+  warning.setAttribute("aria-live", "polite");
+  option.append(warning);
+  function validate() {
+    const valid = /^\d+$/.test(input.value) && BigInt(input.value) >= minimum;
+    input.setCustomValidity(valid ? "" : warning.textContent);
+    input.setAttribute("aria-invalid", String(!valid));
+    warning.hidden = valid;
+  }
+  validate();
+  input.commitPyramidValue = next => {
+    currentValue = next;
+    input.dataset.currentValue = next;
+    input.value = next;
+    edited = true;
+    validate();
+  };
+  input.addEventListener("input", () => {
+    const next = normalizedValue();
+    if (next !== null && next !== currentValue) {
+      currentValue = next;
+      input.dataset.currentValue = currentValue;
+      edited = true;
+    }
+    validate();
+    updateTomlSave("config");
+    changed();
+  });
+  function commitNumber() {
+    input.value = currentValue;
+    validate();
+  }
+  input.addEventListener("blur", commitNumber);
+  input.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    commitNumber();
+  });
+  fields.push({start, end, input, format: () => {
+    if (!edited) return value ?? "";
+    if (value !== null) return currentValue;
+    return currentValue === defaultValue ? "" : prefix + currentValue + "\n";
+  }});
+}
+
+function addMissingStackingSafetyMaxima(rows, fields, source, offset) {
+  const separator = offset && source[offset - 1] !== "\n" ? "\n" : "";
+  for (const key of ["stacking_safety_maxima", "stacking_safety_penalty_start"]) {
+    if (rows.has("feasibility." + key)) continue;
+    const prefix = separator + (offset ? key : "feasibility." + key) + " = ";
+    addStackingSafetyMaxima(rows, fields, offset, offset, null, prefix, key.endsWith("penalty_start") ? "1" : "2", key);
+  }
+}
+
+function syncPyramidThresholds(rows) {
+  const hard = rows.get("feasibility.stacking_safety_maxima")?.[0]?.querySelector("input");
+  const soft = rows.get("feasibility.stacking_safety_penalty_start")?.[0]?.querySelector("input");
+  if (!hard || !soft) return;
+  const maximum = BigInt(hard.dataset.currentValue) - 1n;
+  soft.max = String(maximum);
+  if (BigInt(soft.dataset.currentValue) > maximum) soft.commitPyramidValue(String(maximum));
+}
+
+function addMissingStackingNeighbors(rows, fields, source, offset) {
+  const separator = offset && source[offset - 1] !== "\n" ? "\n" : "";
+  for (const [direction, enabled] of Object.entries(stackingNeighborDefaults)) {
+    const key = "stacking_safety_neighbor_" + direction;
+    const path = "feasibility." + key;
+    if (rows.has(path)) continue;
+    const input = el("input");
+    input.type = "checkbox";
+    input.checked = enabled;
+    input.setAttribute("role", "switch");
+    input.addEventListener("input", () => {
+      updateTomlSave("config");
+      changed();
+    });
+    const row = el("label", undefined, "toml-setting");
+    const toggle = el("span", undefined, "toml-switch");
+    const track = el("span", undefined, "toml-switch-track");
+    track.setAttribute("aria-hidden", "true");
+    toggle.append(input, track);
+    row.append(el("span"), toggle);
+    addPlacementOption(rows, path, row, input);
+    const prefix = separator + (offset ? key : path) + " = ";
+    fields.push({start: offset, end: offset, input,
+      format: value => value === String(enabled) ? "" : prefix + value + "\n"});
+  }
+}
+
 function showToml(kind, text, loadedFrom) {
+  const previousMaxima = tomlDocuments.config?.placementRows.get("feasibility.stacking_safety_maxima")?.[0]
+    .querySelector("input")?.dataset.currentValue ?? "2";
+  const previousPenaltyStart = tomlDocuments.config?.placementRows.get("feasibility.stacking_safety_penalty_start")?.[0]
+    .querySelector("input")?.dataset.currentValue ?? "1";
+  const previousLimitMultiplier = tomlDocuments.config?.placementRows.get("heuristic.stacking_safety_limit_multiplier")?.[0]
+    .querySelector('input[type="range"]')?.value ?? "0.25";
   const source = text.replace(/\r\n?/g, "\n");
   const fields = [];
   const csvPaths = new Map();
@@ -606,6 +811,7 @@ function showToml(kind, text, loadedFrom) {
     const legacyLoaderOption = kind === "config" && root === "feasibility" && parts.length === 2 &&
       (key === "loader_access" || key === "loader_access_mode");
     const legacyFallbackOption = kind === "config" && parts.length === 2 && optionPath === "heuristic.min_value";
+    const legacyStackingOption = kind === "config" && parts.length === 2 && optionPath === "heuristic.unsafe_stacking_multiplier";
     const legacyClusterOption = kind === "config" && root === "heuristic" && parts.length === 2 &&
       ["enable_size_cluster", "size_cluster_radius", "hl_size_cluster_distance", "size_cluster_prior", "size_cluster_bias"].includes(key);
     if (kind === "config" && root === "feasibility" && parts.length === 1) {
@@ -631,9 +837,9 @@ function showToml(kind, text, loadedFrom) {
       const boundary = tomlValueEnd(source, start);
       lineEnd = source.indexOf("\n", boundary);
       if (lineEnd === -1) lineEnd = source.length;
-      if ((visible && (kind !== "config" || knownOption || legacyLoaderOption || legacyFallbackOption || legacyClusterOption)) || isCsvPath) {
+      if ((visible && (kind !== "config" || knownOption || legacyLoaderOption || legacyFallbackOption || legacyClusterOption || legacyStackingOption)) || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
-        if (legacyFallbackOption || legacyClusterOption) {
+        if (legacyFallbackOption || legacyClusterOption || legacyStackingOption) {
           if (legacyFallbackOption) legacyFallbackScore = value;
           inlinePlacement.set(optionPath, value);
           offset = statementStart = lineEnd + 1;
@@ -650,10 +856,17 @@ function showToml(kind, text, loadedFrom) {
           offset = statementStart = lineEnd + 1;
           continue;
         }
+        if (knownOption && ["feasibility.stacking_safety_maxima", "feasibility.stacking_safety_penalty_start"].includes(optionPath)) {
+          addStackingSafetyMaxima(placementRows, fields, start, start + value.length, value, "",
+            key === "stacking_safety_maxima" ? previousMaxima : previousPenaltyStart, key);
+          offset = statementStart = lineEnd + 1;
+          continue;
+        }
         const boundedWeight = knownOption && root === "heuristic" &&
           boundedRuleWeights.find(setting => setting.key === key);
         if (boundedWeight) {
-          addBoundedRuleWeight(placementRows, fields, start, start + value.length, value, boundedWeight);
+          addBoundedRuleWeight(placementRows, fields, start, start + value.length, value,
+            boundedWeight === stackingScoringOption ? {...boundedWeight, previousValue: previousLimitMultiplier} : boundedWeight);
           offset = statementStart = lineEnd + 1;
           continue;
         }
@@ -737,6 +950,8 @@ function showToml(kind, text, loadedFrom) {
         control.option = addPlacementOption(placementRows, "feasibility." + key, control.row, control.group);
         fields.push({start: feasibilityStart, end: feasibilityStart, input: control.input});
       }
+      addMissingStackingSafetyMaxima(placementRows, fields, source, feasibilityStart);
+      addMissingStackingNeighbors(placementRows, fields, source, feasibilityStart);
     }
     if (!inlineHeuristic) addMissingHeuristicScores(placementRows, fields, source, heuristicStart, legacyFallbackScore, inlinePlacement);
     fields.sort((a, b) => a.start - b.start || a.end - b.end);
@@ -795,6 +1010,7 @@ function refreshPlacementGraphs() {
 
 function updateTomlSave(kind) {
   const document = tomlDocuments[kind];
+  if (kind === "config") syncPyramidThresholds(document.placementRows);
   const key = tomlEditors[kind];
   const text = editedToml(document, true);
   const persisted = projectTomls[key];

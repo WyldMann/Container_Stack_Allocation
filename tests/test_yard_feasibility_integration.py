@@ -198,6 +198,40 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                         yard.addContainerByCoords(incoming, unsafe)
                         self.assertIs(yard.getStack(*unsafe[:3]).getContainer(2), incoming)
 
+    def test_configured_pyramid_maxima_affects_rejection_scoring_and_placement(self):
+        for size, slot in (('20', 1), ('40', 1)):
+            for maxima in (1, 2, 3):
+                for mode in ('feasibility', 'heuristic', 'off'):
+                    with self.subTest(size=size, maxima=maxima, mode=mode):
+                        yard, incoming, record = self.make_yard(
+                            size, floating=False,
+                            settings=FeasibilitySettings(
+                                stacking_safety_mode=mode, stacking_safety_maxima=maxima,
+                                loader_access=False,
+                            ),
+                            heuristic=HeuristicSettings(
+                                enable_delta_container_mass=False, enable_equipment_distance=False,
+                                enable_size_cluster=False, unsafe_stacking_multiplier=0.2,
+                            ),
+                        )
+                        for tier in ('1', '2'):
+                            yard.addContainerInput(Container(**(record | {
+                                'container_id': f'SUPPORT-{tier}', 'tier_no': tier, 'slot_no': '2',
+                            })))
+                        coordinate = ('A', 0, slot, 2)
+                        result = yard.assignContainer(incoming)
+                        scores = {candidate.coordinates: candidate for candidate in result.sorted_candidate_evaluations}
+                        if mode == 'feasibility' and maxima <= 2:
+                            self.assertNotIn(coordinate, scores)
+                            with self.assertRaisesRegex(PlacementRejected, 'unsafe_stacking'):
+                                yard.addContainerByCoords(incoming, coordinate)
+                        else:
+                            expected = 0.2 if mode == 'heuristic' else 1.0
+                            self.assertEqual(scores[coordinate].stacking_safety_multiplier, expected)
+                            self.assertEqual(scores[coordinate].evaluation_score, expected)
+                            yard.addContainerByCoords(incoming, coordinate)
+                            self.assertIs(yard.getStack(*coordinate[:3]).getContainer(2), incoming)
+
     def test_stack_capacity_modes_with_loader_access_and_paired_placement(self):
         for size, anchor in (('20', 0), ('40', 1)):
             for mode in ('feasibility', 'heuristic', 'off'):

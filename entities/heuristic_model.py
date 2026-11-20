@@ -40,6 +40,16 @@ class HeuristicModel:
         self.size_cluster_penalty_prior = settings.size_cluster_penalty_prior
         self.size_cluster_penalty_bias = settings.size_cluster_penalty_bias
 
+    def stackingSafetyMultiplier(self, difference: int, penalty_start: int, maxima: int) -> float:
+        """Full score up to the soft threshold, then linear decay to the limit."""
+        if difference <= penalty_start:
+            return 1.0
+        limit_multiplier = self.settings.stacking_safety_limit_multiplier
+        if maxima == penalty_start or difference >= maxima:
+            return limit_multiplier
+        fraction = (difference - penalty_start) / (maxima - penalty_start)
+        return 1.0 - (1.0 - limit_multiplier) * fraction
+
     @staticmethod
     def compareTopContainerMass(container:Container, stack:Stack) -> float | None:
         """Return supporting top-container mass minus incoming container mass."""

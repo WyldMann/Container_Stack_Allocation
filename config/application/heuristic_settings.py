@@ -33,11 +33,14 @@ class HeuristicSettings:
     loader_occupied_access_loss_weight: float = 1.0
     loader_future_access_loss_weight: float = 1.0
     unsafe_stacking_multiplier: float = 0.25
+    stacking_safety_limit_multiplier: float | None = None
     overcapacity_tier_multiplier: float = 0.01
     heavier_container_fallback_score: float | None = None
     equipment_outside_block_fallback_score: float | None = None
 
     def __post_init__(self) -> None:
+        if self.stacking_safety_limit_multiplier is None:
+            object.__setattr__(self, "stacking_safety_limit_multiplier", self.unsafe_stacking_multiplier)
         for term in ("reward", "penalty"):
             name = f"enable_size_cluster_{term}"
             if getattr(self, name) is None:
@@ -81,6 +84,7 @@ class HeuristicSettings:
                 raise ValueError(f"{name} must be finite.")
             if name in (
                 "loader_inaccessible_destination_multiplier", "unsafe_stacking_multiplier",
+                "stacking_safety_limit_multiplier",
                 "overcapacity_tier_multiplier",
             ):
                 if not 0 <= value <= 1:

@@ -131,7 +131,7 @@ class PlacementFeasibility:
                 rejection_reason=RejectionReason.ANOMALOUS_STACK
             )
 
-        if self.settings.effective_stacking_safety_mode == "feasibility":
+        if self.settings.effective_stacking_safety_mode in ("feasibility", "combined"):
             reason = self._check_stacking_safety(block, proposal)
             if reason is not None:
                 return FeasibilityResult(rejection_reason=reason)
@@ -215,11 +215,14 @@ class PlacementFeasibility:
 
         return None
 
-    @staticmethod
     def _check_stacking_safety(
+            self,
             block: Block,
             proposal: PlacementProposal,
     ) -> RejectionReason | None:
-        if not block.safeMaxima(proposal.row_index, proposal.slot_index):
+        if block.pyramidHeightDifference(
+            proposal.row_index, proposal.slot_index, container_size=proposal.container_size,
+            neighbors=self.settings.stacking_safety_neighbors,
+        ) > self.settings.stacking_safety_maxima:
             return RejectionReason.UNSAFE_STACKING
         return None

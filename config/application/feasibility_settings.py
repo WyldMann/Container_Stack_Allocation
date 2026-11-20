@@ -17,11 +17,25 @@ class FeasibilitySettings:
     stack_capacity_mode: str = "feasibility"
     loader_destination_access_mode: str | None = None
     preserve_occupied_loader_access_mode: str | None = None
+    stacking_safety_maxima: int = 2
+    stacking_safety_neighbor_up: bool = True
+    stacking_safety_neighbor_down: bool = True
+    stacking_safety_neighbor_left: bool = False
+    stacking_safety_neighbor_right: bool = False
+    stacking_safety_penalty_start: int | None = None
 
     def __post_init__(self) -> None:
+        if type(self.stacking_safety_maxima) is not int or self.stacking_safety_maxima < 1:
+            raise ValueError("stacking_safety_maxima must be a positive integer.")
+        if self.stacking_safety_penalty_start is None:
+            object.__setattr__(self, "stacking_safety_penalty_start", min(1, self.stacking_safety_maxima - 1))
+        if type(self.stacking_safety_penalty_start) is not int or not 0 <= self.stacking_safety_penalty_start < self.stacking_safety_maxima:
+            raise ValueError("stacking_safety_penalty_start must be a non-negative integer below stacking_safety_maxima.")
         for name in (
             "stacking_safety", "loader_access", "preserve_future_loader_access",
             "ignore_full_stacks_for_loader_access",
+            "stacking_safety_neighbor_up", "stacking_safety_neighbor_down",
+            "stacking_safety_neighbor_left", "stacking_safety_neighbor_right",
         ):
             if type(getattr(self, name)) is not bool:
                 raise TypeError(f"{name} must be a boolean.")
@@ -33,8 +47,11 @@ class FeasibilitySettings:
             value = getattr(self, name)
             if value is None and name != "stack_capacity_mode":
                 continue
+            if name == "stacking_safety_mode" and value == "combined":
+                continue
             if not isinstance(value, str) or value not in _ACCESS_STRENGTH:
-                raise ValueError(f"{name} must be 'off', 'heuristic', or 'feasibility'.")
+                choices = "'off', 'heuristic', 'feasibility', or 'combined'" if name == "stacking_safety_mode" else "'off', 'heuristic', or 'feasibility'"
+                raise ValueError(f"{name} must be {choices}.")
         current = self.effective_occupied_loader_access_mode
         future = self.effective_future_loader_access_mode
         if self.preserve_occupied_loader_access_mode is None and _ACCESS_STRENGTH[future] > _ACCESS_STRENGTH[current]:
@@ -42,6 +59,11 @@ class FeasibilitySettings:
                 f'preserve_future_loader_access_mode = "{future}" exceeds '
                 f'loader_access_mode = "{current}". Future access must use the same or a weaker mode.'
             )
+
+    @property
+    def stacking_safety_neighbors(self) -> tuple[str, ...]:
+        return tuple(direction for direction in ("up", "down", "left", "right")
+                     if getattr(self, "stacking_safety_neighbor_" + direction))
 
     @property
     def effective_stacking_safety_mode(self) -> str:

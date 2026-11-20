@@ -12,8 +12,8 @@ function createPlacementGraphs(read) {
     throw new Error("Enter a valid value for " + key.replaceAll("_", " ") + " to preview the score.");
   }
 
-  function number(key, fallback, minimum = Number.MIN_VALUE, maximum = Number.MAX_VALUE, integer = false) {
-    const literal = read("heuristic." + key);
+  function number(key, fallback, minimum = Number.MIN_VALUE, maximum = Number.MAX_VALUE, integer = false, section = "heuristic") {
+    const literal = read(section + "." + key);
     if (literal === undefined) return typeof fallback === "function" ? fallback() : fallback;
     const text = literal.trim();
     const decimal = /^[+-]?(?:0|[1-9](?:_?\d)*)(?:\.\d(?:_?\d)*)?(?:e[+-]?\d(?:_?\d)*)?$/i;
@@ -34,8 +34,8 @@ function createPlacementGraphs(read) {
   function mode(key, fallback) {
     const raw = read("feasibility." + key)?.trim();
     if (raw === undefined) return typeof fallback === "function" ? fallback() : fallback;
-    const value = raw.match(/^("{1,3}|'{1,3})(off|heuristic|feasibility)\1$/)?.[2];
-    if (modes.includes(value)) return value;
+    const value = raw.match(/^("{1,3}|'{1,3})(off|heuristic|feasibility|combined)\1$/)?.[2];
+    if (modes.includes(value) || (key === "stacking_safety_mode" && value === "combined")) return value;
     return invalid(key);
   }
 
@@ -93,9 +93,25 @@ function createPlacementGraphs(read) {
           : current === "off" ? "Rule off · 1× for all tier counts."
           : "One extra tier " + score(perTier) + " · Two extra tiers " + score(perTier ** 2)};
     }},
-    pyramid: {axis: "Pyramid check", calculate() {
+    pyramid: {title: "Pyramid stacking", axis: "Height above the tallest considered neighbor after placement (tiers)", calculate() {
       const current = mode("stacking_safety_mode", () => flag("feasibility.stacking_safety", true) ? "feasibility" : "off");
-      return binary(current, ["Pass", "Violation"], () => number("unsafe_stacking_multiplier", 0.25, 0, 1));
+      const hard = number("stacking_safety_maxima", 2, 1, Number.MAX_VALUE, true, "feasibility");
+      const soft = number("stacking_safety_penalty_start", Math.min(1, hard - 1), 0, hard - 1, true, "feasibility");
+      const end = Math.max(3, hard + 1, hard * 1.2);
+      const ticks = [...new Set([0, soft, hard, end])];
+      if (current === "off") return {start: 0, end, ticks, ...neutral(0, end, "Rule off · No pyramid score or height rejection.")};
+      const scored = current === "heuristic" || current === "combined";
+      const cutoff = current === "feasibility" || current === "combined";
+      const floor = scored ? number("stacking_safety_limit_multiplier", () => number("unsafe_stacking_multiplier", 0.25, 0, 1), 0, 1) : 1;
+      const points = [[0, 1], [soft, 1], [hard, floor]];
+      if (!cutoff) points.push([end, floor]);
+      return {start: 0, end, ticks, lines: [series(points)],
+        guides: [...(scored ? [[soft, "Penalty starts"]] : []), [hard, "Maximum"]],
+        markers: [...(scored ? [[soft, 1, "Full score through " + label(soft) + " tiers"]] : []),
+          [hard, floor, "At maximum · " + score(floor)]],
+        zones: cutoff ? [[hard, end]] : [], rejected: cutoff ? [end] : [],
+        note: (scored ? "Full score through " + label(soft) + " tiers · Linear decline to " + score(floor) + " at " + label(hard) + " tiers. " : "No pyramid score penalty. ") +
+          (cutoff ? "Above " + label(hard) + " tiers: rejected." : "Above " + label(hard) + " tiers: keep " + score(floor) + ".")};
     }},
     destination: {title: "Destination access", axis: "Loader reachability", calculate() {
       return binary(mode("loader_destination_access_mode", legacyLoader), ["Reachable", "Unreachable"],
@@ -259,6 +275,9 @@ function createPlacementGraphs(read) {
         const mark = add("circle", {cx: x(a), cy: y(b), r: 3.5, class: "point " + style + (hollow ? " hollow" : "")});
         add("title", {}, title, mark);
       }
+      for (const [start, end] of data.zones ?? []) {
+        add("rect", {x: x(start), y: top, width: x(end) - x(start), height: bottom - top, class: "rejected-zone"});
+      }
       for (const portion of [0, 0.25, 0.5, 0.75, 1]) {
         const value = max * portion;
         line(left, y(value), right, y(value));
@@ -266,7 +285,8 @@ function createPlacementGraphs(read) {
       }
       for (const [position, caption, style] of data.guides ?? []) {
         line(x(position), top, x(position), bottom, "guide " + style);
-        text(x(position), bottom + 37, caption);
+        const shortCaption = width < 320 ? ({"Penalty starts": "Start", "Maximum": "Limit"}[caption] ?? caption) : caption;
+        text(x(position), bottom + 37, shortCaption);
       }
       const ticks = width < 320 && data.narrowTicks ? data.narrowTicks :
         data.ticks.filter((_, index) => right - left > 300 || data.ticks.length < 5 || index % 2 === 0);

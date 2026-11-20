@@ -14,6 +14,10 @@ class ApplicationSettings:
         return {
             "feasibility": {
                 "stacking_safety_mode": settings.effective_stacking_safety_mode,
+                "stacking_safety_maxima": settings.stacking_safety_maxima,
+                "stacking_safety_penalty_start": settings.stacking_safety_penalty_start,
+                **{"stacking_safety_neighbor_" + direction: getattr(settings, "stacking_safety_neighbor_" + direction)
+                   for direction in ("up", "down", "left", "right")},
                 "stack_capacity_mode": settings.stack_capacity_mode,
                 **({"loader_access_mode": settings.effective_loader_access_mode}
                    if settings.loader_destination_access_mode is None

@@ -1,8 +1,21 @@
 # Placement settings for main.py.
 [feasibility]
 loader_destination_access_mode = "feasibility"
-# Enforce the existing pyramid stacking safety rule.
-stacking_safety = true
+# Score height differences and reject placements beyond the maximum.
+stacking_safety_mode = "feasibility"
+# Full score up to this post-placement tier difference; then linear decay.
+# Integer from 0 to stacking_safety_maxima - 1.
+stacking_safety_penalty_start = 1
+# Maximum tiers above at least one neighboring stack after placement.
+# An isolated stack may reach this height. Must be a positive integer.
+stacking_safety_maxima = 2
+# Neighbor sides considered by the pyramid rule. Up/down follow the yard grid
+# (previous/next row); left/right are outside the container's full footprint.
+# At least one enabled neighbor must provide support above the isolated limit.
+stacking_safety_neighbor_up = true
+stacking_safety_neighbor_down = true
+stacking_safety_neighbor_left = false
+stacking_safety_neighbor_right = false
 
 # Loader modes: "feasibility" rejects, "heuristic" scores, and "off" skips.
 # Current access covers the destination and occupied stacks. RTGs are exempt.
@@ -15,6 +28,8 @@ ignore_full_stacks_for_loader_access = true
 
 
 [heuristic]
+# Score multiplier at stacking_safety_maxima. Range: 0 to 1.
+stacking_safety_limit_multiplier = 1
 loader_occupied_access_loss_weight = 0.5
 loader_future_access_loss_weight = 0.15
 # Disabled factors skip scoring and contribute a neutral multiplier of 1.

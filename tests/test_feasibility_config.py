@@ -48,6 +48,25 @@ loader_access = false
         self.assertTrue(settings.preserve_future_loader_access)
         self.assertFalse(settings.ignore_full_stacks_for_loader_access)
 
+    def test_stacking_safety_maxima_defaults_and_round_trips(self):
+        self.assertEqual(self.load_text("").stacking_safety_maxima, 2)
+        for maxima in (1, 2, 3):
+            with self.subTest(maxima=maxima):
+                settings = self.load_text(f"[feasibility]\nstacking_safety_maxima = {maxima}\n")
+                self.assertEqual(settings.stacking_safety_maxima, maxima)
+                parsed = parse_config({"feasibility": {"stacking_safety_maxima": maxima}})
+                document = parsed.to_document()
+                self.assertEqual(document["feasibility"]["stacking_safety_maxima"], maxima)
+                self.assertEqual(parse_config(document).to_document(), document)
+
+    def test_stacking_safety_maxima_requires_a_positive_integer(self):
+        for value in (0, -1, 2.5, 2.0, True, False, "2", None, []):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "stacking_safety_maxima"):
+                    FeasibilitySettings(stacking_safety_maxima=value)
+                with self.assertRaisesRegex(ConfigurationError, "stacking_safety_maxima"):
+                    parse_config({"feasibility": {"stacking_safety_maxima": value}})
+
     def test_unknown_option_is_rejected(self):
         with self.assertRaises(ConfigurationError):
             self.load_text(

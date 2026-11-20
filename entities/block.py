@@ -88,43 +88,49 @@ class Block:
     def getRTG(self) -> RTG | None: return self.rtg
     def setRTG(self, rtg: RTG): self.rtg = rtg
 
-    # returns if true if it's safe to get put something a container in that stack
-    def safeMaxima(self,row_index:int,slot_index:int) -> bool:
-        max_maxima = 2
+    def safeMaxima(
+            self, row_index: int, slot_index: int, max_maxima: int = 2,
+            *, neighbors: tuple[str, ...] = ("up", "down"),
+    ) -> bool:
+        """Allow placement within max_maxima tiers above an enabled neighbor.
+
+        An isolated stack may reach max_maxima tiers without neighbor support.
+        Up/down mean the previous/next row, matching the yard grid. Both cells
+        along a 40-foot footprint are considered on each enabled row side.
+        """
         stack = self.slots[row_index][slot_index]
         tier_index = stack.occupiedHeight()
-        mode = stack.getMode()
 
         if tier_index < max_maxima: return True
+        return self.pyramidHeightDifference(row_index, slot_index, neighbors=neighbors) <= max_maxima
 
-        # assumes that only odd-num stack40s are called, hence even-num stack40s raise error
+    def pyramidHeightDifference(
+            self, row_index: int, slot_index: int, *,
+            neighbors: tuple[str, ...] = ("up", "down"),
+            container_size: str | None = None,
+    ) -> int:
+        """Post-placement height above the tallest considered neighbor.
+
+        Ground (height zero) supplies the baseline at edges, with no enabled
+        neighbors, or where all considered neighbors are empty.
+        """
+        stack = self.slots[row_index][slot_index]
+        mode = container_size if container_size is not None else stack.getMode()
         if stack.getEven() and mode == '40': raise IndexError
 
-        # up
-        if self.compareTier(row_index, slot_index, row_index + 1, slot_index) < max_maxima:
-            return True
-        # down
-        elif self.compareTier(row_index, slot_index, row_index - 1, slot_index) < max_maxima:
-            return True
-        # right
-        elif self.compareTier(row_index, slot_index, row_index, slot_index + 1) < max_maxima:
-            return True
-        elif stack.getMode() == '20':
-            # left for 20
-            if self.compareTier(row_index, slot_index, row_index, slot_index - 1) < max_maxima:
-                return True
-        # for 40
-        elif stack.getMode() == '40':
-            # left, left
-            if self.compareTier(row_index, slot_index, row_index, slot_index - 2) < max_maxima:
-                return True
-            # left, up
-            elif self.compareTier(row_index, slot_index, row_index + 1, slot_index - 1) < max_maxima:
-                return True
-            # left, down
-            elif self.compareTier(row_index, slot_index, row_index - 1, slot_index - 1) < max_maxima:
-                return True
-        return False
+        first_slot = slot_index - 1 if mode == '40' else slot_index
+        sides = {
+            "up": tuple((row_index - 1, slot) for slot in range(first_slot, slot_index + 1)),
+            "down": tuple((row_index + 1, slot) for slot in range(first_slot, slot_index + 1)),
+            "left": ((row_index, first_slot - 1),),
+            "right": ((row_index, slot_index + 1),),
+        }
+        support_height = max((
+            self.slots[row][slot].occupiedHeight()
+            for direction in neighbors for row, slot in sides[direction]
+            if 0 <= row < len(self.slots) and 0 <= slot < len(self.slots[row])
+        ), default=0)
+        return max(0, stack.occupiedHeight() + 1 - support_height)
 
     #row1,slot1 must exist, row2,slot2 doesn't need to
     def compareTier(self,first_row_index:int,first_slot_index:int,second_row_index:int,second_slot_index:int) -> int:

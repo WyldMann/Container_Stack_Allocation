@@ -138,6 +138,10 @@ class FeasibilityTests(unittest.TestCase):
         self.assert_rejected('20', RejectionReason.UNSAFE_STACKING)
 
     def test_opposite_slot_does_not_make_boundary_safe(self):
+        self.feasibility = PlacementFeasibility(FeasibilitySettings(
+            stacking_safety_neighbor_up=False, stacking_safety_neighbor_down=False,
+            stacking_safety_neighbor_left=True, stacking_safety_neighbor_right=True,
+        ))
         self.fill(1, 0, '20', 2)
         self.assert_rejected('20', RejectionReason.UNSAFE_STACKING, row_index=1, slot_index=0)
         self.fill(1, 3, '20', 2)
@@ -147,6 +151,25 @@ class FeasibilityTests(unittest.TestCase):
         self.fill(0, 1, '20', 2)
         self.fill(1, 1, '20', 1)
         self.assertEqual(self.check('20'), ('A', 0, 1, 2))
+
+    def test_configured_maxima_controls_isolated_and_neighbor_supported_heights(self):
+        for container_size in ('20', '40'):
+            for maxima in (1, 2, 3):
+                with self.subTest(size=container_size, maxima=maxima):
+                    self.setUp()
+                    self.feasibility = PlacementFeasibility(FeasibilitySettings(stacking_safety_maxima=maxima))
+                    footprint = (1,) if container_size == '20' else (0, 1)
+                    for slot in footprint:
+                        self.fill(0, slot, container_size, maxima - 1)
+                    self.assertEqual(self.check(container_size), ('A', 0, 1, maxima - 1))
+                    for slot in footprint:
+                        self.block.getStack(0, slot).addContainer(
+                            SimpleNamespace(getContSize=lambda: container_size), maxima - 1,
+                        )
+                    self.assert_rejected(container_size, RejectionReason.UNSAFE_STACKING)
+                    for slot in footprint:
+                        self.fill(1, slot, container_size, 1)
+                    self.assertEqual(self.check(container_size), ('A', 0, 1, maxima))
 
     def test_invalid_locations_are_rejected(self):
         for row_index, slot_index in ((-1, 1), (3, 1), (0, -1), (0, 4)):
