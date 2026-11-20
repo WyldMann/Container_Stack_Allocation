@@ -20,7 +20,7 @@ from entities.bad_yard_data import BadYardData, PlacementRejected
 from repository import CSVLoader, InputError, load_yard_inputs
 from repository.repository import Repository
 from repository.block_accessibility import access_policies
-from utils import strGeneralize
+from utils import parse_optional_finite_float, strGeneralize
 
 from .configuration import configuration, draft_files, dump_toml, portable_input
 from .yard_view import yard_view
@@ -297,11 +297,13 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
         try:
             container = Container(**row)
         except (ValueError, TypeError, OverflowError, OSError) as error:
+            weight = parse_optional_finite_float(row["weight"])
             status, reason = "invalid", str(error)
             branch["issues"].append(issue("inbound_containers", reason, sources=origin,
                                           field="move_time", severity="warning"))
         else:
-            if row["weight"].strip() and container.getWeight() is None:
+            weight = container.getWeight()
+            if row["weight"].strip() and weight is None:
                 branch["issues"].append(issue("inbound_containers", "Invalid weight is treated as unknown by the stacking engine.",
                                               severity="warning", sources=origin, field="weight"))
             try:
@@ -312,7 +314,8 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
                 branch["issues"].append(issue("inbound_containers", reason, sources=origin, severity="warning"))
         branch["queue"].append({"position": index + 1, "container_id": row["container_id"],
                                 "size": row["container_size"], "operation": row["operation_type"],
-                                "status": status,
+                                "condition": row["container_condition"], "grade": row["container_grade"],
+                                "weight": weight, "status": status,
                                 "reason": reason, "sources": origin})
     if not yard.blocks_by_id:
         add("yard_blocks", "No valid blocks are available for this branch.")
