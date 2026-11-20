@@ -8,8 +8,8 @@ function layoutYardBlocks(blocks) {
     const key = block.x + "," + block.y;
     if (!groups.has(key)) groups.set(key, {x: block.x, y: block.y, width: 0, height: 0, blocks: []});
     const group = groups.get(key);
-    const width = Math.max(190, 56 + block.slots * 47);
-    const height = 124 + block.rows * 39;
+    const width = Math.max(270, 144 + block.slots * 47);
+    const height = 206 + block.rows * 39;
     const offset = group.blocks.length ? group.height + gap : 0;
     group.blocks.push({block, width, height, offset});
     group.width = Math.max(group.width, width);
@@ -49,7 +49,7 @@ function layoutYardBlocks(blocks) {
   };
 }
 
-function createYardMap(branch, branches = [branch]) {
+function createYardMap(branch, branches = [branch], accessOptions = {}) {
   if (!branch.yard_map?.blocks?.length) return null;
 
   const colors = new Map([
@@ -74,7 +74,44 @@ function createYardMap(branch, branches = [branch]) {
   header.append(el("h3", "Yard map"));
   const body = el("div", undefined, "yard-view-layout");
   root.append(header, body);
-
+  const accessButtons = [];
+  const accessSaves = [];
+  const accessSides = ["above", "below", "left", "right"];
+  const accessStatus = el("p", undefined, "yard-caption yard-access-status");
+  accessStatus.setAttribute("role", "status");
+  accessStatus.hidden = true;
+  header.append(accessStatus);
+  let accessEditable = Boolean(accessOptions.editable);
+  let accessPending = false;
+  function accessChanged(block) {
+    return accessSides.some(side => block.loader_access[side] !== block.saved_loader_access[side]);
+  }
+  function syncAccessControls() {
+    accessButtons.forEach(control => {
+      control.disabled = !accessEditable || accessPending;
+      control.dataset.accessLocked = String(!accessEditable);
+    });
+    for (const {block, save} of accessSaves) {
+      const dirty = accessChanged(block);
+      const locked = !dirty || typeof accessOptions.onSave !== "function";
+      save.disabled = accessPending || locked;
+      save.dataset.accessLocked = String(locked);
+      save.title = dirty ? "Save block access settings for block " + block.code +
+        (globalThis.stackingStandalone ? " to bundled data in this browser." : " to the project CSV.") : "No access changes to save.";
+    }
+  }
+  function accessMessage(text, error = false) {
+    accessStatus.textContent = text;
+    accessStatus.hidden = !text;
+    accessStatus.classList.toggle("not-ready", error);
+  }
+  function showAccessChanges() {
+    const codes = accessSaves.filter(({block}) => accessChanged(block)).map(({block}) => block.code)
+      .sort((first, second) => first.localeCompare(second, "en", {numeric: true}));
+    const names = new Intl.ListFormat("en", {style: "long", type: "conjunction"}).format(codes);
+    accessMessage(codes.length ? (codes.length === 1 ? "Block " : "Blocks ") + names +
+      (codes.length === 1 ? " has" : " have") + " unsaved access changes." : "");
+  }
   function button(label, className) {
     const control = el("button", undefined, className);
     control.type = "button";
@@ -343,7 +380,29 @@ function createYardMap(branch, branches = [branch]) {
     const summary = el("p", undefined, "yard-caption");
     const occupancy = el("p", undefined, "yard-caption");
     const compliance = el("p", undefined, "yard-caption");
-    heading.append(el("h4", "Block " + block.code), summary, occupancy, compliance);
+    block.loader_access ??= {above: true, below: true, left: true, right: true};
+    block.saved_loader_access ??= {...block.loader_access};
+    const titleRow = el("div", undefined, "yard-block-title");
+    const save = button("Save block access settings for block " + block.code, "yard-block-save");
+    save.textContent = "Save block access settings";
+    save.disabled = true;
+    accessSaves.push({block, save});
+    save.addEventListener("click", async () => {
+      if (accessPending || busy || !accessChanged(block) || typeof accessOptions.onSave !== "function") return;
+      accessPending = true;
+      syncAccessControls();
+      try {
+        await action(async () => {
+          await accessOptions.onSave(block);
+          block.saved_loader_access = {...block.loader_access};
+          syncAccessControls();
+          showAccessChanges();
+        }, accessMessage);
+      } catch (error) { accessMessage(error.message, true); }
+      finally { accessPending = false; syncAccessControls(); }
+    });
+    titleRow.append(el("h4", "Block " + block.code), save);
+    heading.append(titleRow, summary, occupancy, compliance);
     const grid = el("table", undefined, "yard-grid");
     grid.style.setProperty("--yard-slot-count", block.slots);
     grid.setAttribute("aria-label", "Stack grid for block " + block.code);
@@ -396,7 +455,39 @@ function createYardMap(branch, branches = [branch]) {
       rows.append(line);
     }
     grid.append(head, rows);
-    panel.append(heading, grid);
+    const accessFrame = el("div", undefined, "yard-access-frame");
+    accessFrame.append(grid);
+    for (const [side, label] of [["above", "Above"], ["below", "Below"], ["left", "Left"], ["right", "Right"]]) {
+      const toggle = button("Block " + block.code + " " + side + " loader access", "yard-access-switch yard-access-" + side);
+      toggle.setAttribute("role", "switch");
+      function paintAccess() {
+        const open = block.loader_access[side];
+        toggle.setAttribute("aria-checked", String(open));
+        toggle.replaceChildren(el("span", label), el("strong", open ? "Open" : "Closed"));
+        toggle.title = label + " border: " + (open ? "open" : "closed") +
+          (side === "above" || side === "below" ? " for loader entry and exterior working space." : " for loader entry.");
+      }
+      toggle.addEventListener("click", async () => {
+        if (!accessEditable || accessPending || busy) return;
+        const next = !block.loader_access[side];
+        accessPending = true;
+        syncAccessControls();
+        try {
+          await action(async () => {
+            await accessOptions.onChange(block, side, next);
+            block.loader_access[side] = next;
+            paintAccess();
+            syncAccessControls();
+            showAccessChanges();
+          }, accessMessage);
+        } catch (error) { accessMessage(error.message, true); }
+        finally { accessPending = false; syncAccessControls(); }
+      });
+      accessButtons.push(toggle);
+      paintAccess();
+      accessFrame.append(toggle);
+    }
+    panel.append(heading, accessFrame);
     stage.append(panel);
     views.push(view);
   }
@@ -609,5 +700,8 @@ function createYardMap(branch, branches = [branch]) {
     block.parameter_compliance = placed.parameter_compliance;
     updateBlockSummary(view);
   }
-  return {element: root, applyPlacement, markPlacement, showTrace};
+  syncAccessControls();
+  showAccessChanges();
+  return {element: root, applyPlacement, markPlacement, showTrace, accessBusy: () => accessPending,
+    setAccessEditable(editable) { accessEditable = editable; syncAccessControls(); }};
 }

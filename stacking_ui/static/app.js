@@ -4,6 +4,7 @@ const $ = id => document.getElementById(id);
 const descriptions = {
   terminal_branches: ["Terminal branches", "Branch codes, IDs, and display names."],
   yard_blocks: ["Yard blocks", "Dimensions, tier limits, and block positions."],
+  block_accessibility: ["Block accessibility", "Loader entry and working space at each border. Optional; defaults to all borders open."],
   existing_containers: ["Current containers", "The current yard snapshot."],
   inbound_containers: ["Inbound containers", "Containers to assign, in CSV order."],
   removed_slots: ["Removed slots", "Locations unavailable for stacking."],
@@ -186,7 +187,7 @@ async function action(task, report = message) {
     report(error.message, true);
   } finally {
     busy = false;
-    controls.forEach(node => node.disabled = false);
+    controls.forEach(node => node.disabled = node.dataset.accessLocked === "true");
     const {ruleControls, placementRows} = tomlDocuments.config;
     updateRuleControls(ruleControls, placementRows);
     updatePlacementDependencies(placementRows);
@@ -1070,14 +1071,15 @@ function matchCsvFolder(selectedFiles) {
   const missing = [];
   for (const name of Object.keys(descriptions)) {
     const field = tomlDocuments.input.csvPaths.get(name);
+    if (!field && name === "block_accessibility") continue;
     if (!field) throw new Error("The input TOML has no CSV path for " + name + ".");
     const path = csvFolderPath(tomlFieldValue(field));
     const filename = path.split("/").at(-1);
     const exact = entries.filter(entry => path === entry.path || path.endsWith("/" + entry.path));
     const candidates = exact.length ? exact : entries.filter(entry => entry.file.name.toLowerCase() === filename);
     if (candidates.length > 1) throw new Error("Several files match " + name + ". Select a narrower CSV folder.");
-    if (!candidates.length) missing.push(name);
-    else matches.set(name, candidates[0].file);
+    if (!candidates.length && name !== "block_accessibility") missing.push(name);
+    else if (candidates.length) matches.set(name, candidates[0].file);
   }
   if (missing.length) throw new Error("CSV folder is missing files for: " + missing.join(", ") + ".");
   return matches;
@@ -1089,7 +1091,7 @@ function showDatasets() {
   const useBundled = standalone && useFolder;
   const description = $("source-description");
   if (useBundled) {
-    description.textContent = "Using the nine CSVs included in this package.";
+    description.textContent = "Using the CSVs included in this package, including saved block accessibility.";
   } else if (useFolder) {
     description.textContent = "Use the prefilled CSV paths or edit them below. Relative paths start in config/container_stacking. Keep the quotes around each path.";
   } else {
@@ -1097,8 +1099,8 @@ function showDatasets() {
       ? "Choose individual UTF-8 CSVs to replace bundled files."
       : "Choose a UTF-8 CSV for each dataset, or mark it explicitly empty.";
     description.textContent = individualHelp +
-      " Selecting a CSV folder replaces all nine input files at once." +
-      " The folder must contain all nine CSVs named in Input configuration.";
+      " Selecting a CSV folder replaces the input files at once." +
+      " The folder must contain the nine required CSVs; block_accessibility.csv is optional.";
   }
   $("choose-csv-folder").hidden = useFolder;
   $("bundled-inputs").hidden = !useBundled;
@@ -1331,7 +1333,14 @@ function previewOverview(branches, simulation, sharedIssues) {
       selectedView.replaceChildren(...diagnostics, simulationView(runs.get(branch), branches, simulation.id, renderGaps));
       return;
     }
-    const map = createYardMap(branch, branches);
+    const map = createYardMap(branch, branches, {
+      editable: Boolean(simulation && typeof globalThis.updateStackingBlockAccess === "function"),
+      onChange: (block, side, value) => globalThis.updateStackingBlockAccess({
+        id: simulation.id, branch: branch.branch_code,
+        policies: [{block_id: block.id, ...block.loader_access, [side]: value}]
+      }),
+      onSave: block => globalThis.saveStackingBlockAccess({id: simulation.id, branch: branch.branch_code, block_id: block.id})
+    });
     selectedView.replaceChildren(...diagnostics, inboundQueue(branch), ...(map ? [map.element] : []));
     if (map && branch.queue.length && branch.inbound_available !== false) {
       const hint = simulation ? "Resolve the input errors above before running this branch." :
@@ -1468,6 +1477,12 @@ for (const [kind, key] of Object.entries(tomlEditors)) {
   });
 }
 if (standalone) setupBundledBranches();
+$("download-bundled-csvs").hidden = !standalone;
+$("download-bundled-csvs").addEventListener("click", event => {
+  if (typeof globalThis.downloadStackingBundledCsvs !== "function") return;
+  event.preventDefault();
+  action(async () => { await globalThis.downloadStackingBundledCsvs(); });
+});
 showDatasets();
 const tomlActions = $("project-toml-actions");
 tomlActions.hidden = !canReadProjectTomls;

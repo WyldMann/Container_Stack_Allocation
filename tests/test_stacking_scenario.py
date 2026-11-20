@@ -743,7 +743,8 @@ class ScenarioTests(unittest.TestCase):
                 self.assertNotIn("../../escape.csv", bundle.namelist())
                 config = tomllib.loads(bundle.read("container_stacking_input.toml").decode())
                 self.assertEqual(config["csv"]["files"]["yard_blocks"], "yard_blocks.csv")
-                self.assertEqual(len(bundle.namelist()), 12)
+                self.assertEqual(len(bundle.namelist()), 13)
+                self.assertIn("block_accessibility.csv", bundle.namelist())
 
     def test_offline_draft_uses_project_defaults_and_mapped_empty_csv(self):
         # The HTML page leaves unset TOML fields null and sends an empty marker.

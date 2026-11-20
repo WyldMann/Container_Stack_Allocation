@@ -7,10 +7,10 @@ from .config_loader import ConfigurationError, _read_document, _read_section
 from .input_filters import FILTER_NAMES, active_filters, input_filters, read_filter_columns
 from .shifting_period import parse_shifting_period
 from .shifting_input import shifting_settings, sql_shifting_settings
-from ..csv_import.mapping_settings import SCHEMAS
+from ..csv_import.mapping_settings import SCHEMAS, OPTIONAL_DATASETS, REQUIRED_DATASETS
 
 
-DATASETS = tuple(SCHEMAS)
+DATASETS = REQUIRED_DATASETS
 
 
 def _string(value, name):
@@ -23,7 +23,7 @@ def _dataset_names(definitions, name, required=DATASETS, *, optional=()):
     if not isinstance(definitions, dict):
         raise ConfigurationError(f"{name} must be a table.")
     missing = set(required) - set(definitions)
-    unknown = set(definitions) - set(DATASETS) - set(optional)
+    unknown = set(definitions) - set(SCHEMAS) - set(optional)
     if missing or unknown:
         raise ConfigurationError(
             f"Invalid {name}: missing datasets {sorted(missing)}; "
@@ -31,19 +31,19 @@ def _dataset_names(definitions, name, required=DATASETS, *, optional=()):
         )
 
 
-def load_input_config(path: str | Path, *, datasets=DATASETS) -> dict:
+def load_input_config(path: str | Path, *, datasets=REQUIRED_DATASETS) -> dict:
     """Validate source settings for the datasets used by an entrypoint."""
     config_path = Path(path).resolve()
     return parse_input_config(_read_document(config_path), base_dir=config_path.parent,
                               datasets=datasets)
 
 
-def parse_input_config(document: dict, *, base_dir: str | Path, datasets=DATASETS) -> dict:
+def parse_input_config(document: dict, *, base_dir: str | Path, datasets=REQUIRED_DATASETS) -> dict:
     """Validate an interface draft without first writing a configuration file."""
     if not isinstance(document, dict):
         raise ConfigurationError("Input configuration must be a table.")
     datasets = tuple(datasets)
-    if not datasets or set(datasets) - set(DATASETS):
+    if not datasets or set(datasets) - set(SCHEMAS):
         raise ConfigurationError("Select at least one known input dataset.")
     datasets = tuple(dict.fromkeys(("terminal_branches", *datasets)))
     base_dir = Path(base_dir).resolve()
@@ -53,6 +53,8 @@ def parse_input_config(document: dict, *, base_dir: str | Path, datasets=DATASET
     section = _read_section(document, "input", {"sources", "filters"})
     filters = input_filters(_read_section(section, "filters", FILTER_NAMES))
     sources = section.get("sources")
+    if isinstance(sources, dict):
+        datasets = tuple(dict.fromkeys((*datasets, *(name for name in OPTIONAL_DATASETS if name in sources))))
     _dataset_names(sources, "input.sources", required=datasets, optional=("shifting_summary",))
     shifting_source = sources.get("shifting_summary", "xlsx")
     if shifting_source not in ("xlsx", "csv", "sql"):
@@ -158,7 +160,7 @@ def parse_input_config(document: dict, *, base_dir: str | Path, datasets=DATASET
         raise ConfigurationError(
             "Only the 'sql' section is allowed in SQL mappings."
         )
-    datasets = _read_section(mapping_document, "sql", set(DATASETS) | {"shifting_summary"})
+    datasets = _read_section(mapping_document, "sql", set(SCHEMAS) | {"shifting_summary"})
     _dataset_names(datasets, "sql", required=sql_names, optional=("shifting_summary",))
     if shifting_source == "sql":
         settings["sql_shifting"] = sql_shifting_settings(datasets.get("shifting_summary"))

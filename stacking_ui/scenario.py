@@ -19,6 +19,7 @@ from entities import Container, Yard
 from entities.bad_yard_data import BadYardData, PlacementRejected
 from repository import CSVLoader, InputError, load_yard_inputs
 from repository.repository import Repository
+from repository.block_accessibility import access_policies
 from utils import strGeneralize
 
 from .configuration import configuration, draft_files, dump_toml, portable_input
@@ -194,7 +195,7 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
     known_blocks = {strGeneralize(row["block_id"]) for _, row, _ in source_records["yard_blocks"]}
     known_coords = {(strGeneralize(row["branch_id"]), strGeneralize(row["block_code"]))
                     for _, row, _ in source_records["yard_blocks"]}
-    for name in ("removed_slots", "yard_planning", "existing_containers"):
+    for name in ("removed_slots", "yard_planning", "existing_containers", "block_accessibility"):
         for origin, raw, scope in source_records[name]:
             if not in_scope(scope):
                 continue
@@ -242,6 +243,7 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
             parameters_input=inputs["parameters"], yard_planning_input=inputs["yard_planning"],
             containers_input=existing_containers, equipment_input=inputs["master_equipment"],
             equipment_locations_input=inputs["equipment_history"],
+            loader_access_policies=access_policies(inputs.get("block_accessibility", [])),
             feasibility_settings=settings.feasibility, heuristic_settings=settings.heuristic,
         )
     branch["yard"] = yard
@@ -330,9 +332,13 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
 
 def public_branch(branch):
     entry = {key: value for key, value in branch.items()
-             if key not in ("yard", "inputs", "container_profile")}
+             if key not in ("yard", "inputs", "container_profile", "saved_block_access")}
     yard = branch["yard"]
     entry["yard_map"] = yard_view(yard) if yard is not None else None
+    if entry["yard_map"] is not None:
+        saved = branch.get("saved_block_access", {})
+        for block in entry["yard_map"]["blocks"]:
+            block["saved_loader_access"] = saved.get(block["id"], block["loader_access"])
     entry["ready"] = (yard is not None and branch["inbound_available"]
                       and not any(item["severity"] == "error" for item in branch["issues"]))
     entry["issue_counts"] = dict(Counter(item["severity"] for item in branch["issues"]))

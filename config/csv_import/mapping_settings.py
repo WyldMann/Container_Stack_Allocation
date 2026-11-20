@@ -33,6 +33,7 @@ CONTAINER_SCHEMA = CSVSchema(
 )
 
 SCHEMAS = {
+    "block_accessibility": CSVSchema(required=("block_id", "above", "below", "left", "right")),
     "terminal_branches": CSVSchema(required=(
         "branch_id", "terminal_id", "branch_code", "branch_name",
     )),
@@ -69,3 +70,6 @@ SCHEMAS = {
         ),
     ),
 }
+
+OPTIONAL_DATASETS = ("block_accessibility",)
+REQUIRED_DATASETS = tuple(name for name in SCHEMAS if name not in OPTIONAL_DATASETS)

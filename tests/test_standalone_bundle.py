@@ -13,6 +13,20 @@ from stacking_ui.standalone import bundled_yard_branches, project_snapshot
 
 
 class StandaloneBundleTest(unittest.TestCase):
+    def test_missing_optional_accessibility_is_bundled_as_empty(self):
+        original = read_toml(DEFAULT_STACKING_INPUT_CONFIG_FILE.read_text(encoding="utf-8"), "input")
+        configured = parse_input_config(original, base_dir=DEFAULT_STACKING_INPUT_CONFIG_FILE.parent)["csv_files"]
+        with TemporaryDirectory(dir=PROJECT_ROOT) as temporary:
+            directory = Path(temporary)
+            for name, path in configured.items():
+                if name != "block_accessibility":
+                    (directory / path.name).touch()
+            _, snapshot = project_snapshot(data_dir=directory)
+            with ZipFile(BytesIO(snapshot)) as archive:
+                name = (directory / configured["block_accessibility"].name).relative_to(PROJECT_ROOT).as_posix()
+                self.assertEqual(archive.read(name).decode(), "BLOCK_ID,ABOVE,BELOW,LEFT,RIGHT\r\n")
+            self.assertFalse((directory / configured["block_accessibility"].name).exists())
+
     def test_yard_branch_choices_require_bundled_blocks(self):
         original = read_toml(DEFAULT_STACKING_INPUT_CONFIG_FILE.read_text(encoding="utf-8"), "input")
         configured = parse_input_config(original, base_dir=DEFAULT_STACKING_INPUT_CONFIG_FILE.parent)["csv_files"]

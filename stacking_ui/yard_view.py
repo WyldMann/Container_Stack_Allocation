@@ -1,8 +1,10 @@
 """Serialize the built yard for the offline preview map."""
 
 from math import isfinite
+from dataclasses import asdict
 
 from entities.container import DummyContainer
+from entities.feasibility.loader_access import LoaderBorderAccessPolicy
 
 
 def _parameter_view(parameter):
@@ -78,6 +80,8 @@ def yard_view(yard):
                 containers.update(tier["container_id"] for tier in view["tiers"] if not tier.get("dummy"))
                 stacks.append(view)
         blocks.append({
+            "id": block.getId(),
+            "loader_access": asdict(yard.loader_access_policies.get(block.getId(), LoaderBorderAccessPolicy())),
             "code": block.getCode(), "x": block.getPosX(), "y": block.getPosY(),
             "rows": len(grid), "slots": len(grid[0]),
             "tier_limit": max(stack["capacity"] for stack in stacks),

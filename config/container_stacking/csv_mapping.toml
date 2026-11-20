@@ -39,6 +39,13 @@ block_id = "BLOCK_ID"
 row_no = "ROW_NO"
 slot_no = "SLOT_NO"
 
+[csv.block_accessibility.columns]
+block_id = "BLOCK_ID"
+above = "ABOVE"
+below = "BELOW"
+left = "LEFT"
+right = "RIGHT"
+
 
 [csv.parameters.filter_columns]
 terminal_id = "TERMINAL_ID"

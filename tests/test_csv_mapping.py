@@ -38,7 +38,7 @@ class CSVMappingLoaderTests(unittest.TestCase):
         self.assertEqual(set(profiles), {
             "terminal_branches", "yard_blocks", "removed_slots", "parameters", "yard_planning",
             "existing_containers", "inbound_containers",
-            "master_equipment", "equipment_history",
+            "master_equipment", "equipment_history", "block_accessibility",
         })
         with self.assertRaises(TypeError):
             profiles["removed_slots"].columns["block_id"] = "Changed"

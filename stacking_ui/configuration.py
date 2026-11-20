@@ -12,7 +12,7 @@ from config import DEFAULT_CONFIG_FILE, DEFAULT_CSV_MAPPING_FILE, DEFAULT_STACKI
 from config.application.config_loader import ConfigurationError, parse_config
 from config.application.input_config import parse_input_config
 from config.csv_import.mapping_loader import parse_mapping
-from config.csv_import.mapping_settings import SCHEMAS
+from config.csv_import.mapping_settings import SCHEMAS, REQUIRED_DATASETS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TOML_FILES = {
@@ -69,10 +69,11 @@ def portable_input(document):
     if not isinstance(section, dict) or set(section) - {"sources", "filters"}:
         raise ConfigurationError("input must be a table with optional sources and filters.")
     sources = section.get("sources", dict.fromkeys(SCHEMAS, "csv"))
-    if not isinstance(sources, dict) or set(sources) != set(SCHEMAS):
-        raise ConfigurationError("input.sources must name all nine stacking datasets.")
+    if not isinstance(sources, dict) or not set(REQUIRED_DATASETS) <= set(sources) or set(sources) - set(SCHEMAS):
+        raise ConfigurationError("input.sources must name all required stacking datasets.")
     if any(source != "csv" for source in sources.values()):
         raise ConfigurationError("This import interface accepts CSV sources only.")
+    sources = {**sources, "block_accessibility": "csv"}
     return {
         "input": {**section, "sources": sources},
         "csv": {"mapping_file": "csv_mapping.toml",
@@ -90,9 +91,12 @@ def configuration(payload):
 
     settings = parse_config(document("config_toml", "Stacking settings", DEFAULT_CONFIG_FILE))
     mapping = document("mapping_toml", "CSV mapping", DEFAULT_CSV_MAPPING_FILE)
+    if isinstance(mapping.get("csv"), dict):
+        mapping["csv"].setdefault("block_accessibility", {"columns": {
+            field: field.upper() for field in SCHEMAS["block_accessibility"].fields}})
     profiles = parse_mapping(mapping)
     if set(profiles) != set(SCHEMAS):
-        raise ConfigurationError("CSV mapping must define all nine stacking datasets.")
+        raise ConfigurationError("CSV mapping must define all required stacking datasets.")
     input_document = document("input_toml", "Stacking inputs", DEFAULT_STACKING_INPUT_CONFIG_FILE)
     if payload.get("branch_codes") is not None:
         section = input_document.get("input")
@@ -108,6 +112,10 @@ def configuration(payload):
     if source in ("folder", "bundle"):
         inputs = {key: value for key, value in input_document.items() if key != "sql"}
         inputs["input"] = portable["input"]
+        inputs["csv"] = {**inputs.get("csv", {}), "files": {
+            "block_accessibility": "../../data_container_stacking/block_accessibility.csv",
+            **inputs.get("csv", {}).get("files", {}),
+        }}
     return settings, mapping, profiles, inputs
 
 
@@ -152,11 +160,14 @@ def draft_files(payload, profiles, input_document):
                 with path.open(encoding="utf-8-sig", newline="") as stream:
                     files[name] = {"name": path.name, "content": stream.read()}
             except FileNotFoundError:
-                files[name] = {"error": f"Configured CSV file not found: {display_path}"}
+                files[name] = ({"name": path.name, "content": templates[name]} if name == "block_accessibility" else
+                               {"error": f"Configured CSV file not found: {display_path}"})
             except (OSError, UnicodeError):
                 files[name] = {"error": f"Cannot read the configured UTF-8 CSV: {display_path}"}
         elif name in selected:
             files[name] = upload
+        elif name == "block_accessibility":
+            files[name] = {"name": "block_accessibility.csv", "content": templates[name]}
     return files
 
 
@@ -172,8 +183,8 @@ def validate_project_toml(key, text):
     if key == "config_toml":
         parse_config(document)
     elif key == "mapping_toml":
-        if set(parse_mapping(document)) != set(SCHEMAS):
-            raise ConfigurationError("CSV mapping must define all nine stacking datasets.")
+        if not set(REQUIRED_DATASETS) <= set(parse_mapping(document)):
+            raise ConfigurationError("CSV mapping must define all required stacking datasets.")
     else:
         parse_input_config(document, base_dir=path.parent)
     return path

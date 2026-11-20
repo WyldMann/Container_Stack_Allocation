@@ -11,6 +11,7 @@ from config import (
 from config.application.input_filters import branch_input_settings
 from repository import load_yard_inputs
 from repository.branch_repository import BranchDirectory
+from repository.block_accessibility import access_policies
 from entities import Yard, Container
 from entities.bad_yard_data import PlacementRejected
 from presenter import YardPresenter, BadDataPresenter
@@ -28,6 +29,7 @@ def run_yard(input_settings, settings, *, separate_output=False):
         containers_input=inputs["existing_containers"],
         equipment_input=inputs["master_equipment"],
         equipment_locations_input=inputs["equipment_history"],
+        loader_access_policies=access_policies(inputs.get("block_accessibility", [])),
         feasibility_settings=settings.feasibility,
         heuristic_settings=settings.heuristic,
     )

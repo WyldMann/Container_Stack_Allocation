@@ -16,6 +16,7 @@ from config.csv_import.mapping_loader import parse_mapping
 from repository import CSVLoader, Repository
 from repository.branch_repository import BranchRepository
 from utils import strGeneralize
+from repository.block_accessibility import policies_csv
 
 from .configuration import PROJECT_ROOT, TOML_FILES, dump_toml, portable_input, read_project_tomls, read_toml
 
@@ -44,6 +45,7 @@ def project_snapshot(*, branch_code=None, data_dir=None):
     base = DEFAULT_STACKING_INPUT_CONFIG_FILE.parent
     settings = parse_input_config(inputs, base_dir=base)
     files = settings["csv_files"]
+    empty_accessibility = {}
     if data_dir is not None:
         directory = Path(data_dir).resolve()
         files = {name: directory / path.name for name, path in files.items()}
@@ -51,7 +53,10 @@ def project_snapshot(*, branch_code=None, data_dir=None):
         if not path.is_relative_to(PROJECT_ROOT) or path.suffix.casefold() != ".csv":
             raise ValueError(f"{name} must be a CSV path inside the project.")
         if not path.is_file():
-            raise FileNotFoundError(f"Missing CSV for {name}: {path}")
+            if name == "block_accessibility":
+                empty_accessibility[path] = policies_csv({})
+            else:
+                raise FileNotFoundError(f"Missing CSV for {name}: {path}")
         inputs["csv"]["files"][name] = Path(os.path.relpath(path, base)).as_posix()
     # Preserve the editor comments whenever the source already uses portable paths.
     documents["input_toml"] = input_text if read_toml(input_text, "Stacking inputs") == inputs else dump_toml(inputs)
@@ -67,6 +72,8 @@ def project_snapshot(*, branch_code=None, data_dir=None):
         for path in sorted(set(files.values())):
             if path.is_file():
                 archive.write(path, path.relative_to(PROJECT_ROOT).as_posix())
+            elif path in empty_accessibility:
+                archive.writestr(path.relative_to(PROJECT_ROOT).as_posix(), empty_accessibility[path])
     return documents, buffer.getvalue()
 
 
@@ -107,6 +114,12 @@ def build(runtime, destination, *, branch_code=None, data_dir=None):
     yard_branches = bundled_yard_branches(documents)
     assets["project.zip"] = ["application/zip", base64.b64encode(snapshot).decode("ascii")]
 
+    csv_snapshot = BytesIO()
+    with ZipFile(BytesIO(snapshot)) as project, ZipFile(csv_snapshot, "w", ZIP_DEFLATED) as csv_archive:
+        for name in project.namelist():
+            if name.casefold().endswith(".csv"):
+                csv_archive.writestr(name, project.read(name))
+
     page = (STATIC / "index.html").read_text(encoding="utf-8")
     page = page.replace(
         "script-src 'self' file:; style-src 'self' file:; connect-src 'none';",
@@ -124,6 +137,7 @@ def build(runtime, destination, *, branch_code=None, data_dir=None):
 
     with ZipFile(destination, "w", ZIP_DEFLATED) as archive:
         archive.writestr(ENTRY_PAGE, page)
+        archive.writestr("bundled-csvs.zip", csv_snapshot.getvalue())
         bundle_id = hashlib.sha256(snapshot).hexdigest()[:16]
         archive.writestr("defaults.js", "const STACKING_BUNDLE_ID = " + json.dumps(bundle_id) + ";\n"
                          "const TOML_DEFAULTS = " + json.dumps(documents) + ";\n"
@@ -137,6 +151,9 @@ def build(runtime, destination, *, branch_code=None, data_dir=None):
         archive.writestr("README.txt", f"Extract all files and open {ENTRY_PAGE} in Chrome or Microsoft Edge.\n"
                          "The package includes a copy of the CSVs and TOMLs from build time.\n"
                          "When using bundled CSVs, choose a yard branch from the dropdown.\n"
+                         "Set the four loader access switches around each block before starting its branch.\n"
+                         "Each block's Save block access settings button enables only for changed borders and saves that block in this browser.\n"
+                         "Download bundled CSVs (ZIP) includes the saved block_accessibility.csv and all branches.\n"
                          "Use Replace selected CSVs or Load from TOML to use newer data.\n"
                          "Set default remembers a TOML in this browser for this page.\n"
                          "Save as TOML and Save yard CSV download files through the browser.\n")
@@ -147,7 +164,7 @@ def main():
     parser.add_argument("runtime", type=Path, help=f"Extracted Pyodide {RUNTIME_VERSION} npm package directory")
     parser.add_argument("output", type=Path, help="Destination ZIP file")
     parser.add_argument("--branch-code", help="Branch filter to bundle instead of the project default")
-    parser.add_argument("--data-dir", type=Path, help="Directory containing the nine CSVs to bundle")
+    parser.add_argument("--data-dir", type=Path, help="Directory containing the stacking CSVs to bundle")
     args = parser.parse_args()
     try:
         build(args.runtime, args.output, branch_code=args.branch_code, data_dir=args.data_dir)

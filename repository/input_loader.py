@@ -22,6 +22,7 @@ def _read_datasets(make_loader, profiles, *, datasets=None, on_row_error=None):
     readers = {
         "terminal_branches": (BranchRepository, "read_records"),
         "yard_blocks": (Repository, "read_records"),
+        "block_accessibility": (Repository, "read_records"),
         "yard_planning": (YardPlanningRepository, "read_grouped"),
         "removed_slots": (RemovedSlotsRepository, "read_tuples"),
         "parameters": (Repository, "read_records"),
@@ -212,6 +213,8 @@ def _scope_to_yard_blocks(inputs):
     """Scope files without terminal/branch columns through their yard blocks."""
     blocks = inputs.get("yard_blocks", [])
     block_ids = {row["block_id"] for row in blocks}
+    if "block_accessibility" in inputs:
+        inputs["block_accessibility"] = [row for row in inputs["block_accessibility"] if row["block_id"] in block_ids]
     coordinates = {(row["branch_id"], row["block_code"]) for row in blocks}
     if "existing_containers" in inputs:
         inputs["existing_containers"] = [

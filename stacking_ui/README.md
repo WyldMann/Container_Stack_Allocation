@@ -8,7 +8,11 @@ snapshot of the stacking CSVs and TOMLs. It runs without a server or a separate
 Python or Node.js installation.
 
 Under **Use bundled CSVs**, choose a yard branch from the dropdown. It lists
-the branches that have yard blocks in the package. Choose **Replace selected
+the branches that have yard blocks in the package. **Download bundled CSVs (ZIP)**
+saves all nine original input CSVs, including all branches, in one archive. It
+works offline without generating a preview and remains available when replacing
+files. Extract the archive to inspect or edit the CSVs, then use **Select CSV
+folder** to load them again. Choose **Replace selected
 CSVs** to replace individual files or load a TOML under **Input configuration**.
 **CSV column mappings** also offers **Load from TOML**. **Set default** remembers
 the current TOML in this browser for future visits to the same page.
@@ -25,6 +29,29 @@ destination before placement. **Preserve access to occupied stacks** and
 lose access after placement. Each rule has its own mode and enables its weight
 in **Heuristic** mode. The default unreachable destination multiplier is 0.25.
 Each access loss weight defaults to 1 per location that loses access.
+
+Each block has **Above**, **Below**, **Left**, and **Right** access switches around
+its grid. Set them before starting that branch's simulation. Green **Open** and
+red **Closed** states control loader entry; Above and Below also provide exterior
+working space. The switches lock after the first inbound row is processed.
+Unlisted blocks default to all four borders open, and RTG service remains exempt.
+
+Each block's **Save block access settings** button is grey until at least one border differs
+from its saved setting. Returning all switches to their saved values disables
+it again, including when the CSV is empty and all borders default to open.
+Saving only writes that block; changes to other blocks stay unsaved.
+The map lists every block with unsaved access changes. The message disappears
+when all changes are saved or reverted.
+
+In the standalone package, **Save block access settings** remembers that block's settings in
+this browser. Generate another bundled preview to reuse them. **Download
+bundled CSVs (ZIP)** includes the saved `block_accessibility.csv` alongside the
+other inputs, preserving access settings for other branches. Share that CSV or
+the downloaded data ZIP to transfer settings to another browser or computer.
+In the desktop launcher, **Save block access settings** updates that block in the configured
+project CSV. The file uses `BLOCK_ID,ABOVE,BELOW,LEFT,RIGHT` with `TRUE` or `FALSE` values.
+An empty or omitted optional CSV uses the default open borders. Uploading a
+replacement accessibility CSV uses that file for the current preview.
 
 **Pyramid stacking** has two independent switches, both on by default:
 **Decrease score** applies the declining score curve, and **Enforce maximum

@@ -108,7 +108,7 @@ class InputConfigTests(unittest.TestCase):
         self.mapping_path.unlink()
         self.assertEqual(set(self.load_text(csv_text)["sources"].values()), {"csv"})
         self.mapping_path.write_text(self.mapping_template, encoding="utf-8")
-        sql_text = self.sql_text()
+        sql_text = self.sql_text().replace('block_accessibility = "csv"\n', '')
         start = sql_text.index("[csv]")
         end = sql_text.index("[sql]")
         settings = self.load_text(sql_text[:start] + sql_text[end:])
@@ -236,8 +236,8 @@ order_by = ["CONTNO"]''')
         sql_names = {"existing_containers", "equipment_history"}
         self.assertEqual(settings["sources"], {
             name: "sql" if name in sql_names else "csv" for name in DATASETS
-        })
-        self.assertEqual(set(settings["csv_files"]), set(DATASETS) - sql_names)
+        } | {"block_accessibility": "csv"})
+        self.assertEqual(set(settings["csv_files"]), (set(DATASETS) - sql_names) | {"block_accessibility"})
         self.assertEqual(set(settings["sql_datasets"]), sql_names)
         self.assertEqual(settings["mapping_files"], {
             "csv": self.path.parent / "csv_mapping.toml", "sql": self.mapping_path,

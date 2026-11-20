@@ -12,8 +12,9 @@
 .file-sources legend { font-weight: 600; }
 .file-sources label { display: flex; align-items: center; gap: 7px; }
 .file-sources input { accent-color: var(--green); }
-.actions button[hidden] { display: none; }
-#choose-csv-folder { margin-bottom: 12px; }
+.actions [hidden] { display: none; }
+.actions a.button { text-decoration: none; }
+#choose-csv-folder, #download-bundled-csvs { margin-bottom: 12px; }
 .dataset-grid[hidden] { display: none; }
 #bundled-inputs { margin-bottom: 16px; }
 #bundled-inputs label { display: block; margin-bottom: 4px; }

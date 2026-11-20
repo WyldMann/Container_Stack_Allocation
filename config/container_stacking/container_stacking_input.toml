@@ -7,6 +7,7 @@ branch_code = ["JKT74"]
 # Each yard dataset can use "csv" or "sql".
 terminal_branches = "csv"
 yard_blocks = "csv"
+block_accessibility = "csv"
 yard_planning = "csv"
 removed_slots = "csv"
 parameters = "csv"
@@ -21,6 +22,7 @@ mapping_file = "csv_mapping.toml"
 [csv.files]
 terminal_branches = "../../data_container_stacking/terminal_branch.csv"
 yard_blocks = "../../data_container_stacking/yard_block.csv"
+block_accessibility = "../../data_container_stacking/block_accessibility.csv"
 yard_planning = "../../data_container_stacking/yard_planning.csv"
 removed_slots = "../../data_container_stacking/removed_slots.csv"
 parameters = "../../data_container_stacking/parameters.csv"
