@@ -155,7 +155,7 @@ def build(runtime, destination, *, branch_code=None, data_dir=None):
                          "Each block's Save block access settings button enables only for changed borders and saves that block in this browser.\n"
                          "Download bundled CSVs (ZIP) includes the saved block_accessibility.csv and all branches.\n"
                          "Use Replace selected CSVs or Load from TOML to use newer data.\n"
-                         "Set default remembers a TOML in this browser for this page.\n"
+                         "Save settings remembers a TOML in this browser for this page.\n"
                          "Save as TOML and Save yard CSV download files through the browser.\n")
 
 

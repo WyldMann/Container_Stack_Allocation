@@ -14,7 +14,7 @@ works offline without generating a preview and remains available when replacing
 files. Extract the archive to inspect or edit the CSVs, then use **Select CSV
 folder** to load them again. Choose **Replace selected
 CSVs** to replace individual files or load a TOML under **Input configuration**.
-**CSV column mappings** also offers **Load from TOML**. **Set default** remembers
+**CSV column mappings** also offers **Load from TOML**. **Save settings** remembers
 the current TOML in this browser for future visits to the same page.
 **Save as TOML** downloads a copy.
 **Save yard CSV** downloads **containers.csv**.

@@ -142,7 +142,7 @@
     try {
       localStorage.setItem(defaultStorageKey(document.key), text);
     } catch {
-      throw new Error("Could not store the default in this browser.");
+      throw new Error("Could not save settings in this browser.");
     }
     return text;
   };

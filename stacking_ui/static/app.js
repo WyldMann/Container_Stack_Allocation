@@ -1443,7 +1443,7 @@ for (const [kind, key] of Object.entries(tomlEditors)) {
       browserDefaults[key] = await globalThis.setStackingTomlDefault({key, text});
       showToml(kind, browserDefaults[key]);
       const name = $(kind + "-toml-source").dataset.projectFile;
-      message("Set " + name + " as the default in this browser.");
+      message("Saved settings for " + name + " in this browser.");
     }));
   }
   showToml(kind, browserDefaults[key] ?? projectTomls[key] ?? "");
