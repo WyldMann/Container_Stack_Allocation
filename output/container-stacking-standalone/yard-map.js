@@ -549,7 +549,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
         toggle.setAttribute("aria-checked", String(open));
         toggle.replaceChildren(el("span", label), el("strong", open ? "Open" : "Closed"));
         toggle.title = label + " border: " + (open ? "open" : "closed") +
-          (side === "above" || side === "below" ? " for loader entry and exterior working space." : " for loader entry.");
+          (side === "above" || side === "below" ? " for loader entry and exterior working space." : " for loader entry and exterior RS working space for 20 ft containers.");
       }
       toggle.addEventListener("click", async () => {
         if (!accessEditable || accessPending || busy) return;
