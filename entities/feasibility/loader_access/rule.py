@@ -25,6 +25,7 @@ class LoaderAccessRule:
 
     def prepare_context(
         self, block: Block, policy: LoaderBorderAccessPolicy,
+        *, twenty_foot_side_access: bool = False,
     ) -> LoaderAccessContext:
         """Prepare baseline data; reuse only while the block remains unchanged."""
         rows = block.getSlots()
@@ -39,15 +40,17 @@ class LoaderAccessRule:
         receiving = frozenset(self._receiving_locations(block))
         accessible = frozenset(
             location for location in receiving
-            if self._can_serve(block, location, reachable, policy)
+            if self._can_serve(block, location, reachable, policy,
+                               twenty_foot_side_access=twenty_foot_side_access)
         )
         accessible_occupied = frozenset(
             location for location in self._occupied_locations(block, ground)
-            if self._can_serve(block, location, reachable, policy)
+            if self._can_serve(block, location, reachable, policy,
+                               twenty_foot_side_access=twenty_foot_side_access)
         )
         return LoaderAccessContext(
             block, policy, row_lengths, ground, reachable, receiving, accessible,
-            accessible_occupied, self.allow_overcapacity,
+            accessible_occupied, self.allow_overcapacity, twenty_foot_side_access,
         )
 
     def evaluate(
@@ -59,17 +62,29 @@ class LoaderAccessRule:
         context: LoaderAccessContext | None = None,
         preserve_future_loader_access: bool = True,
         ignore_full_stacks_for_loader_access: bool = False,
+        twenty_foot_side_access: bool = False,
+        destination_side_access: bool | None = None,
     ) -> LoaderAccessResult:
+        """Preserve fleet access, optionally restricting service to the selected loader.
+
+        RS availability enables side access for occupied and future locations.
+        An explicitly selected SL still needs an above/below destination approach.
+        """
         self._validate_proposal(block, proposal)
         if context is None:
-            context = self.prepare_context(block, policy)
+            context = self.prepare_context(
+                block, policy, twenty_foot_side_access=twenty_foot_side_access,
+            )
         elif (context.block is not block or context.policy != policy
-              or context.allow_overcapacity != self.allow_overcapacity):
-            raise ValueError("Loader access context belongs to a different block or policy.")
+              or context.allow_overcapacity != self.allow_overcapacity
+              or context.twenty_foot_side_access != twenty_foot_side_access):
+            raise ValueError("Loader access context belongs to a different block, policy, or capability profile.")
 
         destination = ReceivingLocation(proposal.row_index, proposal.slot_index, proposal.container_size)
         destination_accessible = self._can_serve(
             block, destination, context.reachable_ground, policy,
+            twenty_foot_side_access=(twenty_foot_side_access if destination_side_access is None
+                                    else destination_side_access),
         )
         blocked = frozenset(
             (row_index, slot_index) for _, row_index, slot_index in proposal.footprint
@@ -88,7 +103,8 @@ class LoaderAccessRule:
             receiving = context.accessible_locations - removed
         isolated = sorted(
             (location for location in occupied | receiving
-             if not self._can_serve(block, location, reachable_after, policy)),
+             if not self._can_serve(block, location, reachable_after, policy,
+                                    twenty_foot_side_access=twenty_foot_side_access)),
             key=lambda location: (location.row_index, location.slot_index, location.container_size),
         )
         return LoaderAccessResult(
@@ -263,6 +279,7 @@ class LoaderAccessRule:
     def _can_serve(
         block: Block, location: ReceivingLocation,
         reachable: Set[Position], policy: LoaderBorderAccessPolicy,
+        *, twenty_foot_side_access: bool = False,
     ) -> bool:
         row_count = len(block.getSlots())
         working_slots = (
@@ -270,7 +287,6 @@ class LoaderAccessRule:
             else (location.slot_index - 1, location.slot_index)
         )
         for working_row in (location.row_index - 1, location.row_index + 1):
-            # Slot borders provide entry, but not direct service.
             if working_row == -1:
                 if policy.above:
                     return True
@@ -281,4 +297,11 @@ class LoaderAccessRule:
                 continue
             if all((working_row, slot_index) in reachable for slot_index in working_slots):
                 return True
+        if location.container_size == "20" and twenty_foot_side_access:
+            row, slot = location.row_index, location.slot_index
+            return (
+                (row, slot - 1) in reachable or (row, slot + 1) in reachable
+                or (slot == 0 and policy.left)
+                or (slot == len(block.getSlots()[row]) - 1 and policy.right)
+            )
         return False

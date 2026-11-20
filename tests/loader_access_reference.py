@@ -64,13 +64,17 @@ class LoaderAccessRule:
             policy: LoaderBorderAccessPolicy,
             *,
             preserve_future_loader_access: bool = True,
+            twenty_foot_side_access: bool = False,
+            destination_side_access: bool | None = None,
     ) -> LoaderAccessResult:
 
         self._validate_proposal(block, proposal)
         reachable_before = self._reachable_ground(block, policy)
         destination = ReceivingLocation(proposal.row_index, proposal.slot_index, proposal.container_size)
         destination_accessible = self._can_serve(
-            block, destination, reachable_before, policy
+            block, destination, reachable_before, policy,
+            twenty_foot_side_access=(twenty_foot_side_access if destination_side_access is None
+                                    else destination_side_access),
         )
         reachable_after = self._reachable_ground(block, policy, proposal)
         isolated = []
@@ -80,8 +84,12 @@ class LoaderAccessRule:
             receiving_after = self._receiving_locations(block, proposal)
             # Only protect destinations that retain capacity afterward.
             for location in receiving_before & receiving_after:
-                accessible_before = self._can_serve(block, location, reachable_before, policy)
-                accessible_after = self._can_serve(block, location, reachable_after, policy)
+                accessible_before = self._can_serve(
+                    block, location, reachable_before, policy, twenty_foot_side_access=twenty_foot_side_access,
+                )
+                accessible_after = self._can_serve(
+                    block, location, reachable_after, policy, twenty_foot_side_access=twenty_foot_side_access,
+                )
                 if accessible_before and not accessible_after:
                     isolated.append(location)
 
@@ -98,8 +106,10 @@ class LoaderAccessRule:
                 if size == "40" and slot_index % 2 == 0:
                     continue
                 location = ReceivingLocation(row_index, slot_index, size)
-                if (self._can_serve(block, location, reachable_before, policy)
-                        and not self._can_serve(block, location, reachable_after, policy)):
+                if (self._can_serve(block, location, reachable_before, policy,
+                                   twenty_foot_side_access=twenty_foot_side_access)
+                        and not self._can_serve(block, location, reachable_after, policy,
+                                                twenty_foot_side_access=twenty_foot_side_access)):
                     isolated_occupied.append(location)
 
         return LoaderAccessResult(
@@ -240,6 +250,7 @@ class LoaderAccessRule:
             location: ReceivingLocation,
             reachable: set[Position],
             policy: LoaderBorderAccessPolicy,
+            *, twenty_foot_side_access: bool = False,
     ) -> bool:
         row_count = len(block.getSlots())
         working_slots = (
@@ -247,7 +258,6 @@ class LoaderAccessRule:
             else (location.slot_index - 1, location.slot_index)
         )
         for working_row in (location.row_index - 1, location.row_index + 1):
-            # Slot borders provide entry, but not direct service.
             if working_row == -1:
                 if policy.above:
                     return True
@@ -258,6 +268,17 @@ class LoaderAccessRule:
                 continue
             if all((working_row, slot_index) in reachable for slot_index in working_slots):
                 return True
+        # Keep this formulation independent of the production side checks.
+        if location.container_size == "20" and twenty_foot_side_access:
+            for working_slot, exterior_open in (
+                (location.slot_index - 1, policy.left),
+                (location.slot_index + 1, policy.right),
+            ):
+                if 0 <= working_slot < len(block.getSlots()[location.row_index]):
+                    if (location.row_index, working_slot) in reachable:
+                        return True
+                elif exterior_open:
+                    return True
         return False
 
 
@@ -268,13 +289,18 @@ class ReferencePlacementFeasibility(PlacementFeasibility):
         super().__init__(settings)
         self.loader_access = LoaderAccessRule()
 
-    def prepare_loader_context(self, block, loader_policy=None):
+    def prepare_loader_context(self, block, loader_policy=None, *, twenty_foot_side_access=False):
         return None
 
-    def _evaluate_loader_access(self, block, proposal, policy, context=None, *, check_future):
+    def _evaluate_loader_access(
+        self, block, proposal, policy, context=None, *, check_future,
+        twenty_foot_side_access=False, destination_side_access=None,
+    ):
         if policy is None:
             policy = LoaderBorderAccessPolicy()
         return self.loader_access.evaluate(
             block, proposal, policy,
             preserve_future_loader_access=check_future,
+            twenty_foot_side_access=twenty_foot_side_access,
+            destination_side_access=destination_side_access,
         )

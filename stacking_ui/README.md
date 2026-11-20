@@ -33,7 +33,13 @@ Each access loss weight defaults to 1 per location that loses access.
 Each block has **Above**, **Below**, **Left**, and **Right** access switches around
 its grid. Set them before starting that branch's simulation. Green **Open** and
 red **Closed** states control loader entry; Above and Below also provide exterior
-working space. The switches lock after the first inbound row is processed.
+working space. Reach stackers (`EQUIPMENT_TYPE = RS`) can serve 20 ft containers
+from reachable ground on any of the four sides, including exterior working space
+at an open Left or Right border. Other loaders retain Above/Below service, and
+40 ft containers still need two aligned working positions Above or Below.
+Equipment selection checks the selected loader's capability; access preservation
+includes RS approaches whenever an RS is registered in the yard.
+The switches lock after the first inbound row is processed.
 Unlisted blocks default to all four borders open, and RTG service remains exempt.
 
 Each block's **Save block access settings** button is grey until at least one border differs

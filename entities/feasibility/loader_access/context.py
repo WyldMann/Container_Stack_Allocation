@@ -9,7 +9,8 @@ class LoaderAccessContext:
     """Immutable access data for one read-only candidate search.
 
     The block reference establishes ownership; it does not freeze the block.
-    Discard this context before changing block state or its access policy.
+    Discard this context before changing block state, its access policy, or
+    the fleet's side-access capability.
     Same-block mutations are deliberately not tracked by this snapshot.
     """
 
@@ -22,3 +23,4 @@ class LoaderAccessContext:
     accessible_locations: frozenset[ReceivingLocation]
     accessible_occupied_locations: frozenset[ReceivingLocation]
     allow_overcapacity: bool = False
+    twenty_foot_side_access: bool = False

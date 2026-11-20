@@ -162,9 +162,16 @@ class LoaderAccessContextTests(unittest.TestCase):
         scan.assert_not_called()
 
     def test_generated_layouts_match_standalone_algorithm_and_local_receiving_changes(self):
+        self.assert_generated_layouts_match_reference(twenty_foot_side_access=False)
+
+    def test_generated_rs_layouts_match_standalone_algorithm_and_local_receiving_changes(self):
+        self.assert_generated_layouts_match_reference(twenty_foot_side_access=True)
+
+    def assert_generated_layouts_match_reference(self, *, twenty_foot_side_access):
         rng = random.Random(90210)
         reference = ReferenceAccessRule()
         comparisons = 0
+        capabilities = {"twenty_foot_side_access": twenty_foot_side_access}
         for row_count, slot_count in ((1, 1), (1, 2), (2, 3), (3, 4), (4, 5)):
             for layout in range(5):
                 block = Block(**block_input(row_count, slot_count, tiers=1 + layout % 3))
@@ -185,7 +192,7 @@ class LoaderAccessContextTests(unittest.TestCase):
 
                 for borders in itertools.product((False, True), repeat=4):
                     policy = LoaderBorderAccessPolicy(*borders)
-                    context = self.rule.prepare_context(block, policy)
+                    context = self.rule.prepare_context(block, policy, **capabilities)
                     for row_index in range(row_count):
                         for slot_index in range(slot_count):
                             tier_index = block.getStack(row_index, slot_index).availableTierInt()
@@ -201,9 +208,9 @@ class LoaderAccessContextTests(unittest.TestCase):
                                     continue
                                 with self.subTest(shape=(row_count, slot_count), layout=layout,
                                                   borders=borders, proposal=proposal):
-                                    expected = reference.evaluate(block, proposal, policy)
-                                    actual = self.rule.evaluate(block, proposal, policy, context=context)
-                                    standalone = self.rule.evaluate(block, proposal, policy)
+                                    expected = reference.evaluate(block, proposal, policy, **capabilities)
+                                    actual = self.rule.evaluate(block, proposal, policy, context=context, **capabilities)
+                                    standalone = self.rule.evaluate(block, proposal, policy, **capabilities)
                                     self.assertEqual(result_signature(expected), result_signature(actual))
                                     self.assertEqual(result_signature(expected), result_signature(standalone))
                                     before = locations(reference._receiving_locations(block))
@@ -235,8 +242,8 @@ class LoaderAccessContextIntegrationTests(unittest.TestCase):
         contexts = []
         prepare = rule.prepare_context
 
-        def capture(block, policy):
-            context = prepare(block, policy)
+        def capture(block, policy, **capabilities):
+            context = prepare(block, policy, **capabilities)
             contexts.append(context)
             return context
 

@@ -33,16 +33,18 @@ class LoaderAccessTests(unittest.TestCase):
     def proposal(self, row_index, slot_index, tier_index=0, container_size='20'):
         return PlacementProposal('A', row_index, slot_index, tier_index, container_size)
 
-    def evaluate(self, proposal, policy=None):
+    def evaluate(self, proposal, policy=None, **capabilities):
         return self.rule.evaluate(
             self.block, proposal, self.policy if policy is None else policy,
+            **capabilities,
         )
 
-    def can_serve(self, row_index, slot_index, container_size='20', policy=None):
+    def can_serve(self, row_index, slot_index, container_size='20', policy=None, **capabilities):
         policy = self.policy if policy is None else policy
         reachable = self.rule._reachable_ground(self.block, policy)
         return self.rule._can_serve(
             self.block, ReceivingLocation(row_index, slot_index, container_size), reachable, policy,
+            **capabilities,
         )
 
     def test_closing_final_row_approach_rejects_placement(self):
@@ -65,6 +67,73 @@ class LoaderAccessTests(unittest.TestCase):
         self.set_stack(2, 1, count=1)
         self.block.getStack(2, 0).makeVoid()
         self.assertFalse(self.can_serve(2, 1))
+
+    def test_rs_can_serve_twenty_foot_from_reachable_left_or_right_ground(self):
+        for target_slot, working_slot in ((1, 0), (2, 3)):
+            with self.subTest(working_slot=working_slot):
+                self.set_stack(2, target_slot, count=1)
+                self.block.getStack(2, working_slot).makeVoid()
+                self.assertTrue(self.can_serve(2, target_slot, twenty_foot_side_access=True))
+                self.assertFalse(self.can_serve(2, target_slot))
+
+    def test_rs_exterior_side_service_respects_corresponding_border(self):
+        for slot, side in ((0, 'left'), (3, 'right')):
+            with self.subTest(side=side):
+                self.assertTrue(self.can_serve(2, slot, twenty_foot_side_access=True))
+                self.assertFalse(self.can_serve(
+                    2, slot, policy=LoaderBorderAccessPolicy(**{side: False}), twenty_foot_side_access=True,
+                ))
+
+    def test_rs_cannot_serve_from_disconnected_side_ground(self):
+        self.set_stack(2, 1, count=1)
+        self.set_stack(2, 2)
+        self.assertFalse(self.can_serve(2, 1, twenty_foot_side_access=True))
+
+    def test_rs_side_service_does_not_apply_to_forty_foot(self):
+        self.set_stack(2, 0, '40', 1)
+        self.set_stack(2, 1, '40', 1)
+        for slot in (2, 3):
+            self.block.getStack(2, slot).makeVoid()
+        self.assertFalse(self.can_serve(2, 1, '40', twenty_foot_side_access=True))
+        self.assertFalse(self.can_serve(2, 3, '40', twenty_foot_side_access=True))
+
+    def test_lateral_rs_approach_preserves_access_when_row_approach_closes(self):
+        self.set_stack(0, 1)
+        self.set_stack(1, 1, count=1)
+        self.block.getStack(1, 0).makeVoid()
+        target = ReceivingLocation(1, 1, '20')
+        self.assertIn(target, self.evaluate(self.proposal(0, 1)).isolated_occupied_locations)
+        result = self.evaluate(self.proposal(0, 1), twenty_foot_side_access=True)
+        self.assertNotIn(target, result.isolated_occupied_locations)
+        self.assertNotIn(target, result.isolated_locations)
+
+    def test_closing_only_lateral_rs_approach_counts_occupied_and_future_loss(self):
+        self.block.getStack(1, 0).makeVoid()
+        self.set_stack(2, 0)
+        self.set_stack(2, 1, count=1)
+        target = ReceivingLocation(2, 1, '20')
+        old = self.evaluate(self.proposal(2, 0))
+        self.assertNotIn(target, old.isolated_occupied_locations)
+        result = self.evaluate(self.proposal(2, 0), twenty_foot_side_access=True)
+        self.assertIn(target, result.isolated_occupied_locations)
+        self.assertIn(target, result.isolated_locations)
+
+    def test_selected_sl_does_not_inherit_fleet_rs_destination_access(self):
+        self.block.getStack(2, 0).makeVoid()
+        self.set_stack(2, 1)
+        proposal = self.proposal(2, 1)
+        rs = self.evaluate(proposal, twenty_foot_side_access=True)
+        sl = self.evaluate(proposal, twenty_foot_side_access=True, destination_side_access=False)
+        self.assertTrue(rs.destination_accessible)
+        self.assertFalse(sl.destination_accessible)
+        self.assertEqual(rs.isolated_locations, sl.isolated_locations)
+        self.assertEqual(rs.isolated_occupied_locations, sl.isolated_occupied_locations)
+
+    def test_context_cannot_be_reused_with_different_loader_capabilities(self):
+        self.set_stack(0, 1)
+        context = self.rule.prepare_context(self.block, self.policy, twenty_foot_side_access=True)
+        with self.assertRaisesRegex(ValueError, 'capability profile'):
+            self.evaluate(self.proposal(0, 1), context=context)
 
     def test_forty_foot_requires_two_positions_on_same_side(self):
         self.set_stack(1, 0, '40', 1)

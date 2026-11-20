@@ -11,7 +11,7 @@ from .equipment import RTG,Loader,Equipment
 from .stack import Stack
 from .block import Block
 from .feasibility import PlacementFeasibility, PlacementProposal, LoaderBorderAccessPolicy
-from .feasibility.loader_access import LoaderAccessResult
+from .feasibility.loader_access import LoaderAccessContext, LoaderAccessResult, ReceivingLocation
 
 from .bad_yard_data import BadYardData
 
@@ -149,7 +149,7 @@ class Yard:
             # if equipment is loader
             # can be more than one loader in one block
             else:
-                loader = Loader(equipment_code, coordinates)
+                loader = Loader(equipment_code, coordinates, equipment_type=equipment["equipment_type"])
                 block.addLoader(loader)
                 self.master_loaders.append(loader)
 
@@ -375,6 +375,7 @@ class Yard:
             registered_containers=self.containers,
             feasibility=self.feasibility,
             loader_policies=self.loader_access_policies,
+            twenty_foot_side_access=self.hasReachStacker(),
         )
         self._commitPlacement(container, proposal)
 
@@ -462,6 +463,9 @@ class Yard:
     def hasEquipment(self) -> bool:
         return bool(self.master_loaders) or any(block.getRTG() is not None for block in self.blocks_by_id.values())
 
+    def hasReachStacker(self) -> bool:
+        return any(loader.twenty_foot_side_access for loader in self.master_loaders)
+
     def findCoordsCandidates(
         self, container: Container, *, rejection_counts: dict[str, int] | None = None,
         loader_access_results: dict[tuple[str, int, int, int], LoaderAccessResult] | None = None,
@@ -505,16 +509,27 @@ class Yard:
 
         # Contexts belong to this read-only search and are prepared only as needed.
         loader_contexts = {}
+        side_access = self.hasReachStacker()
         for group_score in sorted(score_groups, reverse=True):
             for block, row_index, slot_index, current_score in score_groups[group_score]:
                 block_id = block.getId()
                 loader_policy = self.loader_access_policies.get(block_id)
                 if block_id not in loader_contexts:
-                    loader_contexts[block_id] = self.feasibility.prepare_loader_context(block, loader_policy)
+                    loader_contexts[block_id] = self.feasibility.prepare_loader_context(
+                        block, loader_policy, twenty_foot_side_access=side_access,
+                    )
+                equipment = None
+                if side_access and block.getRTG() is None:
+                    equipment, _ = self.nearestEquipmentDistance(
+                        block_id, row_index, slot_index, container_size=container.getContSize(),
+                        loader_context=loader_contexts[block_id],
+                    )
                 result = self.feasibility.evaluate(
                     container, block, row_index, slot_index,
                     loader_policy=loader_policy,
                     loader_context=loader_contexts[block_id],
+                    twenty_foot_side_access=side_access,
+                    loader=equipment,
                 )
                 current_coords = result.coordinates
                 if current_coords is None:
@@ -610,11 +625,41 @@ class Yard:
             raise ValueError("Only loaders can move between blocks.")
 
     # nearest equipment and its distance for a stack coord (without tier)
-    def nearestEquipmentDistance(self,block_id: str, row_index: int, slot_index: int) -> tuple[Equipment | None,float | None]:
+    def nearestEquipmentDistance(
+        self, block_id: str, row_index: int, slot_index: int, *,
+        container_size: str | None = None, loader_context: LoaderAccessContext | None = None,
+    ) -> tuple[Equipment | None, float | None]:
         block = self.getBlockByID(block_id)
         # if no RTG is present use loaders
         if block.rtg is None:
             loaders = block.getLoaders()
+            if (container_size == "20" and self.hasReachStacker()
+                    and self.feasibility.settings.effective_destination_loader_access_mode != "off"):
+                # A local SL must not hide an RS in another block when only the
+                # RS can serve the destination. Prefer reachable equipment even
+                # when destination access is scored rather than enforced.
+                policy = self.loader_access_policies.get(block_id, LoaderBorderAccessPolicy())
+                reachable = (loader_context.reachable_ground if loader_context is not None
+                             else self.feasibility.loader_access._reachable_ground(block, policy))
+                location = ReceivingLocation(row_index, slot_index, container_size)
+                reachable_loaders = [
+                    loader for loader in self.master_loaders
+                    if self.feasibility.loader_access._can_serve(
+                        block, location, reachable, policy,
+                        twenty_foot_side_access=loader.twenty_foot_side_access,
+                    )
+                ]
+                if reachable_loaders:
+                    local = [loader for loader in reachable_loaders if loader.getCoords()[0] == block_id]
+                    if local:
+                        return min(
+                            ((loader, loader.inBlockDistance(row_index, slot_index)) for loader in local),
+                            key=lambda item: item[1],
+                        )
+                    return min(
+                        reachable_loaders,
+                        key=lambda loader: self.distanceBetweenBlock(block_id, loader.getCoords()[0]),
+                    ), float("inf")
             # if loader is present in block
             if loaders:
                 return  min(((loader,loader.inBlockDistance(row_index,slot_index)) for loader in loaders), key = lambda x : x[1])
@@ -628,10 +673,16 @@ class Yard:
 
     # returns delta_container_mass, equipment, distance, multiplier, modelScore
     # attribute of candidateEvaluation other than coord and param
-    def modelEval(self, container:Container, coordinate: tuple[str,int,int,int]) -> tuple[float|None,Equipment|None,float|None,float,float]:
+    def modelEval(
+        self, container: Container, coordinate: tuple[str, int, int, int], *,
+        loader_context: LoaderAccessContext | None = None,
+    ) -> tuple[float | None, Equipment | None, float | None, float, float]:
         stack = self.getStack(coordinate[0],coordinate[1],coordinate[2])
         delta_container_mass = self.model.compareTopContainerMass(container,stack)
-        equipment, distance = self.nearestEquipmentDistance(coordinate[0],coordinate[1],coordinate[2])
+        equipment, distance = self.nearestEquipmentDistance(
+            coordinate[0], coordinate[1], coordinate[2], container_size=container.getContSize(),
+            loader_context=loader_context,
+        )
         multiplier = self.model.sizeCluster(container, self.getBlockByID(coordinate[0]), coordinate)
         return (delta_container_mass, equipment, distance, multiplier,
                 self.model.evaluate(delta_container_mass, distance, multiplier))
@@ -649,9 +700,22 @@ class Yard:
         score_capacity = settings.stack_capacity_mode == "heuristic"
         prioritize_current_access = settings.prioritize_current_loader_access
         candidates = []
+        loader_contexts = {}
+        side_access = self.hasReachStacker()
         for coordinate in candidate_coordinates:
             block_id, row, slot, tier = coordinate
             block = self.getBlockByID(block_id)
+            context = None
+            if side_access and block.getRTG() is None:
+                if block_id not in loader_contexts:
+                    loader_contexts[block_id] = self.feasibility.prepare_loader_context(
+                        block, self.loader_access_policies.get(block_id), twenty_foot_side_access=True,
+                    )
+                context = loader_contexts[block_id]
+            if context is None:
+                mass, equipment, distance, cluster, score = self.modelEval(container, coordinate)
+            else:
+                mass, equipment, distance, cluster, score = self.modelEval(container, coordinate, loader_context=context)
             if loader_access_results is not None:
                 access = loader_access_results.get(coordinate)
             elif score_destination or score_current or score_future:
@@ -659,13 +723,14 @@ class Yard:
                 access = self.feasibility.evaluate(
                     container, block, row, slot,
                     loader_policy=self.loader_access_policies.get(block_id),
+                    loader_context=context, twenty_foot_side_access=side_access,
+                    loader=equipment if isinstance(equipment, Loader) else None,
                 ).loader_access
             else:
                 access = None
             destination, current, future = self.model.loader_access_multipliers(
                 access, score_destination=score_destination, score_current=score_current, score_future=score_future,
             )
-            mass, equipment, distance, cluster, score = self.modelEval(container, coordinate)
             stacking_safety = 1.0
             if score_stacking_safety:
                 difference = block.pyramidHeightDifference(

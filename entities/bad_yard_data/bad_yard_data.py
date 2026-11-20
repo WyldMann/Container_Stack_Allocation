@@ -266,6 +266,8 @@ class BadYardData:
         feasibility,
         loader_policies,
         loader_selected: bool = False,
+        loader: Loader | None = None,
+        twenty_foot_side_access: bool = False,
     ) -> PlacementProposal:
         self.validateInboundContainer(container, registered_containers)
         try:
@@ -286,6 +288,8 @@ class BadYardData:
             loader_policy=loader_policies.get(block_id),
             include_loader_heuristics=False,
             loader_selected=loader_selected,
+            loader=loader,
+            twenty_foot_side_access=twenty_foot_side_access,
         )
         if not result.feasible:
             raise PlacementRejected(
@@ -354,6 +358,8 @@ class BadYardData:
             feasibility=feasibility,
             loader_policies=loader_policies,
             loader_selected=isinstance(equipment, Loader),
+            loader=equipment if isinstance(equipment, Loader) else None,
+            twenty_foot_side_access=any(item.twenty_foot_side_access for item in master_loaders),
         )
         if equipment is None:
             if master_loaders or any(block.getRTG() is not None for block in blocks_by_id.values()):

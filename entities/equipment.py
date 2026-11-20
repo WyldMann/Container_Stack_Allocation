@@ -23,7 +23,13 @@ class RTG(Equipment):
         super().__init__(equipment_code,coordinates)
 
 class Loader(Equipment):
-    def __init__(self,equipment_code:str,coordinates:tuple[str,int,int]) -> None:
+    def __init__(self,equipment_code:str,coordinates:tuple[str,int,int], *, equipment_type: str = "") -> None:
         super().__init__(equipment_code,coordinates)
+        self.equipment_type = equipment_type.strip().upper()
+
+    @property
+    def twenty_foot_side_access(self) -> bool:
+        return self.equipment_type == "RS"
+
     def outBlockMove (self, block_id:str, row_index:int, slot_index:int):
         self.coordinates = (block_id,row_index,slot_index)

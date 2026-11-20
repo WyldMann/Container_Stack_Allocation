@@ -5,6 +5,7 @@ from config import FeasibilitySettings
 
 from ..block import Block
 from ..container import Container
+from ..equipment import Loader
 from .loader_access import (
     LoaderAccessContext, LoaderAccessResult, LoaderAccessRule, LoaderBorderAccessPolicy,
 )
@@ -58,13 +59,19 @@ class PlacementFeasibility:
         self,
         block: Block,
         loader_policy: LoaderBorderAccessPolicy | None = None,
+        *, twenty_foot_side_access: bool = False,
     ) -> LoaderAccessContext | None:
         """Prepare one block's access data for a read-only candidate search."""
         if all(mode == "off" for mode in self.settings.loader_access_modes) or block.getRTG() is not None:
             return None
         if loader_policy is None:
             loader_policy = LoaderBorderAccessPolicy()
-        return self.loader_access.prepare_context(block, loader_policy)
+        twenty_foot_side_access = twenty_foot_side_access or any(
+            loader.twenty_foot_side_access for loader in block.getLoaders()
+        )
+        return self.loader_access.prepare_context(
+            block, loader_policy, twenty_foot_side_access=twenty_foot_side_access,
+        )
 
     def evaluate(
             self,
@@ -77,6 +84,8 @@ class PlacementFeasibility:
             loader_context: LoaderAccessContext | None = None,
             include_loader_heuristics: bool = True,
             loader_selected: bool = False,
+            loader: Loader | None = None,
+            twenty_foot_side_access: bool = False,
     ) -> FeasibilityResult:
         container_size = container.getContSize()
         if container_size not in ("20", "40"):
@@ -140,12 +149,16 @@ class PlacementFeasibility:
         active_modes = ("feasibility", "heuristic") if include_loader_heuristics else ("feasibility",)
         access = None
         # The block's RTG serves by default unless a loader was explicitly selected.
-        if (loader_selected or block.getRTG() is None) and any(
+        if (loader_selected or loader is not None or block.getRTG() is None) and any(
             mode in active_modes for mode in (destination_mode, occupied_mode, future_mode)
         ):
             access = self._evaluate_loader_access(
                 block, proposal, loader_policy, loader_context,
                 check_future=future_mode in active_modes,
+                twenty_foot_side_access=(twenty_foot_side_access
+                                        or any(item.twenty_foot_side_access for item in block.getLoaders())
+                                        or (loader is not None and loader.twenty_foot_side_access)),
+                destination_side_access=None if loader is None else loader.twenty_foot_side_access,
             )
         if access is not None:
             reason = self._loader_rejection(access, destination_mode, occupied_mode, future_mode)
@@ -162,6 +175,8 @@ class PlacementFeasibility:
         context: LoaderAccessContext | None = None,
         *,
         check_future: bool,
+        twenty_foot_side_access: bool = False,
+        destination_side_access: bool | None = None,
     ) -> LoaderAccessResult | None:
         if policy is None:
             policy = LoaderBorderAccessPolicy()
@@ -169,6 +184,8 @@ class PlacementFeasibility:
             block, proposal, policy, context=context,
             preserve_future_loader_access=check_future,
             ignore_full_stacks_for_loader_access=self.settings.ignore_full_stacks_for_loader_access,
+            twenty_foot_side_access=twenty_foot_side_access,
+            destination_side_access=destination_side_access,
         )
 
     @staticmethod
