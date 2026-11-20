@@ -99,7 +99,33 @@
   }
 
   globalThis.stackingStandalone = true;
-  globalThis.generateStackingPreview = draft => request({op: "preview", draft});
+  const accessStorageKey = "container-stacking:block-access:" + STACKING_BUNDLE_ID;
+  let restoredAccess;
+  function restoreAccess() {
+    return restoredAccess ??= (async () => {
+      let text;
+      try { text = localStorage.getItem(accessStorageKey); } catch { return; }
+      if (text) await request({op: "restore_block_access", text});
+    })();
+  }
+  globalThis.generateStackingPreview = async draft => {
+    await restoreAccess();
+    return request({op: "preview", draft});
+  };
+  globalThis.updateStackingBlockAccess = access => request({...access, op: "update_block_access"});
+  globalThis.saveStackingBlockAccess = async access => {
+    const saved = await request({...access, op: "save_block_access"});
+    try { localStorage.setItem(accessStorageKey, saved.text); }
+    catch { throw new Error("Could not remember block access in this browser. Allow local storage and save again."); }
+    return saved;
+  };
+  globalThis.downloadStackingBundledCsvs = async () => {
+    await restoreAccess();
+    const archive = await request({op: "bundled_csvs"});
+    const bytes = Uint8Array.fromBase64?.(archive.base64) ??
+      Uint8Array.from(atob(archive.base64), char => char.charCodeAt(0));
+    return download(archive.name, bytes, "application/zip");
+  };
   globalThis.stepStackingSimulation = step => request({...step, op: "step"});
   globalThis.repairStackingTierGaps = repair => request({...repair, op: "repair_tier_gaps"});
   globalThis.compareStackingYard = comparison => request({...comparison, op: "compare_yard"});
@@ -116,7 +142,7 @@
     try {
       localStorage.setItem(defaultStorageKey(document.key), text);
     } catch {
-      throw new Error("Could not store the default in this browser.");
+      throw new Error("Could not save settings in this browser.");
     }
     return text;
   };

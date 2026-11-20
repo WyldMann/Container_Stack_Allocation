@@ -5,7 +5,13 @@ function simulationView(run, branches, id, onStart) {
   const root = el("div");
   const queue = inboundQueue(branch);
   const track = queue.querySelector(".inbound-track");
-  const map = createYardMap(branch, branches);
+  const map = createYardMap(branch, branches, {
+    editable: run.processed === 0 && typeof globalThis.updateStackingBlockAccess === "function",
+    onChange: (block, side, value) => globalThis.updateStackingBlockAccess({
+      id, branch: branch.branch_code, policies: [{block_id: block.id, ...block.loader_access, [side]: value}]
+    }),
+    onSave: block => globalThis.saveStackingBlockAccess({id, branch: branch.branch_code, block_id: block.id})
+  });
   const controls = el("div", undefined, "simulation-controls actions");
   const progress = el("strong");
   progress.setAttribute("aria-live", "polite");
@@ -92,6 +98,7 @@ function simulationView(run, branches, id, onStart) {
   }
 
   function update() {
+    map.setAccessEditable(run.processed === 0 && typeof globalThis.updateStackingBlockAccess === "function");
     const done = finished();
     updateProgress();
     next.textContent = run.processed ? "Next container" : "Start simulation";
@@ -136,7 +143,9 @@ function simulationView(run, branches, id, onStart) {
   }
 
   function advance(toEnd) {
+    if (map.accessBusy()) return;
     return action(async () => {
+      map.setAccessEditable(false);
       const start = run.processed;
       if (toEnd) {
         runToEnd.textContent = "Running…";

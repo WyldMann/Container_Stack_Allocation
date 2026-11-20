@@ -3,53 +3,137 @@
 function layoutYardBlocks(blocks) {
   const gap = 22;
   const padding = 16;
+  if (!blocks.length) return {rectangles: [], width: padding * 2, height: padding * 2};
+
   const groups = new Map();
   for (const block of blocks) {
     const key = block.x + "," + block.y;
-    if (!groups.has(key)) groups.set(key, {x: block.x, y: block.y, width: 0, height: 0, blocks: []});
+    if (!groups.has(key)) groups.set(key, {x: block.x, y: block.y, blocks: []});
     const group = groups.get(key);
-    const width = Math.max(190, 56 + block.slots * 47);
-    const height = 124 + block.rows * 39;
-    const offset = group.blocks.length ? group.height + gap : 0;
-    group.blocks.push({block, width, height, offset});
-    group.width = Math.max(group.width, width);
-    group.height = offset + height;
+    // Each 20 ft slot is 90 × 36 px (20:8), with a 3 px grid gap.
+    const width = Math.max(270, 144 + block.slots * 93);
+    const height = 206 + block.rows * 39;
+    group.blocks.push({block, width, height});
   }
 
   const positions = [...groups.values()];
-  const minX = Math.min(...positions.map(group => group.x));
-  const minY = Math.min(...positions.map(group => group.y));
-  const spread = Math.max(
-    Math.max(...positions.map(group => group.x)) - minX,
-    Math.max(...positions.map(group => group.y)) - minY,
-  );
-  let scale = spread ? Math.min(1, 800 / spread) : 1;
-  // Use the same scale on both axes. Each pair needs a gap on only one axis.
-  for (let i = 0; i < positions.length; i++) {
-    for (let j = i + 1; j < positions.length; j++) {
-      const a = positions[i];
-      const b = positions[j];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const clearX = dx ? ((dx > 0 ? a.width : b.width) + gap) / Math.abs(dx) : Infinity;
-      const clearY = dy ? ((dy > 0 ? a.height : b.height) + gap) / Math.abs(dy) : Infinity;
-      scale = Math.max(scale, Math.min(clearX, clearY));
+  // Infer alignment from typical neighboring coordinates, so small offsets do
+  // not manufacture extra rows/columns and a distant outlier cannot set the scale.
+  const nearest = positions.map((group, index) => positions.reduce((distance, other, otherIndex) =>
+    index === otherIndex ? distance : Math.min(distance, Math.hypot(group.x - other.x, group.y - other.y)), Infinity));
+  nearest.sort((a, b) => a - b);
+  const tolerance = positions.length > 1 ? nearest[Math.floor((nearest.length - 1) / 2)] * 0.15 : 0;
+  function bands(axis) {
+    const values = [...new Set(positions.map(group => group[axis]))].sort((a, b) => a - b);
+    const indices = new Map();
+    let start = values[0];
+    let index = 0;
+    for (const value of values) {
+      if (value - start > tolerance) {
+        start = value;
+        index++;
+      }
+      indices.set(value, index);
+    }
+    return indices;
+  }
+  const columns = bands("x");
+  const rows = bands("y");
+  const cells = new Map();
+  for (const group of positions) {
+    const column = columns.get(group.x);
+    const row = rows.get(group.y);
+    const key = column + "," + row;
+    if (!cells.has(key)) cells.set(key, {column, row, blocks: []});
+    cells.get(key).blocks.push(...group.blocks);
+  }
+
+  // Blocks sharing a schematic position form a compact cluster. Tallest-first
+  // shelves keep that cluster stable without making a long vertical list.
+  for (const cell of cells.values()) {
+    cell.blocks.sort((a, b) => b.height - a.height || b.width - a.width ||
+      String(a.block.code).localeCompare(String(b.block.code), "en", {numeric: true}));
+    const area = cell.blocks.reduce((total, item) => total + item.width * item.height, 0);
+    const targetWidth = Math.max(...cell.blocks.map(item => item.width), Math.sqrt(area * 1.25));
+    const shelves = [];
+    cell.width = 0;
+    cell.height = 0;
+    for (const item of cell.blocks) {
+      let shelf = shelves.find(candidate => candidate.width + gap + item.width <= targetWidth);
+      if (!shelf) {
+        shelf = {top: shelves.length ? cell.height + gap : 0, width: 0, height: item.height};
+        shelves.push(shelf);
+        cell.height = shelf.top + shelf.height;
+      }
+      item.left = shelf.width ? shelf.width + gap : 0;
+      item.top = shelf.top;
+      shelf.width = item.left + item.width;
+      cell.width = Math.max(cell.width, shelf.width);
     }
   }
 
-  const rectangles = positions.flatMap(group => group.blocks.map(item => ({
-    ...item,
-    left: padding + (group.x - minX) * scale,
-    top: padding + (group.y - minY) * scale + item.offset,
-  })));
-  return {
-    rectangles,
-    width: Math.ceil(Math.max(...rectangles.map(item => item.left + item.width)) + padding),
-    height: Math.ceil(Math.max(...rectangles.map(item => item.top + item.height)) + padding),
-  };
+  const ordered = [...cells.values()].sort((a, b) => a.row - b.row || a.column - b.column);
+  const rowCells = [];
+  for (const cell of ordered) {
+    rowCells[cell.row] ??= [];
+    cell.previous = rowCells[cell.row].at(-1);
+    rowCells[cell.row].push(cell);
+  }
+  const columnCount = Math.max(...columns.values()) + 1;
+  const columnCells = Array.from({length: columnCount}, (_, column) =>
+    ordered.filter(cell => cell.column === column));
+  function arrange(columnStep) {
+    // Align columns across rows, adding panel widths only where two cells must
+    // sit beside one another. Coordinate distances do not affect these gaps.
+    let left = 0;
+    for (const members of columnCells) {
+      if (members[0].column) left += columnStep;
+      for (const cell of members) {
+        if (cell.previous) left = Math.max(left, cell.previous.left + cell.previous.width + gap);
+      }
+      for (const cell of members) cell.left = left;
+    }
+
+    // Compact rows against panels that actually overlap horizontally; a tall
+    // panel in another column should not create an empty band across the map.
+    let top = 0;
+    const placed = [];
+    for (const members of rowCells) {
+      if (placed.length) top += gap;
+      for (const cell of members) {
+        for (const other of placed) {
+          if (cell.left < other.left + other.width + gap && cell.left + cell.width + gap > other.left) {
+            top = Math.max(top, other.top + other.height + gap);
+          }
+        }
+      }
+      for (const cell of members) cell.top = top;
+      placed.push(...members);
+    }
+
+    const rectangles = ordered.flatMap(cell => cell.blocks.map(({block, width, height, left, top}) => ({
+      block, width, height,
+      left: padding + cell.left + left,
+      top: padding + cell.top + top,
+    })));
+    return {
+      rectangles,
+      width: Math.ceil(Math.max(...rectangles.map(item => item.left + item.width)) + padding),
+      height: Math.ceil(Math.max(...rectangles.map(item => item.top + item.height)) + padding),
+    };
+  }
+
+  // A little horizontal room can prevent a much taller map. Choose a compact
+  // fit for a typical map viewport, independent of occupancy or screen resizing.
+  const aspect = 1.25;
+  const step = Math.sqrt(ordered.reduce((area, cell) => area + cell.width * cell.height, 0) * aspect) / columnCount;
+  const layouts = [gap, ...[0.5, 1, 1.5, 2].map(factor => Math.max(gap, step * factor))].map(arrange);
+  layouts.sort((a, b) => Math.max(a.width / aspect, a.height) - Math.max(b.width / aspect, b.height) ||
+    a.width * a.height - b.width * b.height);
+  return layouts[0];
 }
 
-function createYardMap(branch, branches = [branch]) {
+function createYardMap(branch, branches = [branch], accessOptions = {}) {
   if (!branch.yard_map?.blocks?.length) return null;
 
   const colors = new Map([
@@ -74,7 +158,44 @@ function createYardMap(branch, branches = [branch]) {
   header.append(el("h3", "Yard map"));
   const body = el("div", undefined, "yard-view-layout");
   root.append(header, body);
-
+  const accessButtons = [];
+  const accessSaves = [];
+  const accessSides = ["above", "below", "left", "right"];
+  const accessStatus = el("p", undefined, "yard-caption yard-access-status");
+  accessStatus.setAttribute("role", "status");
+  accessStatus.hidden = true;
+  header.append(accessStatus);
+  let accessEditable = Boolean(accessOptions.editable);
+  let accessPending = false;
+  function accessChanged(block) {
+    return accessSides.some(side => block.loader_access[side] !== block.saved_loader_access[side]);
+  }
+  function syncAccessControls() {
+    accessButtons.forEach(control => {
+      control.disabled = !accessEditable || accessPending;
+      control.dataset.accessLocked = String(!accessEditable);
+    });
+    for (const {block, save} of accessSaves) {
+      const dirty = accessChanged(block);
+      const locked = !dirty || typeof accessOptions.onSave !== "function";
+      save.disabled = accessPending || locked;
+      save.dataset.accessLocked = String(locked);
+      save.title = dirty ? "Save block access settings for block " + block.code +
+        (globalThis.stackingStandalone ? " to bundled data in this browser." : " to the project CSV.") : "No access changes to save.";
+    }
+  }
+  function accessMessage(text, error = false) {
+    accessStatus.textContent = text;
+    accessStatus.hidden = !text;
+    accessStatus.classList.toggle("not-ready", error);
+  }
+  function showAccessChanges() {
+    const codes = accessSaves.filter(({block}) => accessChanged(block)).map(({block}) => block.code)
+      .sort((first, second) => first.localeCompare(second, "en", {numeric: true}));
+    const names = new Intl.ListFormat("en", {style: "long", type: "conjunction"}).format(codes);
+    accessMessage(codes.length ? (codes.length === 1 ? "Block " : "Blocks ") + names +
+      (codes.length === 1 ? " has" : " have") + " unsaved access changes." : "");
+  }
   function button(label, className) {
     const control = el("button", undefined, className);
     control.type = "button";
@@ -343,7 +464,29 @@ function createYardMap(branch, branches = [branch]) {
     const summary = el("p", undefined, "yard-caption");
     const occupancy = el("p", undefined, "yard-caption");
     const compliance = el("p", undefined, "yard-caption");
-    heading.append(el("h4", "Block " + block.code), summary, occupancy, compliance);
+    block.loader_access ??= {above: true, below: true, left: true, right: true};
+    block.saved_loader_access ??= {...block.loader_access};
+    const titleRow = el("div", undefined, "yard-block-title");
+    const save = button("Save block access settings for block " + block.code, "yard-block-save");
+    save.textContent = "Save block access settings";
+    save.disabled = true;
+    accessSaves.push({block, save});
+    save.addEventListener("click", async () => {
+      if (accessPending || busy || !accessChanged(block) || typeof accessOptions.onSave !== "function") return;
+      accessPending = true;
+      syncAccessControls();
+      try {
+        await action(async () => {
+          await accessOptions.onSave(block);
+          block.saved_loader_access = {...block.loader_access};
+          syncAccessControls();
+          showAccessChanges();
+        }, accessMessage);
+      } catch (error) { accessMessage(error.message, true); }
+      finally { accessPending = false; syncAccessControls(); }
+    });
+    titleRow.append(el("h4", "Block " + block.code), save);
+    heading.append(titleRow, summary, occupancy, compliance);
     const grid = el("table", undefined, "yard-grid");
     grid.style.setProperty("--yard-slot-count", block.slots);
     grid.setAttribute("aria-label", "Stack grid for block " + block.code);
@@ -396,7 +539,39 @@ function createYardMap(branch, branches = [branch]) {
       rows.append(line);
     }
     grid.append(head, rows);
-    panel.append(heading, grid);
+    const accessFrame = el("div", undefined, "yard-access-frame");
+    accessFrame.append(grid);
+    for (const [side, label] of [["above", "Above"], ["below", "Below"], ["left", "Left"], ["right", "Right"]]) {
+      const toggle = button("Block " + block.code + " " + side + " loader access", "yard-access-switch yard-access-" + side);
+      toggle.setAttribute("role", "switch");
+      function paintAccess() {
+        const open = block.loader_access[side];
+        toggle.setAttribute("aria-checked", String(open));
+        toggle.replaceChildren(el("span", label), el("strong", open ? "Open" : "Closed"));
+        toggle.title = label + " border: " + (open ? "open" : "closed") +
+          (side === "above" || side === "below" ? " for loader entry and exterior working space." : " for loader entry.");
+      }
+      toggle.addEventListener("click", async () => {
+        if (!accessEditable || accessPending || busy) return;
+        const next = !block.loader_access[side];
+        accessPending = true;
+        syncAccessControls();
+        try {
+          await action(async () => {
+            await accessOptions.onChange(block, side, next);
+            block.loader_access[side] = next;
+            paintAccess();
+            syncAccessControls();
+            showAccessChanges();
+          }, accessMessage);
+        } catch (error) { accessMessage(error.message, true); }
+        finally { accessPending = false; syncAccessControls(); }
+      });
+      accessButtons.push(toggle);
+      paintAccess();
+      accessFrame.append(toggle);
+    }
+    panel.append(heading, accessFrame);
     stage.append(panel);
     views.push(view);
   }
@@ -487,7 +662,7 @@ function createYardMap(branch, branches = [branch]) {
     observer.observe(viewport);
   }
   resizeMap();
-  header.append(el("p", branchLabel(branch), "yard-caption"));
+  header.append(el("p", branchLabel(branch) + " · Compact schematic (distances not to scale)", "yard-caption"));
 
   function showTrace(trace, historical = false) {
     for (const tile of traceTiles.keys()) {
@@ -609,5 +784,8 @@ function createYardMap(branch, branches = [branch]) {
     block.parameter_compliance = placed.parameter_compliance;
     updateBlockSummary(view);
   }
-  return {element: root, applyPlacement, markPlacement, showTrace};
+  syncAccessControls();
+  showAccessChanges();
+  return {element: root, applyPlacement, markPlacement, showTrace, accessBusy: () => accessPending,
+    setAccessEditable(editable) { accessEditable = editable; syncAccessControls(); }};
 }

@@ -12,8 +12,9 @@
 .file-sources legend { font-weight: 600; }
 .file-sources label { display: flex; align-items: center; gap: 7px; }
 .file-sources input { accent-color: var(--green); }
-.actions button[hidden] { display: none; }
-#choose-csv-folder { margin-bottom: 12px; }
+.actions [hidden] { display: none; }
+.actions a.button { text-decoration: none; }
+#choose-csv-folder, #download-bundled-csvs { margin-bottom: 12px; }
 .dataset-grid[hidden] { display: none; }
 #bundled-inputs { margin-bottom: 16px; }
 #bundled-inputs label { display: block; margin-bottom: 4px; }
@@ -139,7 +140,7 @@
   border: 1px solid var(--comparison-border);
   border-radius: 5px;
 }
-.comparison-slot { position: relative; width: 36px; min-height: 34px; padding: 0; font-variant-numeric: tabular-nums; }
+.comparison-slot { position: relative; width: 85px; height: 34px; padding: 0; font-variant-numeric: tabular-nums; }
 .comparison-swatch { width: 13px; height: 13px; border-radius: 3px; }
 .comparison-slot-same { --comparison-fill: #f1f4f2; --comparison-ink: #374e45; --comparison-border: #cbd6cf; }
 .comparison-slot-changed { --comparison-fill: #ffefcd; --comparison-ink: #6e430e; --comparison-border: #c1934c; }
@@ -314,6 +315,43 @@
 .placement-related-options {
   gap: 10px 20px;
 }
+.pyramid-neighbor-editor h4 { margin: 0; color: var(--green); }
+.pyramid-rule-switches { display: grid; gap: 10px; min-width: 0; }
+.pyramid-feature-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pyramid-feature-switch .toml-switch { flex: 0 0 40px; }
+@media (max-width: 600px) {
+  .placement-option:has(.pyramid-rule-switches) .toml-setting { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .placement-group:has(.pyramid-rule-switches) .toml-setting { grid-template-columns: 1fr; }
+}
+.pyramid-neighbor-grid {
+  display: grid;
+  grid-template-areas: ". up ." "left stack right" ". down .";
+  grid-template-columns: minmax(0, 1fr) 88px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  max-width: 320px;
+  margin: 12px auto 0;
+}
+.pyramid-neighbor-stack {
+  grid-area: stack;
+  display: grid;
+  place-items: center;
+  height: 88px;
+  border: 2px solid var(--green);
+  border-radius: 6px;
+  background: #e7f1eb;
+  color: var(--green);
+  font-weight: 650;
+}
+.pyramid-neighbor-up { grid-area: up; }
+.pyramid-neighbor-down { grid-area: down; }
+.pyramid-neighbor-left { grid-area: left; }
+.pyramid-neighbor-right { grid-area: right; }
+.pyramid-neighbor > .placement-help { display: none; }
+.pyramid-neighbor .toml-setting { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.pyramid-neighbor .toml-setting > span:first-child { font-size: 13px; }
 .placement-related-options + .placement-related-options {
   margin-top: 12px;
   padding-top: 12px;
@@ -434,6 +472,7 @@
 .placement-graph svg .reject { fill: none; stroke: #9b3826; stroke-width: 1.6px; }
 .placement-graph svg .other { --score-line: var(--other-score-line); }
 .placement-graph svg .neutral { --score-line: var(--neutral-score-line); }
+.placement-graph svg .rejected-zone { fill: #f9e9e3; stroke: none; }
 .placement-graph svg polyline.other, .placement-graph svg polyline.neutral { stroke-dasharray: 5 4; }
 .placement-graph-keys { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; }
 .placement-graph-keys:empty { display: none; }
