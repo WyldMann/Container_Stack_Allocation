@@ -202,10 +202,14 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    yard and inbound queue.
    The initial
    yard can still be inspected when the inbound CSV is missing. The page also
-   shows the incoming containers in a horizontal queue above the map. Drag a
-   remaining card and release it when the capped line marks the desired gap. Click a card or
-   press **Tab** until the card shows a green outline.
-   Press **Alt + Left Arrow** or **Alt + Right Arrow** to move it. The simulation
+   shows the incoming containers in a horizontal queue above the map. Click a card or
+   focus it with **Tab** to see its details below the queue. **Add container** appends
+   a row to the selected branch for this preview. Enter a container ID and select
+   20 ft or 40 ft. Check **Dummy container** to have the simulator assign the ID
+   and keep the placed dummy out of the yard CSV. Use **Delete container**
+   and confirm to remove an unprocessed row from this preview. Press **Enter** on a
+   focused card to reach its delete button. Drag a remaining card to the desired gap
+   or focus it and press **Alt + Left Arrow** or **Alt + Right Arrow** to move it. The simulation
    follows the new order, including changes made between steps. **Save yard CSV**
    opens a Save As dialog for `containers.csv` with the yards in the preview,
    including placements completed so far.

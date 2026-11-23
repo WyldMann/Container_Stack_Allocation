@@ -165,3 +165,7 @@ class DummyContainer(Container):
             container_fill="", container_size="", container_grade="",
             pol="", pod="", vessel="", voyage="", weight="", move_time="",
         )
+
+
+class InboundDummyContainer(Container):
+    """A hypothetical arrival used to test placements in a simulation."""

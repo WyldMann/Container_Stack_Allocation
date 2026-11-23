@@ -81,6 +81,11 @@ class SimulationSession:
                                         request.get("suggestion_id"))
         if operation == "reorder_queue" and self.simulation is not None:
             return self.simulation.reorder_queue(request.get("id"), request.get("branch"), request.get("order"))
+        if operation == "add_queue_row" and self.simulation is not None:
+            return self.simulation.add_queue_row(request.get("id"), request.get("branch"), request.get("container_id"),
+                                                 request.get("size"), request.get("dummy"))
+        if operation == "delete_queue_row" and self.simulation is not None:
+            return self.simulation.delete_queue_row(request.get("id"), request.get("branch"), request.get("input_position"))
         if operation == "repair_tier_gaps":
             return self.repair_tier_gaps(request.get("id"), request.get("branch"))
         if operation == "compare_yard":

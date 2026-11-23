@@ -410,6 +410,89 @@ class ScenarioTests(unittest.TestCase):
         with self.assertRaises(SimulationError):
             session.request(reorder | {"order": [1]})
 
+    def test_add_queue_row_preserves_the_current_suggestion_and_reuses_queue_actions(self):
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        add = {"op": "add_queue_row", **request, "size": "20", "dummy": False}
+        suggest = {"op": "suggest", **request}
+        current = session.request(suggest)
+        for fields in ({"container_id": " "}, {"container_id": " old "},
+                       {"container_id": "new1"}, {"container_id": "NEW3", "size": "45"}):
+            with self.subTest(fields=fields), self.assertRaises(SimulationError):
+                session.request(add | fields)
+
+        manual = session.request(add | {"container_id": " dummy-inbound-4 "})
+        self.assertEqual((manual["position"], manual["container_id"]), (3, "DUMMY-INBOUND-4"))
+        dummy = session.request(add | {"dummy": True})
+        self.assertEqual((dummy["position"], dummy["container_id"]), (4, "DUMMY-INBOUND-5"))
+        self.assertEqual(session.request(suggest), current)
+        session.request({"op": "reorder_queue", **request, "order": [4, 1, 2, 3]})
+        self.assertEqual(session.request(suggest)["row"], dummy | {"position": 1, "status": "suggested"})
+        session.request({"op": "delete_queue_row", **request, "input_position": dummy["input_position"]})
+        self.assertEqual(session.request(suggest)["row"]["container_id"], "NEW1")
+
+        restored = session.request({"op": "preview", "draft": self.payload})
+        self.assertEqual([row["container_id"] for row in restored["preview"]["branches"][0]["queue"]],
+                         ["NEW1", "NEW2"])
+
+    def test_dummy_can_start_an_empty_queue_and_is_excluded_from_yard_export(self):
+        self.payload["files"].pop("inbound_containers")
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        add = {"op": "add_queue_row", **request}
+        step = {"op": "step", **request}
+        self.assertFalse(preview["preview"]["branches"][0]["inbound_available"])
+        original_yard = session.request({"op": "yard_csv"})
+        dummy = session.request(add | {"size": "40", "dummy": True})
+        placed = session.request(step | {"position": 1})
+        self.assertEqual(placed["placement"]["container_id"], dummy["container_id"])
+        self.assertEqual(len(placed["placement"]["stacks"]), 2)
+        self.assertEqual(session.request({"op": "yard_csv"}), original_yard)
+
+        manual = session.request(add | {"container_id": "NEW3", "size": "20", "dummy": False})
+        self.assertEqual(manual["position"], 2)
+        self.assertEqual(session.request(step | {"position": 2})["placement"]["container_id"], "NEW3")
+        self.assertIn("NEW3", session.request({"op": "yard_csv"}))
+
+    def test_delete_queue_row_uses_source_position_and_refreshes_the_current_suggestion(self):
+        self.rows["inbound_containers"].extend([
+            dict(container_id="NEW3", container_size="20"),
+            dict(container_id="OLD", container_size="20"),
+        ])
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        delete = {"op": "delete_queue_row", **request}
+        suggest = {"op": "suggest", **request}
+        step = {"op": "step", **request}
+        original_yard = session.request({"op": "yard_csv"})
+        session.request({"op": "reorder_queue", **request, "order": [2, 1, 4, 3]})
+
+        first = session.request(suggest)
+        session.request(delete | {"input_position": 4})
+        session.request(delete | {"input_position": 4})
+        self.assertEqual(session.request(suggest), first)
+        session.request(delete | {"input_position": 2})
+        current = session.request(suggest)
+        self.assertEqual((current["row"]["input_position"], current["row"]["position"]), (1, 1))
+        self.assertEqual(session.request({"op": "yard_csv"}), original_yard)
+        with self.assertRaisesRegex(SimulationError, "suggestion has changed"):
+            session.request(step | {"position": 1, "suggestion_id": first["suggestion_id"]})
+
+        placed = session.request(step | {"position": 1, "suggestion_id": current["suggestion_id"]})
+        with self.assertRaisesRegex(SimulationError, "Processed containers"):
+            session.request(delete | {"input_position": 1})
+        self.assertEqual(session.request(suggest)["row"]["position"], 2)
+        session.request(delete | {"input_position": 3})
+        self.assertIsNone(session.request(suggest))
+        self.assertEqual(session.request(step | {"position": 1}), placed)
+
+        restored = session.request({"op": "preview", "draft": self.payload})
+        self.assertEqual(len(restored["preview"]["branches"][0]["queue"]), 4)
+
     def test_simulation_skips_invalid_rows_and_places_each_footprint_once(self):
         self.rows["inbound_containers"].insert(0, dict(container_id="OLD", container_size="20"))
         self.write_files()

@@ -1260,33 +1260,247 @@ function renderInboundCard(card, row) {
   card.replaceChildren(el("span", "#" + row.position, "inbound-position"),
     el("strong", row.container_id || "Missing container ID"),
     el("span", (row.size ? row.size + " ft · " : "") +
-      (row.operation || "—") + " · " + row.status, "inbound-meta"),
+      (row.dummy ? "Dummy" : row.operation || "—") + " · " + row.status, "inbound-meta"),
     el("span", [row.condition || "—", row.grade || "—", row.weight?.toLocaleString() ?? "—"].join(" · "), "inbound-meta"));
   if (row.reason && row.status !== "invalid") card.append(el("span", row.reason, "inbound-reason"));
 }
 
-function inboundQueue(branch) {
+function inboundAddForm(button, onAdd, onAdded) {
+  const form = el("form", undefined, "inbound-add-form");
+  form.id = "inbound-add-form";
+  form.hidden = true;
+  button.setAttribute("aria-controls", form.id);
+  button.setAttribute("aria-expanded", "false");
+
+  const identifier = el("input");
+  identifier.type = "text";
+  identifier.required = true;
+  const idLabel = el("label", undefined, "inbound-add-field");
+  idLabel.append(el("span", "Container ID"), identifier);
+  const dummy = el("input");
+  dummy.type = "checkbox";
+  const dummyLabel = el("label", undefined, "inbound-dummy-choice");
+  dummyLabel.append(dummy, el("span", "Dummy container"));
+  const identity = el("div", undefined, "inbound-add-identity");
+  identity.append(idLabel, dummyLabel);
+
+  const size = el("select");
+  size.required = true;
+  for (const [label, value] of [["Select size", ""], ["20 ft", "20"], ["40 ft", "40"]]) {
+    const option = el("option", label);
+    option.value = value;
+    size.append(option);
+  }
+  const sizeLabel = el("label", undefined, "inbound-add-field");
+  sizeLabel.append(el("span", "Size"), size);
+  const submit = el("button", "Add to queue");
+  submit.type = "submit";
+  const cancel = el("button", "Cancel", "secondary");
+  cancel.type = "button";
+  const actions = el("div", undefined, "actions");
+  actions.append(submit, cancel);
+  const error = el("p", undefined, "not-ready");
+  error.setAttribute("role", "status");
+  form.append(identity, sizeLabel, actions, error);
+
+  let manualId = "";
+  function syncIdentifier() {
+    identifier.disabled = dummy.checked;
+    identifier.dataset.accessLocked = String(dummy.checked);
+    identifier.placeholder = dummy.checked ? "Assigned automatically" : "";
+    identifier.value = dummy.checked ? "" : manualId;
+  }
+  dummy.addEventListener("change", () => {
+    if (dummy.checked) manualId = identifier.value;
+    syncIdentifier();
+  });
+  function close() {
+    form.reset();
+    manualId = "";
+    syncIdentifier();
+    error.textContent = "";
+    form.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+  }
+  button.addEventListener("click", () => {
+    if (!form.hidden) {
+      close();
+      return;
+    }
+    form.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    identifier.focus();
+  });
+  cancel.addEventListener("click", () => {
+    close();
+    button.focus();
+  });
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    error.textContent = "";
+    return action(async () => {
+      const row = await onAdd({container_id: identifier.value, size: size.value, dummy: dummy.checked});
+      close();
+      onAdded(row);
+    }, message => { error.textContent = message; });
+  });
+  return form;
+}
+
+function inboundQueue(branch, {canDelete, onDelete, onAdd} = {}) {
   const panel = el("div", undefined, "inbound-queue");
-  panel.append(el("h3", "Inbound queue"));
-  if (branch.inbound_available === false) {
-    panel.append(el("p", "Inbound queue unavailable."));
-    return panel;
+  const title = el("h3", "Inbound queue");
+  title.tabIndex = -1;
+  const header = el("div", undefined, "inbound-queue-header");
+  header.append(title);
+  panel.append(header);
+  if (onAdd) {
+    const add = el("button", "Add container", "secondary");
+    add.type = "button";
+    header.append(add);
+    panel.append(inboundAddForm(add, onAdd, row => {
+      focusCard(track.children[row.position - 1]);
+      report(row.container_id + " added to the inbound queue.");
+    }));
   }
-  if (!branch.queue.length) {
-    panel.append(el("p", "No incoming containers."));
-    return panel;
-  }
-  panel.append(el("p", branch.queue.length + (branch.queue.length === 1 ? " container" : " containers")));
+  const summary = el("p");
+  const count = el("span");
+  summary.append(count);
+  panel.append(summary);
   const track = el("ol", undefined, "inbound-track");
   track.setAttribute("aria-label", "Incoming containers in processing order");
-  track.tabIndex = 0;
-  for (const row of branch.queue) {
+  const details = el("div", undefined, "inbound-details");
+  details.id = "inbound-container-details";
+  details.setAttribute("role", "region");
+  details.setAttribute("aria-label", "Container details");
+  details.hidden = true;
+  const content = el("div");
+  details.append(content);
+  const deleteButton = onDelete ? el("button", "Delete container", "inbound-delete") : null;
+  if (deleteButton) {
+    deleteButton.type = "button";
+    const actions = el("div", undefined, "inbound-details-actions");
+    actions.append(deleteButton);
+    details.append(actions);
+    deleteButton.addEventListener("click", () => onDelete(branch.queue[inspectedCard.value - 1]));
+    track.addEventListener("keydown", event => {
+      if (event.key !== "Enter" || event.target !== inspectedCard || deleteButton.disabled) return;
+      event.preventDefault();
+      deleteButton.focus();
+    });
+  }
+  function createCard(row) {
     const card = el("li");
     renderInboundCard(card, row);
-    track.append(card);
+    card.tabIndex = 0;
+    card.setAttribute("aria-controls", details.id);
+    return card;
   }
-  panel.append(track);
-  return panel;
+  for (const row of branch.queue) track.append(createCard(row));
+  let inspectedCard;
+  let inspectedInputPosition;
+  const feedback = el("p", undefined, "inbound-feedback");
+  feedback.setAttribute("role", "status");
+
+  function updateCount() {
+    const total = branch.queue.length;
+    count.textContent = total ? total + (total === 1 ? " container" : " containers") :
+      branch.inbound_available === false && !onAdd ? "Inbound queue unavailable." : "No incoming containers.";
+  }
+
+  function report(text, error = false) {
+    feedback.classList.toggle("not-ready", error);
+    feedback.textContent = text;
+  }
+
+  function inspectCard(card) {
+    const row = branch.queue[card.value - 1];
+    inspectedCard?.removeAttribute("data-inspected");
+    inspectedCard = card;
+    inspectedInputPosition = row.input_position;
+    card.setAttribute("data-inspected", "");
+
+    const fields = el("dl");
+    for (const [label, value] of [
+      ["Status", row.status],
+      ["Size", row.size && row.size + " ft"],
+      ["Full / empty", ({F: "Full", E: "Empty"})[row.fill] ?? row.fill],
+      ["Weight", row.weight?.toLocaleString()],
+      ["Condition", row.condition],
+      ["Grade", row.grade],
+      ["Operation", row.operation],
+      ["Principal", row.principal],
+      ["Port of loading", row.pol],
+      ["Port of transshipment", row.pot],
+      ["Port of discharge", row.pod],
+      ["Vessel", row.vessel],
+      ["Voyage", row.voyage],
+      ["Vessel operator", row.vessel_operator],
+      ["Move time (CSV)", row.move_time],
+      ["Source", row.dummy ? "Dummy container" : row.manual ? "Manual entry" :
+        row.sources?.map(source => source.file + ", line " + source.line).join(", ")]
+    ]) {
+      const field = el("div");
+      field.append(el("dt", label), el("dd", value || "—"));
+      fields.append(field);
+    }
+    content.replaceChildren(el("h4", "#" + row.position + " · " + (row.container_id || "Missing container ID")));
+    if (row.reason) content.append(el("p", row.reason, "inbound-reason"));
+    content.append(fields);
+    if (deleteButton) {
+      deleteButton.disabled = !canDelete(row);
+      deleteButton.dataset.accessLocked = String(deleteButton.disabled);
+      deleteButton.title = deleteButton.disabled ? "Processed containers are part of the run history." : "";
+    }
+    details.hidden = false;
+  }
+
+  function refreshDetails() {
+    if (!inspectedCard) return;
+    const index = branch.queue.findIndex(row => row.input_position === inspectedInputPosition);
+    if (index !== -1) inspectCard(track.children[index]);
+    else {
+      inspectedCard = null;
+      details.hidden = true;
+    }
+  }
+
+  function focusCard(card) {
+    if (card === document.activeElement) inspectCard(card);
+    else card.focus();
+  }
+
+  function focusAfterRemoval(position) {
+    const card = track.children[position - 1] ?? track.lastElementChild;
+    if (card) focusCard(card);
+    else title.focus();
+  }
+
+  function removeCard(position) {
+    const index = position - 1;
+    branch.queue.splice(index, 1);
+    track.children[index].remove();
+    for (let next = index; next < branch.queue.length; next++) {
+      const row = branch.queue[next];
+      row.position = next + 1;
+      renderInboundCard(track.children[next], row);
+    }
+    updateCount();
+  }
+
+  function appendCard(row) {
+    branch.queue.push(row);
+    track.append(createCard(row));
+    updateCount();
+  }
+
+  track.addEventListener("focusin", event => {
+    const card = event.target.closest(".inbound-card");
+    if (card) inspectCard(card);
+  });
+  updateCount();
+  panel.append(track, details, feedback);
+  return {panel, summary, track, focusCard, focusAfterRemoval, refreshDetails, removeCard, appendCard, report};
 }
 
 function tierGapOverview(branch, repair) {
@@ -1354,7 +1568,7 @@ async function previewOverview(branches, simulation, sharedIssues) {
       }),
       onSave: block => globalThis.saveStackingBlockAccess({id: simulation.id, branch: branch.branch_code, block_id: block.id})
     });
-    selectedView.replaceChildren(...diagnostics, inboundQueue(branch), ...(map ? [map.element] : []));
+    selectedView.replaceChildren(...diagnostics, inboundQueue(branch).panel, ...(map ? [map.element] : []));
     if (map && branch.queue.length && branch.inbound_available !== false) {
       const hint = simulation ? "Resolve the input errors above before running this branch." :
         "Generate a fresh preview in the setup launcher to run the simulation.";

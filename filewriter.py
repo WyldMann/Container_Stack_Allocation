@@ -1,7 +1,7 @@
 import csv
 from pathlib import Path
 
-from entities.container import DummyContainer
+from entities.container import DummyContainer, InboundDummyContainer
 from entities.yard import Yard
 
 
@@ -39,7 +39,7 @@ class ContainerFileWriter:
         rows: list[dict[str, str | int | float]] = []
         # The registry exports each container once, including 40-foot containers.
         for container in yard.containers.values():
-            if isinstance(container, DummyContainer):
+            if isinstance(container, (DummyContainer, InboundDummyContainer)):
                 continue
 
             branch_id, block_code, row_no, slot_no, tier_no = container.getCoordsStrTuple()

@@ -9,10 +9,13 @@ from uuid import uuid4
 
 from entities import Container
 from entities.bad_yard_data import PlacementRejected
+from entities.container import InboundDummyContainer
 from entities.feasibility.placement_proposal import PlacementProposal
 from filewriter import ContainerFileWriter
 from repository.branch_repository import BranchDirectory
+from utils import strGeneralize
 
+from .scenario import inbound_queue_row
 from .yard_view import stack_view
 
 
@@ -179,7 +182,7 @@ class Simulation:
             return
         for branch in scenario["branches"]:
             yard = branch["yard"]
-            if (yard is not None and yard.blocks_by_id and branch["inbound_available"] and branch["queue"]
+            if (yard is not None and yard.blocks_by_id
                     and not any(problem["severity"] == "error" and problem["dataset"] != "inbound_containers"
                                 for problem in branch["issues"])):
                 self.branches[branch["branch_code"]] = branch
@@ -190,6 +193,42 @@ class Simulation:
         if not isinstance(branch_code, str) or branch_code not in self.branches:
             raise SimulationError("This branch has no runnable inbound queue.")
         return self.branches[branch_code]
+
+    def add_queue_row(self, simulation_id, branch_code, container_id, size, dummy):
+        branch = self._active_branch(simulation_id, branch_code)
+        if size not in ("20", "40"):
+            raise SimulationError("Choose a container size of 20 or 40 ft.")
+        if type(dummy) is not bool:
+            raise SimulationError("Choose whether this is a dummy container.")
+        queue = branch["queue"]
+        existing_records = branch["inputs"].get("inbound_containers", ())
+        input_position = len(existing_records) + 1
+        used_ids = branch["yard"].containers.keys() | {row["container_id"] for row in queue}
+        if dummy:
+            number = input_position
+            container_id = f"DUMMY-INBOUND-{number}"
+            while container_id in used_ids:
+                number += 1
+                container_id = f"DUMMY-INBOUND-{number}"
+        else:
+            if not isinstance(container_id, str) or not container_id.strip():
+                raise SimulationError("Enter a container ID.")
+            container_id = strGeneralize(container_id.strip())
+            if container_id in used_ids:
+                raise SimulationError("That container ID is already in the yard or inbound queue.")
+
+        record = {"container_id": container_id, "container_size": size,
+                  "principal": "", "container_condition": "", "container_fill": "", "container_grade": "",
+                  "pol": "", "pot": "", "pod": "", "vessel": "", "voyage": "", "vessel_operator": "",
+                  "weight": "", "move_time": "", "operation_type": ""}
+        row = inbound_queue_row(record, len(queue) + 1, input_position, weight=None)
+        row.update(manual=True, dummy=dummy)
+        branch["inputs"].setdefault("inbound_containers", []).append(record)
+        queue.append(row)
+        summary = branch["summary"]
+        summary["inbound_containers"] = len(queue)
+        summary["valid_inbound"] = summary.get("valid_inbound", 0) + 1
+        return row
 
     def reorder_queue(self, simulation_id, branch_code, order):
         branch = self._active_branch(simulation_id, branch_code)
@@ -204,6 +243,28 @@ class Simulation:
             self.invalidate_suggestion(branch_code)
         queue[processed:] = [dict(remaining[key], position=position)
                              for position, key in enumerate(order, processed + 1)]
+
+    def delete_queue_row(self, simulation_id, branch_code, input_position):
+        branch = self._active_branch(simulation_id, branch_code)
+        records = branch["inputs"].get("inbound_containers", ())
+        if type(input_position) is not int or not 1 <= input_position <= len(records):
+            raise SimulationError("Select an inbound row to delete.")
+        previous = self.last_steps.get(branch_code)
+        processed = previous["row"]["position"] if previous else 0
+        queue = branch["queue"]
+        for index, row in enumerate(queue):
+            if row["input_position"] != input_position:
+                continue
+            if index < processed:
+                raise SimulationError("Processed containers cannot be deleted from the queue.")
+            queue.pop(index)
+            for position in range(index, len(queue)):
+                queue[position]["position"] = position + 1
+            branch["summary"]["inbound_containers"] -= 1
+            branch["summary"]["valid_inbound"] -= row["status"] == "pending"
+            if index == processed:
+                self.invalidate_suggestion(branch_code)
+            return
 
     def invalidate_suggestion(self, branch_code):
         self._suggestions.pop(branch_code, None)
@@ -221,7 +282,8 @@ class Simulation:
         result = None
         if row["status"] == "pending":
             yard = branch["yard"]
-            container = Container(**branch["inputs"]["inbound_containers"][row["input_position"] - 1])
+            container_type = InboundDummyContainer if row.get("dummy") else Container
+            container = container_type(**branch["inputs"]["inbound_containers"][row["input_position"] - 1])
             search = {}
             try:
                 result = yard.assignContainer(container, trace=search)

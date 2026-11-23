@@ -37,6 +37,18 @@ def _count(value):
     return len(value)
 
 
+def inbound_queue_row(record, position, input_position, *, weight, status="pending", reason=None, sources=()):
+    return {"position": position, "input_position": input_position,
+            "container_id": record["container_id"],
+            "size": record["container_size"], "operation": record["operation_type"],
+            "condition": record["container_condition"], "grade": record["container_grade"],
+            "fill": record["container_fill"], "principal": record["principal"],
+            "pol": record["pol"], "pot": record["pot"], "pod": record["pod"],
+            "vessel": record["vessel"], "voyage": record["voyage"],
+            "vessel_operator": record["vessel_operator"], "move_time": record["move_time"],
+            "weight": weight, "status": status, "reason": reason, "sources": list(sources)}
+
+
 def prepare_scenario(payload):
     """Build independent branch previews from one immutable request draft."""
     settings, mapping, profiles, input_document = configuration(payload)
@@ -312,12 +324,9 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
             except PlacementRejected as error:
                 status, reason = "invalid", str(error)
                 branch["issues"].append(issue("inbound_containers", reason, sources=origin, severity="warning"))
-        branch["queue"].append({"position": index + 1, "input_position": index + 1,
-                                "container_id": row["container_id"],
-                                "size": row["container_size"], "operation": row["operation_type"],
-                                "condition": row["container_condition"], "grade": row["container_grade"],
-                                "weight": weight, "status": status,
-                                "reason": reason, "sources": origin})
+        branch["queue"].append(inbound_queue_row(
+            row, index + 1, index + 1, weight=weight, status=status, reason=reason, sources=origin,
+        ))
     if not yard.blocks_by_id:
         add("yard_blocks", "No valid blocks are available for this branch.")
     unserved_blocks = [block for block in yard.blocks_by_id.values() if not yard.canServeBlock(block)]
