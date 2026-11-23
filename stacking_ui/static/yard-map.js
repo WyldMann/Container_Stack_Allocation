@@ -311,7 +311,6 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   zoomOut.textContent = "−";
   const zoomSlider = el("input", undefined, "yard-map-zoom-slider");
   zoomSlider.type = "range";
-  zoomSlider.min = "1";
   zoomSlider.max = "200";
   zoomSlider.step = "any";
   zoomSlider.setAttribute("aria-label", "Yard map zoom");
@@ -582,7 +581,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
 
   let fitScale = 1;
   let scale = 1;
-  let fitted = true;
+  const zoomPercent = new Intl.NumberFormat(undefined, {style: "percent", maximumSignificantDigits: 3});
   function paintZoom(nextScale, keepCenter = false, pointer = null) {
     const frame = viewport.getBoundingClientRect();
     const oldExtent = extent.getBoundingClientRect();
@@ -592,16 +591,16 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       Math.max(0, Math.min(width, (targetX - oldExtent.left) / scale));
     const anchorY = !pointer && oldExtent.height <= viewport.clientHeight ? height / 2 :
       Math.max(0, Math.min(height, (targetY - oldExtent.top) / scale));
-    scale = Math.max(fitScale, Math.min(2, nextScale));
-    fitted = scale <= fitScale + 0.0001;
+    const minScale = fitScale / 10;
+    scale = Math.max(minScale, Math.min(2, nextScale));
     stage.style.transform = "scale(" + scale + ")";
     extent.style.width = Math.ceil(width * scale) + "px";
     extent.style.height = Math.ceil(height * scale) + "px";
-    zoomSlider.min = String(fitScale * 100);
+    zoomSlider.min = String(minScale * 100);
     zoomSlider.value = String(scale * 100);
-    zoomLevel.textContent = Math.round(scale * 100) + "%";
+    zoomLevel.textContent = zoomPercent.format(scale);
     zoomSlider.setAttribute("aria-valuetext", zoomLevel.textContent);
-    zoomOut.disabled = fitted;
+    zoomOut.disabled = scale <= minScale * (1 + Number.EPSILON);
     zoomIn.disabled = scale >= 2;
     if (keepCenter) {
       const newExtent = extent.getBoundingClientRect();
@@ -610,9 +609,11 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     }
   }
   function resizeMap() {
-    fitScale = Math.min(1, (viewport.clientWidth || width) / width,
-      (viewport.clientHeight || height) / height);
-    paintZoom(fitted ? fitScale : scale);
+    const wasAtFit = scale === fitScale;
+    if (viewport.clientWidth && viewport.clientHeight) {
+      fitScale = Math.min(1, viewport.clientWidth / width, viewport.clientHeight / height);
+    }
+    paintZoom(wasAtFit ? fitScale : scale);
   }
   zoomOut.addEventListener("click", () => paintZoom(scale / 1.25, true));
   zoomIn.addEventListener("click", () => paintZoom(scale * 1.25, true));
@@ -729,7 +730,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     );
     if (target) {
       selectStack(target.view, target.anchor);
-      if (!fitted) centerSelection();
+      if (scale > fitScale) centerSelection();
     } else {
       selectStack(selection.view, selection.index);
     }
@@ -762,7 +763,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     anchor.append(badge);
     selectStack(view, index);
     if (reveal) {
-      if (!fitted) centerSelection();
+      if (scale > fitScale) centerSelection();
       anchor.scrollIntoView({block: "nearest", inline: "nearest"});
     }
   }

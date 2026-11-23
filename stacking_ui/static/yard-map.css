@@ -72,6 +72,8 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
 }
 .yard-trace-key strong, .yard-trace-key span { display: block; }
 .yard-map-scroll {
+  display: flex;
+  flex-direction: column;
   overflow: auto;
   height: clamp(420px, var(--yard-map-height), 90vh);
   border: 1px solid var(--yard-line);
@@ -82,7 +84,7 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
 }
 .yard-map-scroll.yard-map-panning,
 .yard-map-scroll.yard-map-panning * { cursor: grabbing; user-select: none; }
-.yard-map-extent { position: relative; overflow: hidden; margin-inline: auto; }
+.yard-map-extent { position: relative; overflow: hidden; flex: none; margin: auto; }
 .yard-map-stage { position: absolute; inset: 0 auto auto 0; transform-origin: top left; }
 .yard-block {
   position: absolute;
