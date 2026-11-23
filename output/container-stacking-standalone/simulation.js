@@ -1,12 +1,8 @@
 "use strict";
 
-function enableQueueReordering(panel, run, id, accessBusy, onCurrentChange) {
-  const track = panel.querySelector(".inbound-track");
+function enableQueueReordering({summary, track, focusCard, report}, run, id, accessBusy, onCurrentChange) {
   const hint = el("span", " · Drag a card and release it at the insertion marker. Click a remaining card or press Tab until it has a green outline. Hold Alt and press ← or → to move it.");
-  panel.querySelector("p").append(hint);
-  const feedback = el("p", undefined, "inbound-feedback");
-  feedback.setAttribute("role", "status");
-  panel.append(feedback);
+  summary.append(hint);
   let dragged = null;
   let target = null;
 
@@ -55,14 +51,10 @@ function enableQueueReordering(panel, run, id, accessBusy, onCurrentChange) {
         row.position = position;
         renderInboundCard(track.children[position - 1], row);
       }
-      track.children[to - 1].focus();
-      feedback.classList.remove("not-ready");
-      feedback.textContent = (moved.container_id || "Inbound row") + " moved to #" + to + ".";
+      focusCard(track.children[to - 1]);
+      report((moved.container_id || "Inbound row") + " moved to #" + to + ".");
       if (reordered[run.processed] !== queue[run.processed]) await onCurrentChange();
-    }, message => {
-      feedback.classList.add("not-ready");
-      feedback.textContent = message;
-    });
+    }, report);
   }
 
   track.addEventListener("keydown", event => {
@@ -106,21 +98,22 @@ function enableQueueReordering(panel, run, id, accessBusy, onCurrentChange) {
   return function refresh() {
     const canMove = run.branch.queue.length - run.processed >= 2;
     hint.hidden = !canMove;
-    track.tabIndex = canMove ? -1 : 0;
     for (const card of track.children) {
       card.draggable = canMove && card.value > run.processed;
-      if (card.draggable) card.tabIndex = 0;
-      else card.removeAttribute("tabindex");
     }
-    feedback.textContent = "";
+    report("");
   };
 }
 
 async function simulationView(run, branches, id, onStart) {
   const {branch} = run;
   const root = el("div");
-  const queue = inboundQueue(branch);
-  const track = queue.querySelector(".inbound-track");
+  const queue = inboundQueue(branch, {
+    canDelete: row => row.position > run.processed,
+    onDelete: typeof globalThis.deleteStackingQueueRow === "function" ? deleteContainer : null,
+    onAdd: typeof globalThis.addStackingQueueRow === "function" ? addContainer : null
+  });
+  const {panel: queuePanel, track, refreshDetails} = queue;
   const map = createYardMap(branch, branches, {
     editable: run.processed === 0 && typeof globalThis.updateStackingBlockAccess === "function",
     onChange: async (block, side, value) => {
@@ -138,7 +131,7 @@ async function simulationView(run, branches, id, onStart) {
   progress.setAttribute("aria-live", "polite");
   const next = el("button");
   next.type = "button";
-  const runToEnd = el("button", "Run to end", "secondary");
+  const runToEnd = el("button", "Run to end", "run-to-end");
   runToEnd.type = "button";
   const viewTrace = el("button", "View trace", "secondary");
   viewTrace.type = "button";
@@ -149,7 +142,7 @@ async function simulationView(run, branches, id, onStart) {
   snapshotPicker.accept = ".csv";
   snapshotPicker.hidden = true;
   const buttons = el("div", undefined, "actions");
-  buttons.append(next, runToEnd, viewTrace, compare);
+  buttons.append(next, viewTrace, runToEnd, compare);
   controls.append(progress, buttons);
   const outcome = el("div", undefined, "simulation-outcome");
   const traceLabel = el("label", undefined, "simulation-trace-picker");
@@ -170,7 +163,7 @@ async function simulationView(run, branches, id, onStart) {
   comparison.append(el("h3", "Yard comparison"), comparisonStatus, comparisonResult);
   comparison.hidden = !run.comparison;
   if (run.comparison) comparisonResult.append(yardComparisonResults(run.comparison));
-  root.append(queue, controls, outcome, snapshotPicker, comparison, map.element);
+  root.append(queuePanel, controls, outcome, snapshotPicker, comparison, map.element);
 
   function reportComparison(text, error = false) {
     comparison.hidden = false;
@@ -216,8 +209,10 @@ async function simulationView(run, branches, id, onStart) {
   function showTrace() {
     const current = tracePicker.value === "current";
     const trace = current ? run.suggestion : run.traces[Number(tracePicker.value)];
+    const winner = current ? trace?.calculation?.candidates.find(candidate => candidate.selected) : null;
     heading.textContent = current ? "Suggested assignment" : "Assignment trace";
     next.hidden = !current || (!trace && !suggestionError);
+    next.classList.toggle("secondary", Boolean(winner));
     runToEnd.hidden = !current || !trace;
     if (!trace) {
       next.textContent = "Retry suggestion";
@@ -231,7 +226,6 @@ async function simulationView(run, branches, id, onStart) {
     const label = "#" + row.position + " " + (row.container_id || "Missing container ID");
     status.classList.remove("not-ready");
     if (current) {
-      const winner = calculation?.candidates.find(candidate => candidate.selected);
       next.textContent = winner ? "Place container" : "Skip container";
       status.textContent = winner ? label + " · " + placementLocation(winner, row.size) :
         label + " · " + row.reason;
@@ -250,18 +244,19 @@ async function simulationView(run, branches, id, onStart) {
 
   function updateProgress() {
     const unplaced = run.processed - run.placed - run.invalid;
-    progress.textContent = finished() ?
+    progress.textContent = !branch.queue.length ? "No containers to process." : finished() ?
       "Simulation complete · " + run.placed + " placed · " + unplaced + " unplaced · " + run.invalid + " invalid" :
       run.processed + " of " + branch.queue.length + " processed · " + run.placed + " placed";
   }
 
   async function update() {
     refreshQueue?.();
+    refreshDetails();
     map.setAccessEditable(run.processed === 0 && typeof globalThis.updateStackingBlockAccess === "function");
     const done = finished();
     updateProgress();
-    compare.hidden = !done || typeof globalThis.compareStackingYard !== "function";
-    map.element.querySelector("h3").textContent = done ? "Final yard map" : "Yard map";
+    compare.hidden = !done || !run.last || typeof globalThis.compareStackingYard !== "function";
+    map.element.querySelector("h3").textContent = done && run.last ? "Final yard map" : "Yard map";
     const card = track.children[done ? run.processed - 1 : run.processed];
     if (card) {
       if (!done) card.setAttribute("aria-current", "step");
@@ -273,10 +268,44 @@ async function simulationView(run, branches, id, onStart) {
       else requestAnimationFrame(revealCurrent);
     }
     viewTrace.hidden = traceLabel.hidden = !run.last;
+    outcome.hidden = done && !run.last;
+    if (outcome.hidden) {
+      next.hidden = runToEnd.hidden = true;
+      map.showTrace(null);
+      return;
+    }
     currentOption.hidden = done;
     tracePicker.value = done ? String(run.processed - 1) : "current";
     if (!done && !run.suggestion) await loadSuggestion();
     else showTrace();
+  }
+
+  async function addContainer(fields) {
+    if (map.accessBusy()) throw new Error("Wait for the yard access change to finish.");
+    const row = await globalThis.addStackingQueueRow({id, branch: branch.branch_code, ...fields});
+    queue.appendCard(row);
+    if (run.comparison) {
+      run.comparison = null;
+      comparison.hidden = true;
+      comparisonResult.replaceChildren();
+    }
+    await update();
+    return row;
+  }
+
+  function deleteContainer(row) {
+    if (busy || map.accessBusy() || row.position <= run.processed) return;
+    const {position, input_position, container_id} = row;
+    const label = container_id ? "container " + container_id : "row #" + position;
+    if (!window.confirm("Delete " + label + " from the inbound queue?")) return;
+    return action(async () => {
+      await globalThis.deleteStackingQueueRow({id, branch: branch.branch_code, input_position});
+      queue.removeCard(position);
+      if (position === run.processed + 1) run.suggestion = null;
+      await update();
+      queue.focusAfterRemoval(position);
+      queue.report((container_id || "Row #" + position) + " deleted from the inbound queue.");
+    }, queue.report);
   }
 
   async function stepForward() {
