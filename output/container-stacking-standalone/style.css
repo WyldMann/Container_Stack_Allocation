@@ -183,6 +183,13 @@
   font-size: 13px;
 }
 .run-to-end { background: #1d7e6a; border-color: #1d7e6a; }
+.simulation-controls button[data-access-locked="true"],
+.simulation-tier-actions button[data-access-locked="true"] {
+  color: #6c7974;
+  background: #edf1ef;
+  opacity: 1;
+  cursor: default;
+}
 .simulation-outcome {
   margin: 8px 0 14px;
   padding: 8px 12px;
@@ -278,10 +285,19 @@
   border-radius: 6px;
   background: #f8faf9;
 }
-.simulation-alternate-fields { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.simulation-alternate-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 6px 12px; }
 .simulation-alternate > p:empty { display: none; }
 .simulation-alternate-fields label { display: grid; gap: 3px; font-size: 13px; }
 .simulation-alternate-fields select { min-width: 90px; padding: 4px 6px; font-size: 13px; }
+.simulation-alternate-fields select:disabled { color: #6c7974; background: #edf1ef; }
+.simulation-alternate-fields .simulation-auto-tier {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+.simulation-tier-actions { align-items: center; }
+.simulation-tier-actions button { padding: 4px 8px; font-size: 13px; }
 .simulation-trace-stages { margin: 4px 0; padding-left: 22px; font-size: 13px; }
 .heuristic-breakdown { margin: 4px 0 8px; max-width: 360px; }
 .heuristic-breakdown table { font-size: 12px; font-variant-numeric: tabular-nums; }

@@ -146,11 +146,11 @@ function enableQueueReordering({summary, track, focusCard, report}, run, id, acc
   return {move, refresh};
 }
 
-function alternateLocationPicker(branch, onSelect) {
+function alternateLocationPicker(branch, onSelect, getSelectedStack) {
   const element = el("div", undefined, "simulation-alternate");
   element.id = "alternate-location";
   element.hidden = true;
-  element.append(el("p", "Select a stack on the map or choose its block, row, slot, and tier below."));
+  element.append(el("p", "Choose coordinates below or select a stack on the map and click Use selected stack."));
   const fields = el("div", undefined, "simulation-alternate-fields");
   const [block, row, slot, tier] = ["Block", "Row", "Slot", "Tier"].map(name => {
     const label = el("label", name);
@@ -159,6 +159,20 @@ function alternateLocationPicker(branch, onSelect) {
     fields.append(label);
     return select;
   });
+  const autoTier = el("input");
+  autoTier.type = "checkbox";
+  autoTier.setAttribute("role", "switch");
+  const toggle = el("span", undefined, "toml-switch");
+  const track = el("span", undefined, "toml-switch-track");
+  track.setAttribute("aria-hidden", "true");
+  toggle.append(autoTier, track);
+  const autoLabel = el("label", undefined, "simulation-auto-tier");
+  autoLabel.append(toggle, el("span", "Auto-select open tier"));
+  const useSelectedStack = el("button", "Use selected stack", "secondary");
+  useSelectedStack.type = "button";
+  const tierActions = el("div", undefined, "actions simulation-tier-actions");
+  tierActions.append(autoLabel, useSelectedStack);
+  fields.append(tierActions);
   const warning = el("p", undefined, "not-ready");
   warning.setAttribute("aria-live", "polite");
   element.append(fields, warning);
@@ -183,14 +197,25 @@ function alternateLocationPicker(branch, onSelect) {
     select.dataset.accessLocked = String(select.disabled);
   }
 
+  function openTier(yardBlock, rowNumber, slotNumber) {
+    const stacks = footprintStacks(yardBlock, rowNumber, slotNumber, containerSize);
+    const occupied = new Set(stacks.flatMap(stack => stack.tiers.map(item => item.tier)));
+    let open = 1;
+    while (open <= yardBlock.tier_limit && occupied.has(open)) open++;
+    return open <= yardBlock.tier_limit ? open : null;
+  }
+
+  function syncTierMode() {
+    tier.disabled = autoTier.checked || !slot.value;
+    tier.dataset.accessLocked = String(tier.disabled);
+    if (autoTier.checked && slot.value) {
+      tier.value = openTier(currentBlock(), Number(row.value), Number(slot.value)) ?? "";
+    }
+  }
+
   function updateTiers() {
-    const yardBlock = currentBlock();
-    options(tier, "Select tier", !slot.value ? [] : numbers(yardBlock.tier_limit).map(value => [value, value]));
-    if (!slot.value) return;
-    const stacks = footprintStacks(yardBlock, Number(row.value), Number(slot.value), containerSize);
-    const highest = stacks.reduce((height, stack) => stack.tiers.reduce(
-      (top, item) => Math.max(top, item.tier), height), 0);
-    tier.value = Math.min(highest + 1, yardBlock.tier_limit);
+    options(tier, "Select tier", slot.value ? numbers(currentBlock().tier_limit).map(value => [value, value]) : []);
+    syncTierMode();
   }
 
   function updateSlots() {
@@ -210,14 +235,51 @@ function alternateLocationPicker(branch, onSelect) {
   function selectCoordinate() {
     onSelect(tier.value ? {block: block.value, row: Number(row.value), slot: Number(slot.value), tier: Number(tier.value)} : null);
   }
+
+  function selectedStackCoordinate() {
+    const location = getSelectedStack();
+    if (!location) return null;
+    const yardBlock = blocks.get(location.block);
+    const destinationSlot = footprintSize() === 2 ? location.slot + location.slot % 2 : location.slot;
+    const fits = destinationSlot <= yardBlock.slots;
+    return {...location, slot: fits ? destinationSlot : null,
+      tier: fits ? openTier(yardBlock, location.row, destinationSlot) : null};
+  }
+
+  function refreshSelectedStack() {
+    if (element.hidden) return;
+    const location = selectedStackCoordinate();
+    const locked = !location || (block.value === location.block && Number(row.value) === location.row &&
+      Number(slot.value) === (location.slot ?? 0) && Number(tier.value) === (location.tier ?? 0));
+    if (locked || useSelectedStack.dataset.accessLocked === "true") useSelectedStack.disabled = locked;
+    useSelectedStack.dataset.accessLocked = String(locked);
+  }
+
+  useSelectedStack.addEventListener("click", () => {
+    if (busy) return;
+    const location = selectedStackCoordinate();
+    if (!location) return;
+    block.value = location.block;
+    updateRows();
+    if (block.value) row.value = location.row;
+    updateSlots();
+    slot.value = location.slot ?? "";
+    updateTiers();
+    tier.value = location.tier ?? "";
+    selectCoordinate();
+    if (!location.slot) warning.textContent = "The selected stack has no complete 40 ft slot pair.";
+    else if (!location.tier && !autoTier.checked) warning.textContent = "This footprint has no open tier. Choose a tier manually.";
+  });
   block.addEventListener("change", () => { updateRows(); selectCoordinate(); });
   row.addEventListener("change", () => { updateSlots(); selectCoordinate(); });
   slot.addEventListener("change", () => { updateTiers(); selectCoordinate(); });
   tier.addEventListener("change", selectCoordinate);
+  autoTier.addEventListener("change", () => { syncTierMode(); selectCoordinate(); });
   return {
     element,
     open(suggestion) {
       containerSize = suggestion.row.size;
+      autoTier.checked = true;
       options(block, "Select block", [...blocks.values()].filter(item => item.slots >= footprintSize())
         .map(item => [item.code, item.code]));
       updateRows();
@@ -225,19 +287,11 @@ function alternateLocationPicker(branch, onSelect) {
       block.focus();
     },
     warn(displaced) {
-      warning.textContent = displaced.length ? "This placement would replace " + displaced.join(", ") + "." : "";
+      warning.textContent = autoTier.checked && slot.value && !tier.value ?
+        "This footprint has no open tier. Turn off Auto-select open tier to choose a tier." :
+        displaced.length ? "This placement would replace " + displaced.join(", ") + "." : "";
     },
-    select(location) {
-      const destinationSlot = footprintSize() === 2 ? location.slot + location.slot % 2 : location.slot;
-      if (destinationSlot > blocks.get(location.block).slots) return;
-      block.value = location.block;
-      updateRows();
-      row.value = location.row;
-      updateSlots();
-      slot.value = destinationSlot;
-      updateTiers();
-      selectCoordinate();
-    }
+    refreshSelectedStack
   };
 }
 
@@ -266,7 +320,9 @@ async function simulationView(run, branches, id, onStart) {
       await loadSuggestion();
     },
     onSave: block => globalThis.saveStackingBlockAccess({id, branch: branch.branch_code, block_id: block.id}),
-    onStackClick: chooseMapStack
+    onSelectionChange: () => {
+      if (!busy) picker.refreshSelectedStack();
+    }
   };
   let map = createYardMap(branch, branches, mapOptions);
   const reorder = canReorder ?
@@ -276,10 +332,10 @@ async function simulationView(run, branches, id, onStart) {
   progress.setAttribute("aria-live", "polite");
   const next = el("button");
   next.type = "button";
-  const chooseAlternate = el("button", "Choose alternate location", "secondary");
+  const chooseAlternate = el("button", "Use manual input", "secondary");
   chooseAlternate.type = "button";
   chooseAlternate.setAttribute("aria-controls", "alternate-location");
-  const picker = alternateLocationPicker(branch, selectAlternate);
+  const picker = alternateLocationPicker(branch, selectAlternate, () => map.selectedLocation());
   const runToEnd = el("button", "Run to end", "run-to-end");
   runToEnd.type = "button";
   const viewTrace = el("button", "View trace", "secondary");
@@ -364,11 +420,6 @@ async function simulationView(run, branches, id, onStart) {
     showTrace();
   }
 
-  function chooseMapStack(location) {
-    if (!choosingAlternate || tracePicker.value !== "current" || busy || map.accessBusy()) return;
-    picker.select(location);
-  }
-
   function displacedContainers() {
     if (!manualDestination) return [];
     const {block, row, slot, tier} = manualDestination;
@@ -393,15 +444,19 @@ async function simulationView(run, branches, id, onStart) {
     const manual = current ? manualDestination : trace?.manual_destination;
     const alternate = manual ?? trace?.calculation?.candidates.find(candidate => candidate.candidate_rank === trace.alternate_rank);
     const canChoose = current && Boolean(trace?.calculation);
+    const manualMode = canChoose && choosingAlternate;
     chooseAlternate.hidden = !canChoose;
-    chooseAlternate.textContent = !choosingAlternate ? "Choose alternate location" :
+    chooseAlternate.textContent = !choosingAlternate ? "Use manual input" :
       winner ? "Use engine recommendation" : "Cancel manual placement";
-    chooseAlternate.setAttribute("aria-expanded", String(canChoose && choosingAlternate));
-    picker.element.hidden = !canChoose || !choosingAlternate;
+    chooseAlternate.setAttribute("aria-expanded", String(manualMode));
+    picker.element.hidden = !manualMode;
     picker.warn(displacedContainers());
-    heading.textContent = current ? "Suggested assignment" : "Assignment trace";
+    heading.textContent = manualMode ? "Manual assignment" : current ? "Suggested assignment" : "Assignment trace";
     next.hidden = !current || (!trace && !suggestionError);
-    next.classList.toggle("secondary", Boolean(manual || winner));
+    next.classList.toggle("secondary", Boolean(manualMode || winner));
+    const awaitingCoordinate = manualMode && !manual;
+    if (awaitingCoordinate || next.dataset.accessLocked === "true") next.disabled = awaitingCoordinate;
+    next.dataset.accessLocked = String(awaitingCoordinate);
     runToEnd.hidden = !current || !trace;
     if (!trace) {
       next.textContent = "Retry suggestion";
@@ -415,7 +470,7 @@ async function simulationView(run, branches, id, onStart) {
     const label = "#" + row.position + " " + (row.container_id || "Missing container ID");
     status.classList.remove("not-ready");
     if (current) {
-      next.textContent = manual ? "Place at manual location" : winner ? "Place container" : "Skip container";
+      next.textContent = manualMode ? "Place using manual input" : winner ? "Place container" : "Skip container";
       status.textContent = manual || winner ? label + (alternate ? " · Alternate selected · " : " · ") +
         placementLocation(alternate ?? winner, row.size) :
         label + " · " + row.reason;
@@ -424,7 +479,13 @@ async function simulationView(run, branches, id, onStart) {
         label + (row.status === "invalid" ? " skipped · " : " unplaced · ") + row.reason;
     }
     details.replaceChildren(...(calculation ? [placementTrace(calculation, row.status, row.size, alternate, manual, trace.displaced)] : []));
-    map.showTrace(current ? {...trace, manual_destination: manualDestination} : trace, !current && row.position !== run.processed);
+    const historical = !current && row.position !== run.processed;
+    map.showTrace(current ? {...trace, manual_destination: manualDestination} : trace, {
+      historical,
+      placed: !current && !historical ? run.last?.placement : null,
+      preserveSelection: manualMode
+    });
+    picker.refreshSelectedStack();
   }
   tracePicker.addEventListener("change", showTrace);
   viewTrace.addEventListener("click", () => {
@@ -543,7 +604,6 @@ async function simulationView(run, branches, id, onStart) {
     return action(async () => {
       map.setAccessEditable(false);
       track.inert = true;
-      const start = run.processed;
       if (toEnd) {
         runToEnd.textContent = "Running…";
         map.showTrace(null);
@@ -557,7 +617,6 @@ async function simulationView(run, branches, id, onStart) {
       } finally {
         track.inert = false;
         runToEnd.textContent = "Run to end";
-        if (run.processed > start) map.markPlacement(run.last.placement);
         await update();
       }
     }, (text, error) => {
@@ -569,7 +628,6 @@ async function simulationView(run, branches, id, onStart) {
 
   next.addEventListener("click", () => run.suggestion ? advance(false) : action(loadSuggestion));
   runToEnd.addEventListener("click", () => advance(true));
-  if (run.last?.placement) map.markPlacement(run.last.placement);
   await update();
   return root;
 }

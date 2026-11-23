@@ -219,20 +219,25 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    including placements completed so far.
 4. **Generate preview** shows the suggested assignment for the current container.
    Drag another card into the first remaining position to make it current and
-   see its suggestion. **Choose alternate location** accepts coordinates inside the
-   yard grid. Click a stack on the map or use the **Block**, **Row**, **Slot**, and
-   **Tier** dropdowns. A 40 ft container uses a complete slot pair. The simulator
-   asks for confirmation before replacing an occupant in the selected footprint.
-   **Use engine recommendation** returns to the engine's location. **Place at
-   manual location** commits a selected alternate, and **Place container**
-   commits the engine recommendation.
+   see its suggestion. **Use manual input** accepts coordinates inside the
+   yard grid. Select a stack on the map and click **Use selected stack**, or use
+   the **Block**, **Row**, **Slot**, and **Tier** dropdowns. **Auto-select open tier** starts on and picks the lowest
+   unoccupied tier across the footprint. Turn it off to select a tier directly.
+   **Use selected stack** copies the stack and its lowest open tier once. The
+   button is disabled when those values already match the form.
+   A 40 ft container uses a complete slot pair. The simulator asks for
+   confirmation before replacing an occupant in the selected footprint.
+   **Place using manual input** appears when the alternate picker opens and
+   becomes enabled when a coordinate is selected. **Use engine recommendation**
+   returns to the engine's location, which **Place container** commits.
    **View trace** shows the engine recommendation and committed alternate, and
    **Save yard CSV** exports the actual placement. When a row is invalid or has no
    qualifying location, **Skip container** advances the queue. **Run to end**
    starts with the displayed assignment and processes later rows automatically. Each placement marks
    the destination on the map with its tier. A 40 ft stack spans both slots
    as one tile. Use **View assignment** to revisit completed rows or return to
-   the current suggestion. Expand **Show calculation details** for the
+   the current suggestion. The current container's map view focuses on its
+   rank-1 candidate. Expand **Show calculation details** for the
    rejection reasons, parameter scores, and candidates in yard order.
    The map outlines locations that passed feasibility and parameter selection,
    with the chosen placement in purple and rank badges for the top five.

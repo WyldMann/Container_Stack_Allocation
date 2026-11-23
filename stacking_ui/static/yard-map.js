@@ -223,7 +223,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   const assignedParameters = (stack, partner) => partner ?
     [...new Set([...partner.parameters, ...stack.parameters])] : stack.parameters;
 
-  function renderInspector(panel, block, stack, partner, placed, traceEntries) {
+  function renderInspector(panel, block, stack, partner, selectedSlot, placed, traceEntries) {
     const heading = el("div", undefined, "yard-inspector-heading");
     const extra = Math.max(0, stack.tiers.length - stack.capacity);
     const occupancy = el("span", stack.removed ? "Removed · " + stack.tiers.length + " occupied" :
@@ -249,7 +249,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       panel.append(el("p", "Occupied tiers with missing container records.", "yard-gap-note"));
     }
     const footprint = stack.tiers.find(tier => tier.size === "40");
-    if (partner) panel.append(el("p", "40 ft stack", "yard-caption"));
+    if (partner) panel.append(el("p", "40 ft stack · Selected slot " + two(selectedSlot), "yard-caption"));
     else if (footprint) panel.append(el("p", "40 ft footprint · Slots " +
       two(footprint.anchor_slot - 1) + "-" + two(footprint.anchor_slot), "yard-caption"));
 
@@ -358,7 +358,6 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
 
   let selection;
   let placement;
-  let historicalTrace = false;
   const marked = new Set();
   const traceTiles = new Map();
 
@@ -386,7 +385,6 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     tile.tabIndex = previous.tabIndex === 0 ? 0 : tile.tabIndex;
     if (view.focusIndex === index - 1) view.focusIndex = index;
     if (selection?.view === view && selection.index === index - 1) {
-      selection.index = index;
       tile.setAttribute("aria-pressed", "true");
     }
     previous.parentElement.remove();
@@ -400,17 +398,24 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     }
 
     const {block, tiles} = view;
-    if (tiles[index] === tiles[index + 1]) index++;
-    const stack = block.stacks[index];
-    const partner = pairPartner(view, index);
+    const anchor = tiles[index] === tiles[index + 1] ? index + 1 : index;
+    const stack = block.stacks[anchor];
+    const partner = pairPartner(view, anchor);
     tiles[view.focusIndex].tabIndex = -1;
-    tiles[index].tabIndex = 0;
-    tiles[index].setAttribute("aria-pressed", "true");
-    view.focusIndex = index;
+    tiles[anchor].tabIndex = 0;
+    tiles[anchor].setAttribute("aria-pressed", "true");
+    view.focusIndex = anchor;
     selection = {view, index};
-    const placed = !historicalTrace && placement?.block === block.code &&
+    const placed = placement?.block === block.code &&
       placement.stacks.some(item => item.row === stack.row && item.slot === stack.slot);
-    renderInspector(inspector, block, stack, partner, placed ? placement : null, traceTiles.get(tiles[index]));
+    renderInspector(inspector, block, stack, partner, block.stacks[index].slot,
+      placed ? placement : null, traceTiles.get(tiles[anchor]));
+  }
+
+  function selectedLocation() {
+    const {view, index} = selection;
+    const {row, slot} = view.block.stacks[index];
+    return {block: view.block.code, row, slot};
   }
 
   function paintStack(tile, block, stack, partner) {
@@ -517,10 +522,10 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
         tile.tabIndex = index === 0 ? 0 : -1;
         tile.setAttribute("aria-pressed", "false");
         tile.addEventListener("click", event => {
-          selectStack(view, index);
           const bounds = tile.getBoundingClientRect();
           const leftHalf = event.detail && pairPartner(view, index) && event.clientX < bounds.left + bounds.width / 2;
-          accessOptions.onStackClick?.({block: block.code, row: row + 1, slot: leftHalf ? slot : slot + 1});
+          selectStack(view, leftHalf ? index - 1 : index);
+          accessOptions.onSelectionChange?.();
         });
         tile.addEventListener("keydown", event => {
           const direction = {ArrowLeft:[0,-1], ArrowRight:[0,1], ArrowUp:[-1,0], ArrowDown:[1,0]}[event.key];
@@ -533,6 +538,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
           const next = nextRow * block.slots + nextSlot;
           selectStack(view, next);
           view.tiles[next].focus();
+          accessOptions.onSelectionChange?.();
         });
         view.tiles.push(tile);
         const cell = el("td");
@@ -671,7 +677,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   resizeMap();
   header.append(el("p", branchLabel(branch) + " · Compact schematic (distances not to scale)", "yard-caption"));
 
-  function showTrace(trace, historical = false) {
+  function showTrace(trace, {historical = false, placed = null, preserveSelection = false} = {}) {
     for (const tile of traceTiles.keys()) {
       tile.classList.remove("yard-trace-candidate", "yard-trace-winner",
         "yard-trace-pair", "yard-trace-pair-anchor");
@@ -679,8 +685,8 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       tile.removeAttribute("aria-description");
     }
     traceTiles.clear();
-    historicalTrace = historical;
     root.classList.toggle("yard-trace-history", historical);
+    let target = markPlacement(placed);
     traceKey.hidden = !trace;
     if (!trace) {
       selectStack(selection.view, selection.index);
@@ -689,7 +695,6 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
 
     const {row, calculation, alternate_rank: alternateRank, manual_destination: manual} = trace;
     const candidates = calculation?.candidates ?? [];
-    let target;
     for (const candidate of candidates) {
       const view = views.find(item => item.block.code === candidate.block);
       const anchor = (candidate.row - 1) * view.block.slots + candidate.slot - 1;
@@ -747,11 +752,11 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       el("span", context + (historical ? " · Earlier trace on the current yard" : "")),
       el("span", manual ? "Purple marks the manual location" : candidates.length ?
         candidates.length + " passed parameter selection · Badges mark the top five · Select a location for its score" +
-          (row.status === "suggested" ? (alternateRank == null ? " · Purple marks the suggestion" : " · Purple marks the chosen alternate") :
+          (row.status === "suggested" ? (alternateRank == null ? " · Purple marks rank 1" : " · Purple marks the chosen alternate") :
             row.status === "placed" ? " · Purple marks the placement" : "") :
         "No locations passed parameter selection")
     );
-    if (target) {
+    if (target && !preserveSelection) {
       selectStack(target.view, target.anchor);
       if (scale > fitScale) centerSelection();
     } else {
@@ -760,7 +765,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   }
 
 
-  function markPlacement(placed, reveal = false) {
+  function markPlacement(placed) {
     for (const tile of marked) {
       tile.classList.remove("yard-placed");
       tile.querySelector(".yard-placement-badge")?.remove();
@@ -768,10 +773,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     }
     marked.clear();
     placement = placed;
-    if (!placed) {
-      selectStack(selection.view, selection.index);
-      return;
-    }
+    if (!placed) return null;
     const view = views.find(item => item.block.code === placed.block);
     const index = (placed.row - 1) * view.block.slots + placed.slot - 1;
     for (const stack of placed.stacks) {
@@ -784,11 +786,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     const badge = el("span", "T" + placed.tier, "yard-placement-badge");
     badge.setAttribute("aria-hidden", "true");
     anchor.append(badge);
-    selectStack(view, index);
-    if (reveal) {
-      if (scale > fitScale) centerSelection();
-      anchor.scrollIntoView({block: "nearest", inline: "nearest"});
-    }
+    return {view, anchor: index};
   }
 
   function applyPlacement(placed) {
@@ -811,6 +809,6 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   }
   syncAccessControls();
   showAccessChanges();
-  return {element: root, applyPlacement, markPlacement, showTrace, accessBusy: () => accessPending,
+  return {element: root, applyPlacement, showTrace, selectedLocation, accessBusy: () => accessPending,
     setAccessEditable(editable) { accessEditable = editable; syncAccessControls(); }};
 }
