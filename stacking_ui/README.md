@@ -257,6 +257,8 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    format as `containers.csv`. Select a block and then a slot in the linked
    placement maps to compare tier contents. Compare placements by container ID
    and review occupancy and parameter compliance for the yard and each block.
+   Parameter compliance measures real containers only. Dummy tiers still count
+   toward occupancy.
 
 Existing draft JSON files work from the project root for batch use.
 

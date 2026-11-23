@@ -317,6 +317,43 @@ class ScenarioTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no container records for branch JKT74"):
             session.request(comparison | {"text": self.payload["files"]["existing_containers"]["content"]})
 
+    def test_dummy_containers_do_not_affect_block_or_yard_parameter_compliance(self):
+        first_block = self.rows["yard_blocks"][0]
+        self.rows["yard_blocks"].extend([
+            first_block | {"block_id": "11", "block_code": "B"},
+            first_block | {"block_id": "12", "block_code": "C"},
+        ])
+        self.rows["existing_containers"].append(
+            self.rows["existing_containers"][0] | {"container_id": "OTHER", "block_code": "B"}
+        )
+        self.rows["parameters"] = [dict(parameter_id="38", parameter_name="20 ft", container_size="20",
+                                         container_size_score="2", terminal_id="1", branch_id="2")]
+        self.rows["yard_planning"] = [dict(parameter_id="38", block_id="10", row_no="1", slot_no="1",
+                                            terminal_id="1", branch_id="2")]
+        self.rows["inbound_containers"] = []
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+
+        for position, (block, size, expected) in enumerate((("A", "20", 1.0), ("C", "40", None)), 1):
+            session.request({"op": "add_queue_row", "size": size, "dummy": True, **request})
+            suggestion = session.request({"op": "suggest", **request})
+            step = session.request({
+                "op": "step", "position": position, "suggestion_id": suggestion["suggestion_id"],
+                "manual_destination": {"block": block, "row": 1, "slot": 2, "tier": 1}, **request,
+            })
+            self.assertEqual(step["placement"]["parameter_compliance"], expected)
+        session.request({"op": "add_stack_dummy", "block": "A", "row": 1, "slot": 1, **request})
+
+        exported = session.request({"op": "yard_csv"})
+        report = session.request({"op": "compare_yard", "name": "export.csv", "text": exported, **request})
+        scores = {block["block"]: block["simulated"]["parameter_compliance"] for block in report["blocks"]}
+        self.assertEqual(scores, {"A": 1.0, "B": 0.0, "C": None})
+        self.assertEqual(report["simulated"]["parameter_compliance"], 0.5)
+        self.assertEqual(report["simulated"]["parameter_compliance"], report["reference"]["parameter_compliance"])
+        self.assertEqual(report["simulated"]["occupied_tiers"] - report["reference"]["occupied_tiers"], 4)
+
     def test_duplicate_queue_ids_are_not_removed_and_link_to_source(self):
         self.rows["inbound_containers"] += [dict(container_id="NEW1", container_size="20"), dict(container_id="OLD", container_size="20")]
         preview = self.preview()

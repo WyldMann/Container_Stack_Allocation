@@ -1,5 +1,5 @@
 from .stack import Stack
-from .container import DummyContainer
+from .container import DummyContainer, InboundDummyContainer
 from .equipment import *
 
 class Block:
@@ -61,9 +61,9 @@ class Block:
         return anomalies
 
     def parameterCompliance(self) -> float | None:
-        """Average each container's best normalized anchor-stack parameter score.
+        """Average each real container's best normalized anchor-stack parameter score.
 
-        Containers without parameters contribute zero. Empty blocks return None.
+        Containers without parameters contribute zero. Blocks with no real containers return None.
         Parameter criteria and nonnegative scores must remain as initialized.
         """
         total_compliance = 0.0
@@ -72,7 +72,7 @@ class Block:
         for row_stacks in self.slots:
             for slot_index, stack in enumerate(row_stacks):
                 for container in stack.getContainers():
-                    if container is None or isinstance(container, DummyContainer):
+                    if container is None or isinstance(container, (DummyContainer, InboundDummyContainer)):
                         continue
                     # Count 40-foot containers only at their odd-indexed anchor.
                     if container.getContSize() == "40" and slot_index % 2 == 0:

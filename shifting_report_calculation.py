@@ -12,6 +12,7 @@ from config import (
 )
 from config.application.input_filters import branch_input_settings
 from entities import Yard
+from entities.container import DummyContainer, InboundDummyContainer
 from presenter import YardPresenter
 from repository import load_yard_inputs
 from repository.branch_repository import BranchDirectory
@@ -177,6 +178,7 @@ def _build_loaded_report(input_settings, inputs, connection, *, generated_at=Non
     counts = Counter(
         tuple(container.getCoordsStr()[:2])
         for container in yard.containers.values()
+        if not isinstance(container, (DummyContainer, InboundDummyContainer))
     )
     compliance_by_block = {}
     container_counts = {}

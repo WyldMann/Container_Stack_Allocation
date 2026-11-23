@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 from config.application.input_filters import mapped_filters
 from entities import Container, Yard
-from entities.container import DummyContainer
+from entities.container import DummyContainer, InboundDummyContainer
 from repository import CSVLoader, InputError
 from repository.repository import Repository
 from utils import strGeneralize
@@ -104,6 +104,10 @@ def _placement(container):
 
 def _overview(yard):
     container_counts = Counter(container.getCoordsStr()[1] for container in yard.containers.values())
+    compliance_counts = Counter(
+        container.getCoordsStr()[1] for container in yard.containers.values()
+        if not isinstance(container, (DummyContainer, InboundDummyContainer))
+    )
     blocks = {}
     for block in yard.blocks_by_id.values():
         stacks = [stack for row in block.getSlots() for stack in row]
@@ -119,9 +123,10 @@ def _overview(yard):
     total = {key: sum(block[key] for block in blocks.values()) for key in (
         "containers", "occupied_tiers", "tier_capacity", "dummy_tiers", "anomalous_stacks",
     )}
+    compliance_count = sum(compliance_counts.values())
     total["parameter_compliance"] = (
-        sum(block["containers"] * (block["parameter_compliance"] or 0) for block in blocks.values())
-        / total["containers"] if total["containers"] else None
+        sum(compliance_counts[code] * (block["parameter_compliance"] or 0) for code, block in blocks.items())
+        / compliance_count if compliance_count else None
     )
     for metrics in (total, *blocks.values()):
         capacity = metrics["tier_capacity"]
