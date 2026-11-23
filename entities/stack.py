@@ -21,7 +21,7 @@ class Stack:
         self.parameters = parameters
         self.max_tier = max_tier
         self.coordinates = coordinates
-        self.mode = '0'   # '0' = None, 'X' = removed, '20' = cont20, '40' = cont40. which cont type it serves
+        self.mode = '0'   # 0 = empty, X = removed, 20/40 = size, mixed = manual placements of both sizes.
         self.even = self.coordinates[2] % 2 == 0     # cont40 is only assigned to evens in 1-based indexing, aka odd here
 
     def getContainers(self) -> list[Container | None]: return self.containers

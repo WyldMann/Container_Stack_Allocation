@@ -146,6 +146,106 @@ function enableQueueReordering({summary, track, focusCard, report}, run, id, acc
   return {move, refresh};
 }
 
+function alternateLocationPicker(branch, onSelect) {
+  const element = el("div", undefined, "simulation-alternate");
+  element.id = "alternate-location";
+  element.hidden = true;
+  element.append(el("p", "Select a stack on the map or choose its block, row, slot, and tier below."));
+  const fields = el("div", undefined, "simulation-alternate-fields");
+  const [block, row, slot, tier] = ["Block", "Row", "Slot", "Tier"].map(name => {
+    const label = el("label", name);
+    const select = el("select");
+    label.append(select);
+    fields.append(label);
+    return select;
+  });
+  const warning = el("p", undefined, "not-ready");
+  warning.setAttribute("aria-live", "polite");
+  element.append(fields, warning);
+  const blocks = new Map(branch.yard_map.blocks.map(item => [item.code, item]));
+  let containerSize;
+  const numbers = count => Array.from({length: count}, (_, index) => index + 1);
+  const currentBlock = () => blocks.get(block.value);
+  const footprintSize = () => containerSize === "40" ? 2 : 1;
+
+  function options(select, prompt, values) {
+    const placeholder = el("option", prompt);
+    placeholder.value = "";
+    const choices = document.createDocumentFragment();
+    choices.append(placeholder);
+    for (const [value, label] of values) {
+      const option = el("option", label);
+      option.value = value;
+      choices.append(option);
+    }
+    select.replaceChildren(choices);
+    select.disabled = values.length === 0;
+    select.dataset.accessLocked = String(select.disabled);
+  }
+
+  function updateTiers() {
+    const yardBlock = currentBlock();
+    options(tier, "Select tier", !slot.value ? [] : numbers(yardBlock.tier_limit).map(value => [value, value]));
+    if (!slot.value) return;
+    const stacks = footprintStacks(yardBlock, Number(row.value), Number(slot.value), containerSize);
+    const highest = stacks.reduce((height, stack) => stack.tiers.reduce(
+      (top, item) => Math.max(top, item.tier), height), 0);
+    tier.value = Math.min(highest + 1, yardBlock.tier_limit);
+  }
+
+  function updateSlots() {
+    const size = footprintSize();
+    const count = row.value ? Math.floor(currentBlock().slots / size) : 0;
+    options(slot, "Select slot", numbers(count).map(index => [
+      index * size, size === 2 ? (index * size - 1) + "–" + index * size : index
+    ]));
+    updateTiers();
+  }
+
+  function updateRows() {
+    options(row, "Select row", numbers(currentBlock()?.rows ?? 0).map(value => [value, value]));
+    updateSlots();
+  }
+
+  function selectCoordinate() {
+    onSelect(tier.value ? {block: block.value, row: Number(row.value), slot: Number(slot.value), tier: Number(tier.value)} : null);
+  }
+  block.addEventListener("change", () => { updateRows(); selectCoordinate(); });
+  row.addEventListener("change", () => { updateSlots(); selectCoordinate(); });
+  slot.addEventListener("change", () => { updateTiers(); selectCoordinate(); });
+  tier.addEventListener("change", selectCoordinate);
+  return {
+    element,
+    open(suggestion) {
+      containerSize = suggestion.row.size;
+      options(block, "Select block", [...blocks.values()].filter(item => item.slots >= footprintSize())
+        .map(item => [item.code, item.code]));
+      updateRows();
+      element.hidden = false;
+      block.focus();
+    },
+    warn(displaced) {
+      warning.textContent = displaced.length ? "This placement would replace " + displaced.join(", ") + "." : "";
+    },
+    select(location) {
+      const destinationSlot = footprintSize() === 2 ? location.slot + location.slot % 2 : location.slot;
+      if (destinationSlot > blocks.get(location.block).slots) return;
+      block.value = location.block;
+      updateRows();
+      row.value = location.row;
+      updateSlots();
+      slot.value = destinationSlot;
+      updateTiers();
+      selectCoordinate();
+    }
+  };
+}
+
+function footprintStacks(block, row, slot, size) {
+  const anchor = (row - 1) * block.slots + slot - 1;
+  return size === "40" ? block.stacks.slice(anchor - 1, anchor + 1) : [block.stacks[anchor]];
+}
+
 async function simulationView(run, branches, id, onStart) {
   const {branch} = run;
   const root = el("div");
@@ -157,7 +257,7 @@ async function simulationView(run, branches, id, onStart) {
     onAdd: typeof globalThis.addStackingQueueRow === "function" ? addContainer : null
   });
   const {panel: queuePanel, track, refreshDetails} = queue;
-  const map = createYardMap(branch, branches, {
+  const mapOptions = {
     editable: run.processed === 0 && typeof globalThis.updateStackingBlockAccess === "function",
     onChange: async (block, side, value) => {
       await globalThis.updateStackingBlockAccess({
@@ -165,15 +265,21 @@ async function simulationView(run, branches, id, onStart) {
       });
       await loadSuggestion();
     },
-    onSave: block => globalThis.saveStackingBlockAccess({id, branch: branch.branch_code, block_id: block.id})
-  });
+    onSave: block => globalThis.saveStackingBlockAccess({id, branch: branch.branch_code, block_id: block.id}),
+    onStackClick: chooseMapStack
+  };
+  let map = createYardMap(branch, branches, mapOptions);
   const reorder = canReorder ?
-    enableQueueReordering(queue, run, id, map.accessBusy, loadSuggestion) : null;
+    enableQueueReordering(queue, run, id, () => map.accessBusy(), loadSuggestion) : null;
   const controls = el("div", undefined, "simulation-controls actions");
   const progress = el("strong");
   progress.setAttribute("aria-live", "polite");
   const next = el("button");
   next.type = "button";
+  const chooseAlternate = el("button", "Choose alternate location", "secondary");
+  chooseAlternate.type = "button";
+  chooseAlternate.setAttribute("aria-controls", "alternate-location");
+  const picker = alternateLocationPicker(branch, selectAlternate);
   const runToEnd = el("button", "Run to end", "run-to-end");
   runToEnd.type = "button";
   const viewTrace = el("button", "View trace", "secondary");
@@ -185,7 +291,7 @@ async function simulationView(run, branches, id, onStart) {
   snapshotPicker.accept = ".csv";
   snapshotPicker.hidden = true;
   const buttons = el("div", undefined, "actions");
-  buttons.append(next, viewTrace, runToEnd, compare);
+  buttons.append(next, chooseAlternate, viewTrace, runToEnd, compare);
   controls.append(progress, buttons);
   const outcome = el("div", undefined, "simulation-outcome");
   const traceLabel = el("label", undefined, "simulation-trace-picker");
@@ -198,7 +304,7 @@ async function simulationView(run, branches, id, onStart) {
   const status = el("p");
   status.setAttribute("role", "status");
   const details = el("div");
-  outcome.append(heading, traceLabel, status, details);
+  outcome.append(heading, traceLabel, picker.element, status, details);
   const comparison = el("div", undefined, "yard-comparison");
   const comparisonStatus = el("p");
   comparisonStatus.setAttribute("role", "status");
@@ -236,8 +342,12 @@ async function simulationView(run, branches, id, onStart) {
   run.traces.forEach(appendTraceOption);
 
   let suggestionError = "";
+  let choosingAlternate = false;
+  let manualDestination = null;
   async function loadSuggestion() {
     run.suggestion = null;
+    choosingAlternate = false;
+    manualDestination = null;
     suggestionError = "";
     tracePicker.value = "current";
     showTrace();
@@ -249,13 +359,49 @@ async function simulationView(run, branches, id, onStart) {
     showTrace();
   }
 
+  function selectAlternate(destination) {
+    manualDestination = destination;
+    showTrace();
+  }
+
+  function chooseMapStack(location) {
+    if (!choosingAlternate || tracePicker.value !== "current" || busy || map.accessBusy()) return;
+    picker.select(location);
+  }
+
+  function displacedContainers() {
+    if (!manualDestination) return [];
+    const {block, row, slot, tier} = manualDestination;
+    const yardBlock = branch.yard_map.blocks.find(item => item.code === block);
+    const ids = footprintStacks(yardBlock, row, slot, run.suggestion.row.size)
+      .flatMap(stack => stack.tiers.filter(item => item.tier === tier && item.container_id).map(item => item.container_id));
+    return [...new Set(ids)];
+  }
+
+  chooseAlternate.addEventListener("click", () => {
+    if (busy || map.accessBusy()) return;
+    choosingAlternate = !choosingAlternate;
+    if (choosingAlternate) picker.open(run.suggestion);
+    else manualDestination = null;
+    showTrace();
+  });
+
   function showTrace() {
     const current = tracePicker.value === "current";
     const trace = current ? run.suggestion : run.traces[Number(tracePicker.value)];
     const winner = current ? trace?.calculation?.candidates.find(candidate => candidate.selected) : null;
+    const manual = current ? manualDestination : trace?.manual_destination;
+    const alternate = manual ?? trace?.calculation?.candidates.find(candidate => candidate.candidate_rank === trace.alternate_rank);
+    const canChoose = current && Boolean(trace?.calculation);
+    chooseAlternate.hidden = !canChoose;
+    chooseAlternate.textContent = !choosingAlternate ? "Choose alternate location" :
+      winner ? "Use engine recommendation" : "Cancel manual placement";
+    chooseAlternate.setAttribute("aria-expanded", String(canChoose && choosingAlternate));
+    picker.element.hidden = !canChoose || !choosingAlternate;
+    picker.warn(displacedContainers());
     heading.textContent = current ? "Suggested assignment" : "Assignment trace";
     next.hidden = !current || (!trace && !suggestionError);
-    next.classList.toggle("secondary", Boolean(winner));
+    next.classList.toggle("secondary", Boolean(manual || winner));
     runToEnd.hidden = !current || !trace;
     if (!trace) {
       next.textContent = "Retry suggestion";
@@ -269,15 +415,16 @@ async function simulationView(run, branches, id, onStart) {
     const label = "#" + row.position + " " + (row.container_id || "Missing container ID");
     status.classList.remove("not-ready");
     if (current) {
-      next.textContent = winner ? "Place container" : "Skip container";
-      status.textContent = winner ? label + " · " + placementLocation(winner, row.size) :
+      next.textContent = manual ? "Place at manual location" : winner ? "Place container" : "Skip container";
+      status.textContent = manual || winner ? label + (alternate ? " · Alternate selected · " : " · ") +
+        placementLocation(alternate ?? winner, row.size) :
         label + " · " + row.reason;
     } else {
-      status.textContent = location ? label + " placed · " + location :
+      status.textContent = location ? label + (alternate ? " placed at alternate · " : " placed · ") + location :
         label + (row.status === "invalid" ? " skipped · " : " unplaced · ") + row.reason;
     }
-    details.replaceChildren(...(calculation ? [placementTrace(calculation, row.status, row.size)] : []));
-    map.showTrace(trace, !current && row.position !== run.processed);
+    details.replaceChildren(...(calculation ? [placementTrace(calculation, row.status, row.size, alternate, manual, trace.displaced)] : []));
+    map.showTrace(current ? {...trace, manual_destination: manualDestination} : trace, !current && row.position !== run.processed);
   }
   tracePicker.addEventListener("change", showTrace);
   viewTrace.addEventListener("click", () => {
@@ -313,7 +460,7 @@ async function simulationView(run, branches, id, onStart) {
     viewTrace.hidden = traceLabel.hidden = !run.last;
     outcome.hidden = done && !run.last;
     if (outcome.hidden) {
-      next.hidden = runToEnd.hidden = true;
+      next.hidden = chooseAlternate.hidden = runToEnd.hidden = true;
       map.showTrace(null);
       return;
     }
@@ -352,28 +499,47 @@ async function simulationView(run, branches, id, onStart) {
   }
 
   async function stepForward() {
-    const step = await globalThis.stepStackingSimulation({
-      id, branch: branch.branch_code, position: run.processed + 1, suggestion_id: run.suggestion?.suggestion_id
-    });
+    let step;
+    try {
+      step = await globalThis.stepStackingSimulation({
+        id, branch: branch.branch_code, position: run.processed + 1, suggestion_id: run.suggestion?.suggestion_id,
+        manual_destination: manualDestination
+      });
+    } catch (error) {
+      if (manualDestination !== null) run.suggestion = null;
+      throw error;
+    }
     const card = track.children[run.processed];
     card.removeAttribute("aria-current");
     renderInboundCard(card, step.row);
     branch.queue[run.processed] = step.row;
     run.suggestion = null;
+    choosingAlternate = false;
+    manualDestination = null;
     run.processed++;
     if (run.processed === 1) onStart();
     run.placed += Number(step.row.status === "placed");
     run.invalid += Number(step.row.status === "invalid");
     run.last = step;
-    const trace = {row: step.row, calculation: step.calculation,
+    const trace = {row: step.row, calculation: step.calculation, alternate_rank: step.alternate_rank,
+      manual_destination: step.manual_destination, displaced: step.placement?.displaced,
       location: step.placement && placementLocation(step.placement)};
     run.traces.push(trace);
     appendTraceOption(trace);
-    if (step.placement) map.applyPlacement(step.placement);
+    if (step.placement) {
+      map.applyPlacement(step.placement);
+      if (step.placement.manual) {
+        const previousMap = map.element;
+        map = createYardMap(branch, branches, mapOptions);
+        previousMap.replaceWith(map.element);
+      }
+    }
   }
 
   function advance(toEnd) {
-    if (map.accessBusy()) return;
+    if (busy || map.accessBusy()) return;
+    const displaced = displacedContainers();
+    if (displaced.length && !window.confirm("Replace " + displaced.join(", ") + " in this simulation?")) return;
     return action(async () => {
       map.setAccessEditable(false);
       track.inert = true;
@@ -606,7 +772,7 @@ function heuristicTable(rows) {
   return breakdown;
 }
 
-function placementTrace(calculation, status, size) {
+function placementTrace(calculation, status, size, alternate, manual, displaced = []) {
   const number = traceNumber;
   const multipliers = calculation.enabled_multipliers ?? Object.keys(multiplierLabels);
   const reasons = {
@@ -640,14 +806,22 @@ function placementTrace(calculation, status, size) {
       number(calculation.candidate_count) + " of " + number(feasible) + " advanced"));
   }
   if (winning) {
-    const label = status === "placed" ? "Selected location" : "Proposed location";
+    const label = alternate ? "Engine recommendation" : status === "placed" ? "Selected location" : "Proposed location";
     const decision = el("li", label + " · " + placementLocation(winning, size) + " · " + (winning.equipment ?? "No equipment"));
     decision.append(heuristicTable(heuristicRows(winning, multipliers)));
     stages.append(decision);
     if (calculation.winning_score_ties > 1) {
       stages.append(el("li", "Tie-break · " + number(calculation.winning_score_ties) +
-        " candidates tied for first. The engine used the first in yard scan order."));
+        " candidates tied for first. The engine ranked the first in yard scan order highest."));
     }
+  }
+  if (alternate) {
+    const label = status === "placed" ? "Alternate placement" : "Alternate selected";
+    const decision = el("li", label + " · " + placementLocation(alternate, size) +
+      (manual ? " · Manual override" : " · " + (alternate.equipment ?? "No equipment")));
+    if (manual && displaced.length) decision.append(el("p", "Replaced " + displaced.join(", ") + "."));
+    if (!manual) decision.append(heuristicTable(heuristicRows(alternate, multipliers)));
+    stages.append(decision);
   }
   trace.append(stages);
 
@@ -682,7 +856,8 @@ function placementTrace(calculation, status, size) {
         ...multipliers.map(key => multiplierLabels[key]), "Heuristic score"],
       calculation.candidates.map(candidate => [
         placementLocation(candidate, size),
-        candidate.selected ? (status === "placed" ? "Selected" : "Proposed") : "Alternative",
+        candidate === alternate ? (status === "placed" ? "Alternate placed" : "Alternate selected") :
+          candidate.selected ? (alternate ? "Engine recommendation" : status === "placed" ? "Selected" : "Proposed") : "Alternative",
         candidate.parameters.map(parameter => "P" + parameter).join(", ") || "—", candidate.equipment ?? "No equipment",
         candidate.equipment_outside_block ? "Outside block" : number(candidate.distance),
         number(candidate.mass_difference), ...(showLoaderAccess ? loaderAccessValues(candidate) : []),

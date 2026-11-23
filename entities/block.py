@@ -11,6 +11,7 @@ class Block:
     loaders: list[Loader]
     pos_x: int
     pos_y: int
+    max_tier: int
 
     def __init__(self,
                  branch_id: str,
@@ -32,12 +33,13 @@ class Block:
         self.loaders = []
         self.pos_x = int(pos_x)
         self.pos_y = int(pos_y)
+        self.max_tier = int(max_tier)
 
         # assign slots
         for row_index in range(int(row_count)):
             stacks = []
             for slot_index in range(int(slot_count)):
-                stacks.append(Stack(int(max_tier), (self.block_id,row_index,slot_index)))
+                stacks.append(Stack(self.max_tier, (self.block_id,row_index,slot_index)))
             self.slots.append(stacks)
 
     def getId(self) -> str: return self.block_id

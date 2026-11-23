@@ -131,6 +131,13 @@ class LoaderAccessRule:
                 if (row_index, slot_index) in ground:
                     continue
                 size = stack.getMode()
+                if size in ("mixed", "X"):
+                    for occupied_size in ("20", "40"):
+                        if (occupied_size == "20" or slot_index % 2 == 1) and any(
+                            item is not None and item.getContSize() == occupied_size for item in stack.getContainers()
+                        ):
+                            yield ReceivingLocation(row_index, slot_index, occupied_size)
+                    continue
                 if size == "0":
                     # An unrepaired floating stack may still have an unset mode.
                     size = next(item.getContSize() for item in stack.getContainers() if item is not None)
@@ -159,8 +166,7 @@ class LoaderAccessRule:
         if proposal is not None and proposal.occupies((block.getId(), row_index, slot_index)):
             return False
         stack = block.getStack(row_index, slot_index)
-        # Removed slots are clear ground, never receiving destinations.
-        return stack.getMode() == "X" or stack.occupancy() == 0
+        return stack.occupancy() == 0
 
     @staticmethod
     def _search_ground(

@@ -78,7 +78,8 @@ class SimulationSession:
             return self.simulation.suggest(request.get("id"), request.get("branch"))
         if operation == "step" and self.simulation is not None:
             return self.simulation.step(request.get("id"), request.get("branch"), request.get("position"),
-                                        request.get("suggestion_id"))
+                                        request.get("suggestion_id"), request.get("alternate_rank"),
+                                        request.get("manual_destination"))
         if operation == "reorder_queue" and self.simulation is not None:
             return self.simulation.reorder_queue(request.get("id"), request.get("branch"), request.get("order"))
         if operation == "add_queue_row" and self.simulation is not None:

@@ -116,6 +116,71 @@ test("optional container details match the focused card and survive placement", 
   assert.equal((await containerDetails(page)).Weight, "—");
 });
 
+test("a highlighted 40 ft pair and coordinate dropdowns select the same alternate placement", async t => {
+  const page = await openPreview(t, 0);
+  await button(page, "Add container").click();
+  const form = page.locator("#inbound-add-form");
+  await form.getByRole("textbox", {name: "Container ID", exact: true}).fill("ALT40");
+  await form.getByRole("combobox", {name: "Size", exact: true}).selectOption("40");
+  await button(page, "Add to queue").click();
+  await feedback(page, "ALT40 added to the inbound queue.").waitFor();
+  const status = page.locator(".simulation-outcome [role=status]");
+  const recommendation = await status.textContent();
+
+  await button(page, "Choose alternate location").click();
+  const picker = page.locator("#alternate-location");
+  const select = label => picker.getByRole("combobox", {name: label, exact: true});
+  assert.equal(await button(page, "Place container").isVisible(), true);
+  await page.locator(".yard-trace-candidate.yard-trace-pair:not(.yard-trace-pair-anchor)").first().click();
+  await status.filter({hasText: "Alternate selected"}).waitFor();
+  const preview = await status.textContent();
+  assert.match(preview, /Slots \d+–\d+ · Tier \d+/);
+  assert.equal(await page.locator(".yard-trace-winner").count(), 2);
+  const [block, row, slot] = await Promise.all(["Block", "Row", "Slot"].map(label => select(label).inputValue()));
+
+  await button(page, "Use engine recommendation").click();
+  assert.equal(await status.textContent(), recommendation);
+  assert.equal(await picker.isVisible(), false);
+  assert.equal(await button(page, "Place container").isVisible(), true);
+  await button(page, "Choose alternate location").click();
+  await select("Block").selectOption(block);
+  await select("Row").selectOption(row);
+  await select("Slot").selectOption(slot);
+  assert.equal(await status.textContent(), preview);
+  const coordinate = preview.split("Alternate selected · ")[1];
+
+  await button(page, "Place at manual location").click();
+  await status.filter({hasText: "placed at alternate · " + coordinate}).waitFor();
+  await page.getByText(/Engine recommendation · Block/).first().waitFor();
+  await page.getByText("Alternate placement · " + coordinate, {exact: false}).first().waitFor();
+  assert.equal(await picker.isVisible(), false);
+});
+
+test("a manual coordinate can replace an occupied tier after confirmation", async t => {
+  const page = await openPreview(t, 1);
+  await button(page, "Choose alternate location").click();
+  const picker = page.locator("#alternate-location");
+  const select = name => picker.getByRole("combobox", {name, exact: true});
+  await select("Block").selectOption("A");
+  await select("Row").selectOption("1");
+  await select("Slot").selectOption("1");
+  await select("Tier").selectOption("1");
+  await picker.getByText("This placement would replace OLD.", {exact: true}).waitFor();
+
+  page.once("dialog", dialog => dialog.dismiss());
+  await button(page, "Place at manual location").click();
+  assert.equal(await page.locator(".inbound-card.inbound-pending").count(), 1);
+  page.once("dialog", async dialog => {
+    assert.match(dialog.message(), /Replace OLD/);
+    await dialog.accept();
+  });
+  await button(page, "Place at manual location").click();
+  await page.getByText("Replaced OLD.", {exact: true}).waitFor();
+  const placed = page.locator(".yard-placed");
+  assert.match(await placed.getAttribute("aria-label"), /Block A, row 1, Slot 01/i);
+  await page.getByText(/placed at alternate.*Tier 1/).waitFor();
+});
+
 test("quick moves update the next assignment and preserve processed rows", async t => {
   const page = await openPreview(t, 4);
   const ids = cardIds(page);

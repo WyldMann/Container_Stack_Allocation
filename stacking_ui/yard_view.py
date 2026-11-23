@@ -84,7 +84,7 @@ def yard_view(yard):
             "loader_access": asdict(yard.loader_access_policies.get(block.getId(), LoaderBorderAccessPolicy())),
             "code": block.getCode(), "x": block.getPosX(), "y": block.getPosY(),
             "rows": len(grid), "slots": len(grid[0]),
-            "tier_limit": max(stack["capacity"] for stack in stacks),
+            "tier_limit": block.max_tier,
             "occupied_tiers": sum(len(stack["tiers"]) for stack in stacks),
             "tier_capacity": sum(stack["capacity"] for stack in stacks),
             "container_count": len(containers),

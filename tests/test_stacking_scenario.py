@@ -362,6 +362,76 @@ class ScenarioTests(unittest.TestCase):
         session.request(confirm | {"position": 3})
         self.assertIsNone(session.request(suggest))
 
+    def test_alternate_placement_uses_the_current_candidate_and_exports_its_coordinate(self):
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        session.request({"op": "reorder_queue", **request, "order": [2, 1]})
+        suggestion = session.request({"op": "suggest", **request})
+        candidates = suggestion["calculation"]["candidates"]
+        alternate = next(candidate for candidate in candidates if candidate["candidate_rank"] == 2)
+        original_yard = session.request({"op": "yard_csv"})
+        step = {"op": "step", **request, "position": 1, "suggestion_id": suggestion["suggestion_id"]}
+        for rank in (True, 1, len(candidates) + 1):
+            with self.subTest(rank=rank), self.assertRaisesRegex(SimulationError, "Choose an alternate location"):
+                session.request(step | {"alternate_rank": rank})
+        with self.assertRaisesRegex(SimulationError, "suggestion has changed"):
+            session.request(step | {"alternate_rank": 2, "suggestion_id": "stale"})
+        self.assertEqual(session.request({"op": "yard_csv"}), original_yard)
+
+        placed = session.request(step | {"alternate_rank": 2})
+        self.assertEqual(placed["alternate_rank"], 2)
+        self.assertEqual(placed["calculation"], suggestion["calculation"])
+        location_fields = ("block", "row", "slot", "tier")
+        self.assertEqual([placed["placement"][field] for field in location_fields],
+                         [alternate[field] for field in location_fields])
+        self.assertEqual([stack["slot"] for stack in placed["placement"]["stacks"]],
+                         [alternate["slot"] - 1, alternate["slot"]])
+        self.assertEqual(session.request(step | {"alternate_rank": 2}), placed)
+        with self.assertRaisesRegex(SimulationError, "already been processed"):
+            session.request(step | {"alternate_rank": 3})
+        records = csv.DictReader(io.StringIO(session.request({"op": "yard_csv"})))
+        exported, = (record for record in records if record["CONTNO"] == "NEW2")
+        self.assertEqual([exported[key] for key in ("BLOK", "ROW", "SLOT", "TIER")],
+                         [str(alternate[field]) for field in location_fields])
+        self.assertEqual(session.request({"op": "suggest", **request})["row"]["container_id"], "NEW1")
+
+    def test_manual_placement_can_override_a_removed_slot_and_replace_a_paired_occupant(self):
+        self.rows["removed_slots"] = [
+            dict(block_id="10", row_no=str(row), slot_no=str(slot))
+            for row in range(1, 3) for slot in range(1, 5)
+        ]
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        session.request({"op": "reorder_queue", **request, "order": [2, 1]})
+        suggested = session.request({"op": "suggest", **request})
+        self.assertEqual(suggested["row"]["status"], "unplaced")
+        coordinate = {"block": "A", "row": 2, "slot": 2, "tier": 3}
+        step = {"op": "step", **request, "position": 1, "suggestion_id": suggested["suggestion_id"]}
+        with self.assertRaisesRegex(SimulationError, "inside the yard grid"):
+            session.request(step | {"manual_destination": coordinate | {"tier": 4}})
+        self.assertEqual(session.request({"op": "suggest", **request}), suggested)
+
+        placed = session.request(step | {"manual_destination": coordinate})
+        self.assertEqual(placed["manual_destination"], coordinate)
+        self.assertEqual(placed["row"]["status"], "placed")
+        self.assertEqual([stack["slot"] for stack in placed["placement"]["stacks"]], [1, 2])
+        self.assertTrue(all(stack["removed"] and stack["anomaly"] for stack in placed["placement"]["stacks"]))
+        self.assertEqual(session.request(step | {"manual_destination": coordinate}), placed)
+
+        second = session.request({"op": "suggest", **request})
+        replacement = session.request(step | {"position": 2, "suggestion_id": second["suggestion_id"],
+                                               "manual_destination": coordinate | {"slot": 1}})
+        self.assertEqual(replacement["placement"]["displaced"], ["NEW2"])
+        self.assertEqual([stack["slot"] for stack in replacement["placement"]["updated_stacks"]], [1, 2])
+        self.assertEqual(replacement["placement"]["updated_stacks"][1]["tiers"], [])
+        records = list(csv.DictReader(io.StringIO(session.request({"op": "yard_csv"}))))
+        container, = records
+        self.assertEqual([container[key] for key in ("CONTNO", "BLOK", "ROW", "SLOT", "TIER")],
+                         ["NEW1", "A", "2", "1", "3"])
+
     def test_suggestions_refresh_after_changes_to_yard_access_or_tier_gaps(self):
         session = SimulationSession()
         preview = session.request({"op": "preview", "draft": self.payload})

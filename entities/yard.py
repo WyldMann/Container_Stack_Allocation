@@ -13,7 +13,7 @@ from .block import Block
 from .feasibility import PlacementFeasibility, PlacementProposal, LoaderBorderAccessPolicy
 from .feasibility.loader_access import LoaderAccessContext, LoaderAccessResult, ReceivingLocation
 
-from .bad_yard_data import BadYardData
+from .bad_yard_data import BadYardData, PlacementRejected
 
 # in this scope, there's only one yard
 class Yard:
@@ -581,6 +581,52 @@ class Yard:
 
     def placeContainerWithAssignResult(self, result: AssignResult) -> None:
         self.placeContainer(result.container, result.getBestCoordinate(), result.getBestEquipment())
+
+    def placeContainerManually(self, container: Container, proposal: PlacementProposal):
+        """Place within the block grid and remove any containers the footprint displaces."""
+        self.bad_data.validateInboundContainer(container, self.containers)
+        if proposal.container_size != container.getContSize():
+            raise PlacementRejected("The selected footprint must match the container size.")
+        block = self.blocks_by_id.get(proposal.block_id)
+        if (block is None or not 0 <= proposal.row_index < len(block.getSlots())
+                or not 0 <= proposal.tier_index < block.max_tier):
+            raise PlacementRejected("Choose a coordinate inside the yard grid.")
+        row = block.getSlots()[proposal.row_index]
+        if any(not 0 <= slot < len(row) for _, _, slot in proposal.footprint):
+            raise PlacementRejected("Choose a coordinate with the entire container inside the yard grid.")
+        targets = {row[slot] for _, _, slot in proposal.footprint}
+        tier = proposal.tier_index
+        displaced = {
+            stack.getContainer(tier) for stack in targets
+            if tier < len(stack.getContainers()) and stack.getContainer(tier) is not None
+        }
+        updates = []
+        for stack in row:
+            contents = stack.getContainers()
+            if stack not in targets and (tier >= len(contents) or contents[tier] not in displaced):
+                continue
+            changed = list(contents)
+            if stack in targets:
+                changed.extend([None] * max(0, tier + 1 - len(changed)))
+                changed[tier] = container
+            else:
+                changed[tier] = None
+            sizes = {item.getContSize() for item in changed if item is not None and not isinstance(item, DummyContainer)}
+            mode = stack.getMode()
+            if mode != "X":
+                mode = "mixed" if len(sizes) > 1 else next(iter(sizes), "0")
+            updates.append((stack, changed, mode))
+
+        container.setCoordsInt(self.getBlockBranchCodebyID(proposal.block_id) + proposal.coordinates[1:])
+        for stack, changed, mode in updates:
+            stack.containers[:] = changed
+            stack.setMode(mode)
+        displaced_ids = sorted(item.getId() for item in displaced if not isinstance(item, DummyContainer))
+        for container_id in displaced_ids:
+            self.containers.pop(container_id, None)
+        self.addContainer(container)
+        self.anomalyCheck()
+        return [stack for stack, _, _ in updates], displaced_ids
 
     def placeContainer(self, container, coordinates, equipment):
         validated = self.bad_data.validateInboundPlacement(
