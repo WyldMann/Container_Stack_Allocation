@@ -64,6 +64,14 @@
 .inbound-add-form p { flex-basis: 100%; margin: 0; }
 .inbound-add-field { display: grid; gap: 3px; font-size: 13px; }
 .inbound-dummy-choice { display: flex; align-items: center; gap: 6px; min-height: 40px; font-size: 13px; }
+.inbound-add-options { flex-basis: 100%; min-width: 0; padding-top: 8px; font-size: 13px; }
+.inbound-add-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 8px 16px;
+  margin-top: 8px;
+}
+.inbound-add-fields input, .inbound-add-fields select { width: 100%; min-width: 0; }
 .inbound-track {
   --queue-gap: 14px;
   display: flex;
@@ -105,6 +113,8 @@
   height: 12px;
   background: radial-gradient(circle, #657d74 1px, transparent 1.5px) 0 0 / 4px 4px;
 }
+/* Keep the drop target steady as cards scroll under the pointer. */
+.inbound-track.inbound-drag-active > .inbound-card { pointer-events: none; }
 .inbound-dragging > * { opacity: .55; }
 .inbound-card[data-drop-edge]::after {
   content: "";
@@ -144,7 +154,9 @@
 .inbound-details dd { margin: 0; overflow-wrap: anywhere; }
 .inbound-details-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 8px;
   margin-top: 10px;
 }
 .inbound-delete { color: #8b3728; background: #fff; border-color: #dfaa96; }

@@ -1,10 +1,14 @@
 "use strict";
 
 function enableQueueReordering({summary, track, focusCard, report}, run, id, accessBusy, onCurrentChange) {
-  const hint = el("span", " · Drag a card and release it at the insertion marker. Click a remaining card or press Tab until it has a green outline. Hold Alt and press ← or → to move it.");
+  const hint = el("span", " · Hold a dragged card near either edge to scroll. Release at the insertion marker. Use Alt + ← or → on a focused card to move it one place.");
   summary.append(hint);
   let dragged = null;
   let target = null;
+  let dragX = null;
+  let scrollSpeed = 0;
+  let scrollFrame = null;
+  let lastScrollTime = null;
 
   // A gap is the number of cards to its left, including any processed cards.
   function insertionGap(x) {
@@ -30,8 +34,28 @@ function enableQueueReordering({summary, track, focusCard, report}, run, id, acc
     if (card) card.dataset.dropEdge = gap === end ? "after" : "before";
   }
 
+  function scrollQueue(time) {
+    scrollFrame = null;
+    if (!dragged || !scrollSpeed || !track.isConnected) return;
+    const elapsed = lastScrollTime === null ? 16 : Math.min(time - lastScrollTime, 32);
+    lastScrollTime = time;
+    const before = track.scrollLeft;
+    const distance = Math.max(1, Math.round(Math.abs(scrollSpeed) * elapsed)) * Math.sign(scrollSpeed);
+    track.scrollLeft += distance;
+    if (track.scrollLeft !== before) scrollFrame = requestAnimationFrame(scrollQueue);
+    else lastScrollTime = null;
+  }
+
+  function stopScrolling() {
+    if (scrollFrame !== null) cancelAnimationFrame(scrollFrame);
+    scrollFrame = lastScrollTime = dragX = null;
+    scrollSpeed = 0;
+  }
+
   function endDrag() {
+    stopScrolling();
     markGap(null);
+    track.classList.remove("inbound-drag-active");
     dragged?.classList.remove("inbound-dragging");
     dragged = null;
   }
@@ -73,17 +97,33 @@ function enableQueueReordering({summary, track, focusCard, report}, run, id, acc
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", String(card.value));
     card.classList.add("inbound-dragging");
+    track.classList.add("inbound-drag-active");
   });
   track.addEventListener("dragover", event => {
     if (!dragged) return;
-    const gap = insertionGap(event.clientX);
+    dragX = event.clientX;
+    const {left, right, width} = track.getBoundingClientRect();
+    const edge = Math.min(64, width / 4);
+    const towardLeft = Math.max(0, 1 - (dragX - left) / edge);
+    const towardRight = Math.max(0, 1 - (right - dragX) / edge);
+    scrollSpeed = 1.2 * (towardRight - towardLeft);
+    if (scrollSpeed && scrollFrame === null) {
+      lastScrollTime = null;
+      scrollFrame = requestAnimationFrame(scrollQueue);
+    }
+    const gap = insertionGap(dragX);
     markGap(gap);
     if (gap === null) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
   });
   track.addEventListener("dragleave", event => {
-    if (!track.contains(event.relatedTarget)) markGap(null);
+    if (track.contains(event.relatedTarget)) return;
+    stopScrolling();
+    markGap(null);
+  });
+  track.addEventListener("scroll", () => {
+    if (dragX !== null) markGap(insertionGap(dragX));
   });
   track.addEventListener("drop", event => {
     if (!dragged) return;
@@ -95,21 +135,24 @@ function enableQueueReordering({summary, track, focusCard, report}, run, id, acc
   });
   track.addEventListener("dragend", endDrag);
 
-  return function refresh() {
+  function refresh() {
     const canMove = run.branch.queue.length - run.processed >= 2;
     hint.hidden = !canMove;
     for (const card of track.children) {
       card.draggable = canMove && card.value > run.processed;
     }
     report("");
-  };
+  }
+  return {move, refresh};
 }
 
 async function simulationView(run, branches, id, onStart) {
   const {branch} = run;
   const root = el("div");
+  const canReorder = typeof globalThis.reorderStackingQueue === "function";
   const queue = inboundQueue(branch, {
-    canDelete: row => row.position > run.processed,
+    firstPendingPosition: () => run.processed + 1,
+    onMove: canReorder ? (from, to) => reorder.move(from, to) : null,
     onDelete: typeof globalThis.deleteStackingQueueRow === "function" ? deleteContainer : null,
     onAdd: typeof globalThis.addStackingQueueRow === "function" ? addContainer : null
   });
@@ -124,7 +167,7 @@ async function simulationView(run, branches, id, onStart) {
     },
     onSave: block => globalThis.saveStackingBlockAccess({id, branch: branch.branch_code, block_id: block.id})
   });
-  const refreshQueue = typeof globalThis.reorderStackingQueue === "function" ?
+  const reorder = canReorder ?
     enableQueueReordering(queue, run, id, map.accessBusy, loadSuggestion) : null;
   const controls = el("div", undefined, "simulation-controls actions");
   const progress = el("strong");
@@ -250,7 +293,7 @@ async function simulationView(run, branches, id, onStart) {
   }
 
   async function update() {
-    refreshQueue?.();
+    reorder?.refresh();
     refreshDetails();
     map.setAccessEditable(run.processed === 0 && typeof globalThis.updateStackingBlockAccess === "function");
     const done = finished();

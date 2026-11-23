@@ -436,6 +436,45 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual([row["container_id"] for row in restored["preview"]["branches"][0]["queue"]],
                          ["NEW1", "NEW2"])
 
+    def test_add_queue_row_with_details_preserves_them_through_placement_and_export(self):
+        self.payload["files"].pop("inbound_containers")
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        add = {"op": "add_queue_row", **request, "container_id": "NEW3", "size": "20", "dummy": False}
+        for fields, message in (({"weight": "inf"}, "finite weight"),
+                                ({"move_time": "sometime"}, "valid move time"),
+                                ({"container_fill": "unknown"}, "Choose Full or Empty")):
+            with self.subTest(fields=fields), self.assertRaisesRegex(SimulationError, message):
+                session.request(add | {"details": fields})
+        self.assertIsNone(session.request({"op": "suggest", **request}))
+
+        move_time = "2026-11-23T07:10:43+07:00"
+        details = dict(container_fill=" f ", weight=" 12345.6789 ", container_condition="av",
+                       container_grade="fg", operation_type="d", principal="mrt",
+                       pol="THLCH", pot="SGSIN", pod="IDJKT", vessel="mps", voyage="kn286w",
+                       vessel_operator="mrt", move_time=f" {move_time} ")
+        row = session.request(add | {"details": details})
+        self.assertEqual({name: row[name] for name in (
+            "position", "fill", "weight", "condition", "grade", "operation", "principal", "pol", "pot",
+            "pod", "vessel", "voyage", "vessel_operator", "move_time",
+        )}, dict(position=1, fill="F", weight=12345.6789, condition="AV", grade="FG", operation="D",
+                 principal="MRT", pol="THLCH", pot="SGSIN", pod="IDJKT", vessel="MPS", voyage="KN286W",
+                 vessel_operator="MRT", move_time=move_time))
+        step = session.request({"op": "step", **request, "position": 1})
+        self.assertEqual(step["row"], row | {"status": "placed"})
+        records = csv.DictReader(io.StringIO(session.request({"op": "yard_csv"})))
+        exported, = (record for record in records if record["CONTNO"] == "NEW3")
+        self.assertEqual({key: exported[key] for key in (
+            "FULLMT", "WEIGHT", "DMG_FLAG", "CONT_GRADE", "OPERATION_TYPE", "PRINCIPAL", "POL", "POT",
+            "POD", "VESSEL", "VOYAGE", "VESSEL_OPERATOR", "MOVE_TIME",
+        )}, dict(FULLMT="F", WEIGHT="12345.6789", DMG_FLAG="AV", CONT_GRADE="FG", OPERATION_TYPE="D",
+                 PRINCIPAL="MRT", POL="THLCH", POT="SGSIN", POD="IDJKT", VESSEL="MPS", VOYAGE="KN286W",
+                 VESSEL_OPERATOR="MRT", MOVE_TIME=move_time))
+
+        dummy = session.request(add | {"size": "40", "dummy": True, "details": {"container_fill": "E"}})
+        self.assertEqual(dummy["weight"], 4000)
+
     def test_dummy_can_start_an_empty_queue_and_is_excluded_from_yard_export(self):
         self.payload["files"].pop("inbound_containers")
         session = SimulationSession()

@@ -13,7 +13,7 @@ from entities.container import InboundDummyContainer
 from entities.feasibility.placement_proposal import PlacementProposal
 from filewriter import ContainerFileWriter
 from repository.branch_repository import BranchDirectory
-from utils import strGeneralize
+from utils import parse_optional_finite_float, strGeneralize
 
 from .scenario import inbound_queue_row
 from .yard_view import stack_view
@@ -28,6 +28,10 @@ CONTAINER_EXPORT_COLUMNS = {
     "vessel_operator": "VESSEL_OPERATOR", "vessel": "VESSEL", "voyage": "VOYAGE",
     "weight": "WEIGHT", "move_time": "MOVE_TIME",
 }
+INBOUND_DETAIL_CODES = (
+    "container_fill", "container_condition", "container_grade", "operation_type", "principal",
+    "pol", "pot", "pod", "vessel", "voyage", "vessel_operator",
+)
 
 
 class SimulationError(ValueError):
@@ -194,7 +198,7 @@ class Simulation:
             raise SimulationError("This branch has no runnable inbound queue.")
         return self.branches[branch_code]
 
-    def add_queue_row(self, simulation_id, branch_code, container_id, size, dummy):
+    def add_queue_row(self, simulation_id, branch_code, container_id, size, dummy, details=None):
         branch = self._active_branch(simulation_id, branch_code)
         if size not in ("20", "40"):
             raise SimulationError("Choose a container size of 20 or 40 ft.")
@@ -217,11 +221,23 @@ class Simulation:
             if container_id in used_ids:
                 raise SimulationError("That container ID is already in the yard or inbound queue.")
 
-        record = {"container_id": container_id, "container_size": size,
-                  "principal": "", "container_condition": "", "container_fill": "", "container_grade": "",
-                  "pol": "", "pot": "", "pod": "", "vessel": "", "voyage": "", "vessel_operator": "",
-                  "weight": "", "move_time": "", "operation_type": ""}
-        row = inbound_queue_row(record, len(queue) + 1, input_position, weight=None)
+        if details is None:
+            details = {}
+        if not isinstance(details, dict) or any(not isinstance(value, str) for value in details.values()):
+            raise SimulationError("Enter container details as text or numbers in the form.")
+        record = {field: strGeneralize(details.get(field, "").strip()) for field in INBOUND_DETAIL_CODES}
+        record.update(container_id=container_id, container_size=size, weight=details.get("weight", "").strip(),
+                      move_time=details.get("move_time", "").strip())
+        if record["container_fill"] not in ("", "F", "E"):
+            raise SimulationError("Choose Full or Empty, or leave that field blank.")
+        if record["weight"] and parse_optional_finite_float(record["weight"]) is None:
+            raise SimulationError("Enter a finite weight.")
+        try:
+            container = Container(**record)
+        except (ValueError, OverflowError, OSError) as error:
+            raise SimulationError("Enter a valid move time, such as YYYY-MM-DD HH:MM.") from error
+
+        row = inbound_queue_row(record, len(queue) + 1, input_position, weight=container.getWeight())
         row.update(manual=True, dummy=dummy)
         branch["inputs"].setdefault("inbound_containers", []).append(record)
         queue.append(row)

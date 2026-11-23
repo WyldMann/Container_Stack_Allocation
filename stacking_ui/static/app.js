@@ -1265,6 +1265,23 @@ function renderInboundCard(card, row) {
   if (row.reason && row.status !== "invalid") card.append(el("span", row.reason, "inbound-reason"));
 }
 
+const inboundDetailFields = [
+  {name: "container_fill", rowKey: "fill", label: "Full / empty", choices: {F: "Full", E: "Empty"}},
+  {name: "weight", label: "Weight", type: "number",
+    format: value => value?.toLocaleString(undefined, {maximumSignificantDigits: 21})},
+  {name: "container_condition", rowKey: "condition", label: "Condition"},
+  {name: "container_grade", rowKey: "grade", label: "Grade"},
+  {name: "operation_type", rowKey: "operation", label: "Operation"},
+  {name: "principal", label: "Principal"},
+  {name: "pol", label: "Port of loading"},
+  {name: "pot", label: "Port of transshipment"},
+  {name: "pod", label: "Port of discharge"},
+  {name: "vessel", label: "Vessel"},
+  {name: "voyage", label: "Voyage"},
+  {name: "vessel_operator", label: "Vessel operator"},
+  {name: "move_time", label: "Move time", placeholder: "YYYY-MM-DD HH:MM"}
+];
+
 function inboundAddForm(button, onAdd, onAdded) {
   const form = el("form", undefined, "inbound-add-form");
   form.id = "inbound-add-form";
@@ -1293,6 +1310,29 @@ function inboundAddForm(button, onAdd, onAdded) {
   }
   const sizeLabel = el("label", undefined, "inbound-add-field");
   sizeLabel.append(el("span", "Size"), size);
+  const options = el("details", undefined, "inbound-add-options");
+  const fields = el("div", undefined, "inbound-add-fields");
+  const detailControls = inboundDetailFields.map(({name, label, choices, type, placeholder}) => {
+    const control = el(choices ? "select" : "input");
+    control.name = name;
+    if (choices) {
+      for (const [value, text] of [["", "Unspecified"], ...Object.entries(choices)]) {
+        const option = el("option", text);
+        option.value = value;
+        control.append(option);
+      }
+    } else {
+      control.type = type ?? "text";
+      if (type === "number") control.step = "any";
+      if (placeholder) control.placeholder = placeholder;
+    }
+    const field = el("label", undefined, "inbound-add-field");
+    field.append(el("span", label), control);
+    fields.append(field);
+    return control;
+  });
+  options.append(el("summary", "Container details (optional)"), fields);
+  options.addEventListener("invalid", () => { options.open = true; }, true);
   const submit = el("button", "Add to queue");
   submit.type = "submit";
   const cancel = el("button", "Cancel", "secondary");
@@ -1301,7 +1341,7 @@ function inboundAddForm(button, onAdd, onAdded) {
   actions.append(submit, cancel);
   const error = el("p", undefined, "not-ready");
   error.setAttribute("role", "status");
-  form.append(identity, sizeLabel, actions, error);
+  form.append(identity, sizeLabel, options, actions, error);
 
   let manualId = "";
   function syncIdentifier() {
@@ -1316,6 +1356,7 @@ function inboundAddForm(button, onAdd, onAdded) {
   });
   function close() {
     form.reset();
+    options.open = false;
     manualId = "";
     syncIdentifier();
     error.textContent = "";
@@ -1338,8 +1379,9 @@ function inboundAddForm(button, onAdd, onAdded) {
   form.addEventListener("submit", event => {
     event.preventDefault();
     error.textContent = "";
+    const details = Object.fromEntries(detailControls.map(control => [control.name, control.value]));
     return action(async () => {
-      const row = await onAdd({container_id: identifier.value, size: size.value, dummy: dummy.checked});
+      const row = await onAdd({container_id: identifier.value, size: size.value, dummy: dummy.checked, details});
       close();
       onAdded(row);
     }, message => { error.textContent = message; });
@@ -1347,7 +1389,7 @@ function inboundAddForm(button, onAdd, onAdded) {
   return form;
 }
 
-function inboundQueue(branch, {canDelete, onDelete, onAdd} = {}) {
+function inboundQueue(branch, {firstPendingPosition, onDelete, onAdd, onMove} = {}) {
   const panel = el("div", undefined, "inbound-queue");
   const title = el("h3", "Inbound queue");
   title.tabIndex = -1;
@@ -1355,7 +1397,7 @@ function inboundQueue(branch, {canDelete, onDelete, onAdd} = {}) {
   header.append(title);
   panel.append(header);
   if (onAdd) {
-    const add = el("button", "Add container", "secondary");
+    const add = el("button", "Add container");
     add.type = "button";
     header.append(add);
     panel.append(inboundAddForm(add, onAdd, row => {
@@ -1377,16 +1419,28 @@ function inboundQueue(branch, {canDelete, onDelete, onAdd} = {}) {
   const content = el("div");
   details.append(content);
   const deleteButton = onDelete ? el("button", "Delete container", "inbound-delete") : null;
+  const moveToFront = onMove ? el("button", "Move to front", "secondary") : null;
+  const moveToEnd = onMove ? el("button", "Move to end", "secondary") : null;
+  const actions = el("div", undefined, "inbound-details-actions");
+  for (const button of [moveToFront, moveToEnd, deleteButton].filter(Boolean)) {
+    button.type = "button";
+    actions.append(button);
+  }
   if (deleteButton) {
-    deleteButton.type = "button";
-    const actions = el("div", undefined, "inbound-details-actions");
-    actions.append(deleteButton);
-    details.append(actions);
     deleteButton.addEventListener("click", () => onDelete(branch.queue[inspectedCard.value - 1]));
+  }
+  if (onMove) {
+    moveToFront.addEventListener("click", () => onMove(inspectedCard.value, firstPendingPosition()));
+    moveToEnd.addEventListener("click", () => onMove(inspectedCard.value, branch.queue.length));
+  }
+  if (actions.childElementCount) {
+    details.append(actions);
     track.addEventListener("keydown", event => {
-      if (event.key !== "Enter" || event.target !== inspectedCard || deleteButton.disabled) return;
+      if (event.key !== "Enter" || event.target !== inspectedCard) return;
+      const button = actions.querySelector("button:enabled");
+      if (!button) return;
       event.preventDefault();
-      deleteButton.focus();
+      button.focus();
     });
   }
   function createCard(row) {
@@ -1424,19 +1478,10 @@ function inboundQueue(branch, {canDelete, onDelete, onAdd} = {}) {
     for (const [label, value] of [
       ["Status", row.status],
       ["Size", row.size && row.size + " ft"],
-      ["Full / empty", ({F: "Full", E: "Empty"})[row.fill] ?? row.fill],
-      ["Weight", row.weight?.toLocaleString()],
-      ["Condition", row.condition],
-      ["Grade", row.grade],
-      ["Operation", row.operation],
-      ["Principal", row.principal],
-      ["Port of loading", row.pol],
-      ["Port of transshipment", row.pot],
-      ["Port of discharge", row.pod],
-      ["Vessel", row.vessel],
-      ["Voyage", row.voyage],
-      ["Vessel operator", row.vessel_operator],
-      ["Move time (CSV)", row.move_time],
+      ...inboundDetailFields.map(({name, rowKey, label, choices, format}) => {
+        const value = row[rowKey ?? name];
+        return [label, format ? format(value) : choices?.[value] ?? value];
+      }),
       ["Source", row.dummy ? "Dummy container" : row.manual ? "Manual entry" :
         row.sources?.map(source => source.file + ", line " + source.line).join(", ")]
     ]) {
@@ -1447,11 +1492,18 @@ function inboundQueue(branch, {canDelete, onDelete, onAdd} = {}) {
     content.replaceChildren(el("h4", "#" + row.position + " · " + (row.container_id || "Missing container ID")));
     if (row.reason) content.append(el("p", row.reason, "inbound-reason"));
     content.append(fields);
-    if (deleteButton) {
-      deleteButton.disabled = !canDelete(row);
-      deleteButton.dataset.accessLocked = String(deleteButton.disabled);
-      deleteButton.title = deleteButton.disabled ? "Processed containers are part of the run history." : "";
+    const first = firstPendingPosition?.() ?? Infinity;
+    const pending = row.position >= first;
+    for (const [button, enabled] of [
+      [moveToFront, pending && row.position > first],
+      [moveToEnd, pending && row.position < branch.queue.length],
+      [deleteButton, pending]
+    ]) {
+      if (!button) continue;
+      button.disabled = !enabled;
+      button.dataset.accessLocked = String(!enabled);
     }
+    if (deleteButton) deleteButton.title = pending ? "" : "Processed containers are part of the run history.";
     details.hidden = false;
   }
 
