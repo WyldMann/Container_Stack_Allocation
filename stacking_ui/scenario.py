@@ -343,6 +343,25 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
                                  valid_inbound=sum(row["status"] == "pending" for row in branch["queue"]))
 
 
+def tier_gap_view(yard):
+    anomalies = yard.bad_data.getAnomalousStacks()
+    dummy_stacks = yard.bad_data.stacks_with_dummy_containers
+    counts = {"anomalous_stacks": len(anomalies), "stacks_with_dummy_containers": len(dummy_stacks)}
+    gaps = []
+    for stack in set(anomalies).union(dummy_stacks):
+        block_id, row, slot = stack.getCoords()
+        contents = stack.getContainers()
+        top = stack.occupiedHeight()
+        gaps.append({
+            "block": yard.getBlockByID(block_id).getCode(),
+            "row": row + 1, "slot": slot + 1,
+            "missing_tiers": [tier + 1 for tier in range(top) if contents[tier] is None],
+            "dummy_tiers": [tier + 1 for tier in stack.getDummyTiers()],
+        })
+    gaps.sort(key=lambda item: (item["block"], item["row"], item["slot"]))
+    return counts, gaps
+
+
 def public_branch(branch):
     entry = {key: value for key, value in branch.items()
              if key not in ("yard", "inputs", "container_profile", "saved_block_access")}
@@ -357,21 +376,8 @@ def public_branch(branch):
     entry["issue_counts"] = dict(Counter(item["severity"] for item in branch["issues"]))
     entry["tier_gaps"] = []
     if yard is not None:
-        anomalies = yard.bad_data.getAnomalousStacks()
-        dummy_stacks = yard.bad_data.stacks_with_dummy_containers
-        entry["summary"] = dict(branch["summary"], anomalous_stacks=len(anomalies),
-                                stacks_with_dummy_containers=len(dummy_stacks))
-        for stack in set(anomalies).union(dummy_stacks):
-            block_id, row, slot = stack.getCoords()
-            contents = stack.getContainers()
-            top = max((tier for tier, item in enumerate(contents) if item is not None), default=0)
-            entry["tier_gaps"].append({
-                "block": yard.getBlockByID(block_id).getCode(),
-                "row": row + 1, "slot": slot + 1,
-                "missing_tiers": [tier + 1 for tier in range(top) if contents[tier] is None],
-                "dummy_tiers": [tier + 1 for tier in stack.getDummyTiers()],
-            })
-        entry["tier_gaps"].sort(key=lambda item: (item["block"], item["row"], item["slot"]))
+        counts, entry["tier_gaps"] = tier_gap_view(yard)
+        entry["summary"] = dict(branch["summary"], **counts)
     return entry
 
 

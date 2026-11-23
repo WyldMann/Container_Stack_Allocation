@@ -293,6 +293,10 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
 .yard-tier-table td, .yard-tier-table th { padding: 5px 4px; }
 .yard-tier-table td:nth-child(2) { font-weight: 650; white-space: nowrap; }
 .yard-tier-table .yard-placed-tier { background: #efe7fa; color: #512498; }
+.yard-stack-actions { display: grid; justify-items: start; gap: 7px; margin-top: 10px; }
+.yard-dummy-add { align-items: center; gap: 7px; }
+.yard-dummy-add select { padding: 6px; font-size: 13px; }
+.yard-stack-actions button[data-access-locked="true"] { cursor: default; }
 .yard-view .yard-gap-note {
   margin: 5px 0;
   padding: 5px 7px;

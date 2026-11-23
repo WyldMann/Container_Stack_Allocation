@@ -409,6 +409,90 @@ class Yard:
             block_id, _, _ = stack.getCoords()
             self._fillStackGaps(self.getBlockByID(block_id), stack)
 
+    def addDummyOnTop(self, block: Block, row: int, slot: int, *, pair: bool = False) -> tuple[int, list[Stack]]:
+        """Place a temporary occupied tier over the selected stack's top footprint."""
+        slots = block.getSlots()[row]
+        stack = slots[slot]
+        tier = stack.occupiedHeight()
+        footprint = [stack]
+        if pair:
+            partner = self._pairedStack(slots, slot)
+            if partner is None:
+                raise ValueError("Select a complete slot pair for a 40 ft dummy container.")
+            footprint = [stack, partner] if stack.getEven() else [partner, stack]
+        elif tier:
+            footprint = self._topFootprint(slots, slot, tier - 1)
+        if any(member.getMode() == "X" for member in footprint):
+            raise ValueError("A dummy container cannot be added to a removed stack.")
+        if pair and any(member.occupiedHeight() != tier for member in footprint):
+            raise ValueError("Both slots must have the same stack height for a 40 ft dummy container.")
+        if any(tier >= member.getMaxTier() for member in footprint):
+            raise ValueError("There is no tier available above the selected stack.")
+
+        self._putDummyTier(block, row, footprint[-1].getCoords()[2], tier, footprint)
+        for member in footprint:
+            member.setMode(self._stackMode(member.getContainers()))
+        self.anomalyCheck()
+        return tier, footprint
+
+    def removeTopContainer(self, block: Block, row: int, slot: int, tier: int,
+                           container_id: str | None) -> tuple[Container, list[Stack]]:
+        """Remove the confirmed top container from every slot it occupies."""
+        slots = block.getSlots()[row]
+        stack = slots[slot]
+        if not stack.occupiedHeight():
+            raise ValueError("The selected stack is empty.")
+        if stack.occupiedHeight() != tier + 1:
+            raise ValueError("The top container changed. Select the stack again.")
+        top = stack.getContainerOrRaise(tier)
+        dummy = isinstance(top, DummyContainer)
+        if container_id != (None if dummy else top.getId()):
+            raise ValueError("The top container changed. Select the stack again.")
+
+        footprint = self._topFootprint(slots, slot, tier)
+        for member in footprint:
+            member.removeContainer(tier)
+        for member in footprint:
+            if member.getMode() == "X":
+                continue
+            member.setMode(self._stackMode(member.getContainers()))
+        if not dummy:
+            self.containers.pop(top.getId(), None)
+        self.anomalyCheck()
+        return top, footprint
+
+    @staticmethod
+    def _pairedStack(slots: list[Stack], slot: int) -> Stack | None:
+        partner_slot = slot + 1 if slots[slot].getEven() else slot - 1
+        return slots[partner_slot] if partner_slot < len(slots) else None
+
+    def _topFootprint(self, slots: list[Stack], slot: int, tier: int) -> list[Stack]:
+        stack = slots[slot]
+        top = stack.getContainerOrRaise(tier)
+        spans_pair = top.spans_pair if isinstance(top, DummyContainer) else top.getContSize() == "40"
+        if spans_pair:
+            partner = self._pairedStack(slots, slot)
+            if partner is None or partner.occupiedHeight() != tier + 1 or partner.getContainer(tier) is not top:
+                raise ValueError("Both slots must share the same top container to edit a 40 ft stack.")
+            return [stack, partner] if stack.getEven() else [partner, stack]
+        return [stack]
+
+    @staticmethod
+    def _stackMode(contents: list[Container | None]) -> str:
+        sizes = set()
+        for item in contents:
+            if isinstance(item, DummyContainer):
+                sizes.add("40" if item.spans_pair else "20")
+            elif item is not None:
+                sizes.add(item.getContSize())
+        return "mixed" if len(sizes) > 1 else next(iter(sizes), "0")
+
+    def _putDummyTier(self, block: Block, row: int, anchor: int, tier: int, footprint: list[Stack]) -> None:
+        dummy = DummyContainer(spans_pair=len(footprint) == 2)
+        dummy.setCoordsInt((block.getBranch(), block.getCode(), row, anchor, tier))
+        for member in footprint:
+            member.replaceContainer(dummy, tier)
+
     def _fillStackGaps(self, block: Block, stack: Stack) -> None:
         contents = stack.getContainers()
         real_tiers = [(tier, item) for tier, item in enumerate(contents)
@@ -441,10 +525,7 @@ class Yard:
             return
 
         for tier in gaps:
-            dummy = DummyContainer()
-            dummy.setCoordsInt((block.getBranch(), block.getCode(), row, anchor, tier))
-            for member in footprint:
-                member.replaceContainer(dummy, tier)
+            self._putDummyTier(block, row, anchor, tier, footprint)
         for member in footprint:
             member.setMode(size)
 
@@ -611,10 +692,7 @@ class Yard:
                 changed[tier] = container
             else:
                 changed[tier] = None
-            sizes = {item.getContSize() for item in changed if item is not None and not isinstance(item, DummyContainer)}
-            mode = stack.getMode()
-            if mode != "X":
-                mode = "mixed" if len(sizes) > 1 else next(iter(sizes), "0")
+            mode = "X" if stack.getMode() == "X" else self._stackMode(changed)
             updates.append((stack, changed, mode))
 
         container.setCoordsInt(self.getBlockBranchCodebyID(proposal.block_id) + proposal.coordinates[1:])

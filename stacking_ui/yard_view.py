@@ -35,13 +35,20 @@ def _parameter_view(parameter):
     return {"name": parameter.getName(), "criteria": criteria, "and_score": parameter.and_score}
 
 
+def dummy_tier_view(container, tier):
+    view = {"tier": tier, "dummy": True}
+    if container.spans_pair:
+        view.update(size="40", anchor_slot=container.getCoordsInt()[3] + 1)
+    return view
+
+
 def stack_view(stack, row, slot):
     tiers = []
     for tier_no, container in enumerate(stack.getContainers(), 1):
         if container is None:
             continue
         if isinstance(container, DummyContainer):
-            tiers.append({"tier": tier_no, "dummy": True})
+            tiers.append(dummy_tier_view(container, tier_no))
             continue
         weight = container.getWeight()
         tiers.append({

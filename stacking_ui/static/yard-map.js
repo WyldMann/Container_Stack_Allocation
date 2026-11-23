@@ -223,7 +223,105 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   const assignedParameters = (stack, partner) => partner ?
     [...new Set([...partner.parameters, ...stack.parameters])] : stack.parameters;
 
-  function renderInspector(panel, block, stack, partner, selectedSlot, placed, traceEntries) {
+  const stackActions = el("div", undefined, "yard-stack-actions");
+  const addDummy = el("button", "Add dummy container", "secondary");
+  addDummy.type = "button";
+  const dummySize = el("select");
+  dummySize.setAttribute("aria-label", "Dummy container size");
+  for (const [value, label] of [["auto", "20ft/Auto"], ["40", "40 ft"]]) {
+    const option = el("option", label);
+    option.value = value;
+    dummySize.append(option);
+  }
+  const dummyAdd = el("div", undefined, "actions yard-dummy-add");
+  dummyAdd.append(addDummy, dummySize);
+  const dummyAvailability = el("small", undefined, "yard-caption");
+  dummyAvailability.setAttribute("aria-live", "polite");
+  dummyAvailability.hidden = true;
+  const removeTop = el("button", "Remove top container", "secondary");
+  removeTop.type = "button";
+  const stackStatus = el("p", undefined, "yard-caption");
+  stackStatus.setAttribute("role", "status");
+  stackStatus.hidden = true;
+  if (accessOptions.onAddDummy) stackActions.append(dummyAdd, dummyAvailability);
+  if (accessOptions.onRemoveTop) stackActions.append(removeTop);
+  stackActions.append(stackStatus);
+
+  function reportStackEdit(text, error = false) {
+    stackStatus.textContent = text;
+    stackStatus.hidden = !text;
+    stackStatus.classList.toggle("not-ready", error);
+  }
+
+  async function editSelectedStack(control, edit, message) {
+    const restoreFocus = document.activeElement === control;
+    await action(async () => {
+      const placed = await edit();
+      applyPlacement(placed);
+      selectStack(selection.view, selection.index);
+      const slots = placed.stacks.length === 2 ?
+        "Slots " + two(placed.slot - 1) + "–" + two(placed.slot) : "Slot " + two(placed.slot);
+      reportStackEdit(message + " · " + placed.block + " · Row " + two(placed.row) + " · " + slots + " · Tier " + placed.tier);
+      await accessOptions.onStackEdit?.();
+    }, reportStackEdit);
+    if (restoreFocus && root.isConnected) {
+      const target = control.disabled || !control.isConnected ? selection.view.tiles[selection.index] : control;
+      target.focus({preventScroll: true});
+    }
+  }
+
+  addDummy.addEventListener("click", () => {
+    if (accessPending || busy || addDummy.disabled) return;
+    return editSelectedStack(addDummy, () => accessOptions.onAddDummy({
+      ...selectedLocation(), size: dummySize.value === "40" ? "40" : null
+    }), "Dummy added");
+  });
+  dummySize.addEventListener("change", () => {
+    const {view, index} = selection;
+    reportStackEdit("");
+    syncDummyAction(view.block, view.block.stacks[index]);
+  });
+  removeTop.addEventListener("click", () => {
+    if (accessPending || busy || removeTop.disabled) return;
+    const {view, index} = selection;
+    const top = view.block.stacks[index].tiers.at(-1);
+    if (!top) return;
+    const label = top.dummy ? (top.size === "40" ? "40 ft dummy container" : "dummy container") : top.container_id;
+    if (!window.confirm("Remove " + label + " from tier " + top.tier + " in this yard preview?")) return;
+    return editSelectedStack(removeTop, () => accessOptions.onRemoveTop({
+      ...selectedLocation(), tier: top.tier, container_id: top.container_id ?? null
+    }), "Removed " + label);
+  });
+
+  function syncDummyAction(block, stack) {
+    const top = stack.tiers.at(-1);
+    const height = top?.tier ?? 0;
+    let reason = "";
+    if (stack.removed) reason = "This stack is removed.";
+    else if (height >= stack.capacity) reason = "There is no tier available above this stack.";
+    else if (dummySize.value === "40" || top?.size === "40") {
+      const partnerSlot = stack.slot % 2 ? stack.slot + 1 : stack.slot - 1;
+      const partner = partnerSlot <= block.slots ? block.stacks[(stack.row - 1) * block.slots + partnerSlot - 1] : null;
+      if (!partner || partner.removed) reason = "Select a complete, active slot pair.";
+      else if ((partner.tiers.at(-1)?.tier ?? 0) !== height) reason = "Both slots need the same stack height.";
+      else if (height >= partner.capacity) reason = "The paired slot has no tier available above it.";
+    }
+    addDummy.disabled = Boolean(reason);
+    addDummy.dataset.accessLocked = String(addDummy.disabled);
+    addDummy.title = reason;
+    dummyAvailability.textContent = dummySize.value === "40" ? reason : "";
+    dummyAvailability.hidden = !dummyAvailability.textContent;
+  }
+
+  function appendStackActions(panel, block, stack) {
+    if (!accessOptions.onAddDummy && !accessOptions.onRemoveTop) return;
+    syncDummyAction(block, stack);
+    removeTop.disabled = !stack.tiers.length;
+    removeTop.dataset.accessLocked = String(removeTop.disabled);
+    panel.append(stackActions);
+  }
+
+  function renderInspector(panel, block, stack, partner, selectedStack, placed, traceEntries) {
     const heading = el("div", undefined, "yard-inspector-heading");
     const extra = Math.max(0, stack.tiers.length - stack.capacity);
     const occupancy = el("span", stack.removed ? "Removed · " + stack.tiers.length + " occupied" :
@@ -245,11 +343,8 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     if (stack.anomaly) panel.append(el("p", "Tier gap below an occupied position.", "yard-gap-note"));
     if (extra) panel.append(el("p", "Over capacity by " + extra + (extra === 1 ? " tier." : " tiers."),
       "yard-overcapacity"));
-    if (stack.tiers.some(tier => tier.dummy)) {
-      panel.append(el("p", "Occupied tiers with missing container records.", "yard-gap-note"));
-    }
     const footprint = stack.tiers.find(tier => tier.size === "40");
-    if (partner) panel.append(el("p", "40 ft stack · Selected slot " + two(selectedSlot), "yard-caption"));
+    if (partner) panel.append(el("p", "40 ft stack · Selected slot " + two(selectedStack.slot), "yard-caption"));
     else if (footprint) panel.append(el("p", "40 ft footprint · Slots " +
       two(footprint.anchor_slot - 1) + "-" + two(footprint.anchor_slot), "yard-caption"));
 
@@ -275,7 +370,10 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       detail.append(summary, rules);
       panel.append(detail);
     }
-    if (stack.removed && !stack.tiers.length) return;
+    if (stack.removed && !stack.tiers.length) {
+      appendStackActions(panel, block, selectedStack);
+      return;
+    }
 
     panel.append(el("h4", "Tier contents"));
     const tiers = new Map(stack.tiers.map(tier => [tier.tier, tier]));
@@ -284,7 +382,8 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     for (let number = highestTier; number >= 1; number--) {
       const tier = tiers.get(number);
       if (!tier || tier.dummy) {
-        rows.push([number, tier ? "Occupied · Missing record" : "Empty", "—", "—", "—", "—", "—"]);
+        rows.push([number, tier ? "Dummy container" : "Empty", tier?.size === "40" ? "40 ft" : "—",
+          "—", "—", "—", "—"]);
         continue;
       }
       rows.push([
@@ -299,6 +398,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     if (stack.tiers.some(tier => tier.weight != null)) {
       panel.append(el("p", "Weight values use the source units.", "yard-caption"));
     }
+    appendStackActions(panel, block, selectedStack);
   }
 
   const {blocks, parameters} = branch.yard_map;
@@ -349,7 +449,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   }
   for (const [label, style, mark] of [
     ["Unassigned", "yard-swatch"], ["Removed slot", "yard-swatch yard-removed"],
-    ["Tier gap or missing record", "yard-gap", "!"],
+    ["Open tier gap", "yard-gap", "!"],
   ]) {
     const item = el("div");
     item.append(el("span", mark, style), el("span", label));
@@ -365,20 +465,26 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     return view.tiles[index] === view.tiles[index - 1] ? view.block.stacks[index - 1] : null;
   }
 
-  function mergePair(view, index) {
-    const {block, tiles} = view;
+  function matchingPair(view, index) {
+    const {block} = view;
     const anchor = block.stacks[index];
     const partner = block.stacks[index - 1];
-    if (pairPartner(view, index)) return partner;
     if (!anchor.tiers.some(tier => tier.size === "40") || anchor.removed || partner.removed || anchor.capacity !== partner.capacity ||
         anchor.tiers.length !== partner.tiers.length || !anchor.tiers.every((tier, i) => {
           const other = partner.tiers[i];
-          if (tier.tier !== other.tier) return false;
-          if (tier.dummy || other.dummy) return tier.dummy && other.dummy;
-          return tier.size === "40" && other.size === "40" && tier.anchor_slot === anchor.slot &&
-            other.anchor_slot === anchor.slot && tier.container_id === other.container_id;
+          return tier.tier === other.tier && tier.size === "40" && other.size === "40" &&
+            tier.anchor_slot === anchor.slot && other.anchor_slot === anchor.slot &&
+            tier.dummy === other.dummy && tier.container_id === other.container_id;
         })) return null;
+    return partner;
+  }
 
+  function mergePair(view, index) {
+    const {tiles} = view;
+    const merged = pairPartner(view, index);
+    if (merged) return merged;
+    const partner = matchingPair(view, index);
+    if (!partner) return null;
     const tile = tiles[index];
     const previous = tiles[index - 1];
     tile.parentElement.colSpan = 2;
@@ -390,6 +496,14 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     previous.parentElement.remove();
     tiles[index - 1] = tile;
     return partner;
+  }
+
+  function splitPair(view, index) {
+    const tile = view.tiles[index];
+    tile.parentElement.colSpan = 1;
+    tile.parentElement.before(stackCell(view, index - 1));
+    view.tiles[index - 1].tabIndex = -1;
+    tile.setAttribute("aria-pressed", "false");
   }
 
   function selectStack(view, index) {
@@ -408,7 +522,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     selection = {view, index};
     const placed = placement?.block === block.code &&
       placement.stacks.some(item => item.row === stack.row && item.slot === stack.slot);
-    renderInspector(inspector, block, stack, partner, block.stacks[index].slot,
+    renderInspector(inspector, block, stack, partner, block.stacks[index],
       placed ? placement : null, traceTiles.get(tiles[anchor]));
   }
 
@@ -421,7 +535,6 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   function paintStack(tile, block, stack, partner) {
     const occupied = stack.tiers.length;
     const overcapacity = occupied > stack.capacity;
-    const missingRecords = stack.tiers.some(tier => tier.dummy);
     const occupancy = occupied + "/" + stack.capacity;
     const assigned = assignedParameters(stack, partner);
     const names = assigned.map(id => "P" + id);
@@ -430,8 +543,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       (stack.removed ? "removed, " + stack.tiers.length + " tiers occupied" : occupancy + " tiers occupied") +
       (overcapacity ? ", over capacity" : "") +
       (names.length ? ", " + names.join(", ") : ", unassigned") +
-      (stack.anomaly ? ", tier gap" : "") +
-      (missingRecords ? ", missing container records" : ""));
+      (stack.anomaly ? ", tier gap" : ""));
     tile.replaceChildren();
     if (stack.removed && !occupied) {
       tile.append(el("strong", "x"));
@@ -443,8 +555,44 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       const code = names[0] ? names[0] + (names.length > 1 ? " +" + (names.length - 1) : "") : "-";
       tile.append(count, el("small", code));
     }
-    if (stack.anomaly || missingRecords) tile.append(el("span", "!", "yard-gap"));
+    if (stack.anomaly) tile.append(el("span", "!", "yard-gap"));
     if (stack.tiers.some(tier => tier.size === "40")) tile.append(el("span", "40 ft", "yard-pair"));
+  }
+
+  function stackCell(view, index) {
+    const {block} = view;
+    const stack = block.stacks[index];
+    const row = stack.row - 1;
+    const slot = stack.slot - 1;
+    const tile = el("button", undefined, "yard-tile" + (stack.removed ? " yard-removed" : ""));
+    tile.type = "button";
+    tile.tabIndex = index === 0 ? 0 : -1;
+    tile.setAttribute("aria-pressed", "false");
+    tile.addEventListener("click", event => {
+      const bounds = tile.getBoundingClientRect();
+      const leftHalf = event.detail && pairPartner(view, index) && event.clientX < bounds.left + bounds.width / 2;
+      reportStackEdit("");
+      selectStack(view, leftHalf ? index - 1 : index);
+      accessOptions.onSelectionChange?.();
+    });
+    tile.addEventListener("keydown", event => {
+      const direction = {ArrowLeft:[0,-1], ArrowRight:[0,1], ArrowUp:[-1,0], ArrowDown:[1,0]}[event.key];
+      if (!direction) return;
+      event.preventDefault();
+      const nextRow = row + direction[0];
+      const leftOfPair = direction[1] === -1 && pairPartner(view, index);
+      const nextSlot = slot + direction[1] - (leftOfPair ? 1 : 0);
+      if (nextRow < 0 || nextRow >= block.rows || nextSlot < 0 || nextSlot >= block.slots) return;
+      const next = nextRow * block.slots + nextSlot;
+      reportStackEdit("");
+      selectStack(view, next);
+      view.tiles[next].focus();
+      accessOptions.onSelectionChange?.();
+    });
+    view.tiles[index] = tile;
+    const cell = el("td");
+    cell.append(tile);
+    return cell;
   }
 
   const percent = new Intl.NumberFormat(undefined, {style: "percent", maximumFractionDigits: 1});
@@ -517,35 +665,9 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       for (let slot = 0; slot < block.slots; slot++) {
         const index = row * block.slots + slot;
         const stack = block.stacks[index];
-        const tile = el("button", undefined, "yard-tile" + (stack.removed ? " yard-removed" : ""));
-        tile.type = "button";
-        tile.tabIndex = index === 0 ? 0 : -1;
-        tile.setAttribute("aria-pressed", "false");
-        tile.addEventListener("click", event => {
-          const bounds = tile.getBoundingClientRect();
-          const leftHalf = event.detail && pairPartner(view, index) && event.clientX < bounds.left + bounds.width / 2;
-          selectStack(view, leftHalf ? index - 1 : index);
-          accessOptions.onSelectionChange?.();
-        });
-        tile.addEventListener("keydown", event => {
-          const direction = {ArrowLeft:[0,-1], ArrowRight:[0,1], ArrowUp:[-1,0], ArrowDown:[1,0]}[event.key];
-          if (!direction) return;
-          event.preventDefault();
-          const nextRow = row + direction[0];
-          const leftOfPair = direction[1] === -1 && pairPartner(view, index);
-          const nextSlot = slot + direction[1] - (leftOfPair ? 1 : 0);
-          if (nextRow < 0 || nextRow >= block.rows || nextSlot < 0 || nextSlot >= block.slots) return;
-          const next = nextRow * block.slots + nextSlot;
-          selectStack(view, next);
-          view.tiles[next].focus();
-          accessOptions.onSelectionChange?.();
-        });
-        view.tiles.push(tile);
-        const cell = el("td");
-        cell.append(tile);
-        line.append(cell);
+        line.append(stackCell(view, index));
         const partner = stack.slot % 2 === 0 ? mergePair(view, index) : null;
-        paintStack(tile, block, stack, partner);
+        paintStack(view.tiles[index], block, stack, partner);
       }
       rows.append(line);
     }
@@ -772,10 +894,14 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       tile.removeAttribute("title");
     }
     marked.clear();
-    placement = placed;
+    placement = null;
     if (!placed) return null;
     const view = views.find(item => item.block.code === placed.block);
     const index = (placed.row - 1) * view.block.slots + placed.slot - 1;
+    if (!view.block.stacks[index].tiers.some(tier => tier.tier === placed.tier && tier.container_id === placed.container_id)) {
+      return null;
+    }
+    placement = placed;
     for (const stack of placed.stacks) {
       const tile = view.tiles[(stack.row - 1) * view.block.slots + stack.slot - 1];
       tile.classList.add("yard-placed");
@@ -797,11 +923,22 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       block.occupied_tiers += stack.tiers.length - block.stacks[index].tiers.length;
       block.stacks[index] = stack;
     }
-    block.parameter_compliance = placed.parameter_compliance;
-    block.container_count += 1 - (placed.displaced?.length ?? 0);
+    if (!placed.dummy) {
+      block.parameter_compliance = placed.parameter_compliance;
+      block.container_count += placed.removed ? -1 : 1 - (placed.displaced?.length ?? 0);
+    }
     if (placed.manual) return;
-    if (placed.stacks.length === 2) mergePair(view, (placed.row - 1) * block.slots + placed.slot - 1);
-    for (const stack of placed.stacks) {
+    let repaint = placed.stacks;
+    const anchorSlot = placed.slot + (placed.removed ? placed.slot % 2 : 0);
+    const anchor = (placed.row - 1) * block.slots + anchorSlot - 1;
+    if (placed.removed && anchorSlot <= block.slots) {
+      if (pairPartner(view, anchor) && !matchingPair(view, anchor)) splitPair(view, anchor);
+      else mergePair(view, anchor);
+      repaint = block.stacks.slice(anchor - 1, anchor + 1);
+    } else if (placed.stacks.length === 2) {
+      mergePair(view, anchor);
+    }
+    for (const stack of repaint) {
       const index = (stack.row - 1) * block.slots + stack.slot - 1;
       if (tiles[index] !== tiles[index + 1]) paintStack(tiles[index], block, stack, pairPartner(view, index));
     }

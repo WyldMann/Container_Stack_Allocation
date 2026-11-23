@@ -300,7 +300,7 @@ function footprintStacks(block, row, slot, size) {
   return size === "40" ? block.stacks.slice(anchor - 1, anchor + 1) : [block.stacks[anchor]];
 }
 
-async function simulationView(run, branches, id, onStart) {
+async function simulationView(run, branches, id, onStart, stackEdits) {
   const {branch} = run;
   const root = el("div");
   const canReorder = typeof globalThis.reorderStackingQueue === "function";
@@ -313,6 +313,12 @@ async function simulationView(run, branches, id, onStart) {
   const {panel: queuePanel, track, refreshDetails} = queue;
   const mapOptions = {
     editable: run.processed === 0 && typeof globalThis.updateStackingBlockAccess === "function",
+    ...stackEdits,
+    onStackEdit: async () => {
+      clearComparison();
+      if (finished()) showTrace(true);
+      else await loadSuggestion(true);
+    },
     onChange: async (block, side, value) => {
       await globalThis.updateStackingBlockAccess({
         id, branch: branch.branch_code, policies: [{block_id: block.id, ...block.loader_access, [side]: value}]
@@ -400,19 +406,19 @@ async function simulationView(run, branches, id, onStart) {
   let suggestionError = "";
   let choosingAlternate = false;
   let manualDestination = null;
-  async function loadSuggestion() {
+  async function loadSuggestion(preserveSelection = false) {
     run.suggestion = null;
     choosingAlternate = false;
     manualDestination = null;
     suggestionError = "";
     tracePicker.value = "current";
-    showTrace();
+    showTrace(preserveSelection);
     try {
       run.suggestion = await globalThis.suggestStackingAssignment({id, branch: branch.branch_code});
     } catch (error) {
       suggestionError = error.message;
     }
-    showTrace();
+    showTrace(preserveSelection);
   }
 
   function selectAlternate(destination) {
@@ -437,7 +443,7 @@ async function simulationView(run, branches, id, onStart) {
     showTrace();
   });
 
-  function showTrace() {
+  function showTrace(preserveSelection = false) {
     const current = tracePicker.value === "current";
     const trace = current ? run.suggestion : run.traces[Number(tracePicker.value)];
     const winner = current ? trace?.calculation?.candidates.find(candidate => candidate.selected) : null;
@@ -483,11 +489,11 @@ async function simulationView(run, branches, id, onStart) {
     map.showTrace(current ? {...trace, manual_destination: manualDestination} : trace, {
       historical,
       placed: !current && !historical ? run.last?.placement : null,
-      preserveSelection: manualMode
+      preserveSelection: manualMode || preserveSelection
     });
     picker.refreshSelectedStack();
   }
-  tracePicker.addEventListener("change", showTrace);
+  tracePicker.addEventListener("change", () => showTrace());
   viewTrace.addEventListener("click", () => {
     outcome.scrollIntoView({block: "start"});
     tracePicker.focus({preventScroll: true});
@@ -531,15 +537,19 @@ async function simulationView(run, branches, id, onStart) {
     else showTrace();
   }
 
-  async function addContainer(fields) {
-    if (map.accessBusy()) throw new Error("Wait for the yard access change to finish.");
-    const row = await globalThis.addStackingQueueRow({id, branch: branch.branch_code, ...fields});
-    queue.appendCard(row);
+  function clearComparison() {
     if (run.comparison) {
       run.comparison = null;
       comparison.hidden = true;
       comparisonResult.replaceChildren();
     }
+  }
+
+  async function addContainer(fields) {
+    if (map.accessBusy()) throw new Error("Wait for the yard access change to finish.");
+    const row = await globalThis.addStackingQueueRow({id, branch: branch.branch_code, ...fields});
+    queue.appendCard(row);
+    clearComparison();
     await update();
     return row;
   }

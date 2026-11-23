@@ -724,7 +724,10 @@ class ScenarioTests(unittest.TestCase):
 
         request = {"id": result["simulation"]["id"], "branch": branch["branch_code"]}
         original_csv = session.request({"op": "yard_csv"})
+        bad_data = session.yard_branches[0]["yard"].bad_data
+        self.assertTrue(bad_data.anyBadData())
         repaired = session.request({"op": "repair_tier_gaps", **request})
+        self.assertFalse(bad_data.anyBadData())
         self.assertTrue(repaired["tier_gap_repair_attempted"])
         self.assertEqual(repaired["summary"]["anomalous_stacks"], 0)
         self.assertEqual(repaired["summary"]["stacks_with_dummy_containers"], 2)
@@ -740,7 +743,7 @@ class ScenarioTests(unittest.TestCase):
         left, right = block["stacks"][4:6]
         self.assertFalse(left["anomaly"] or right["anomaly"])
         self.assertEqual(left["tiers"], right["tiers"])
-        self.assertEqual(right["tiers"][0], {"tier": 1, "dummy": True})
+        self.assertEqual(right["tiers"][0], {"tier": 1, "dummy": True, "size": "40", "anchor_slot": 2})
         self.assertEqual((right["tiers"][1]["tier"], right["tiers"][1]["anchor_slot"]), (2, 2))
         self.assertEqual(right["parameters"], ["38"])
         self.assertTrue(block["stacks"][-1]["removed"])
@@ -750,6 +753,167 @@ class ScenarioTests(unittest.TestCase):
             session.request({"op": "repair_tier_gaps", **request})
         fresh = session.request({"op": "preview", "draft": self.payload})["preview"]["branches"][0]
         self.assertEqual(fresh["tier_gaps"], branch["tier_gaps"])
+
+    def test_add_stack_dummy_counts_as_occupied_and_refreshes_suggestions(self):
+        self.rows["removed_slots"] = [dict(block_id="10", row_no="1", slot_no="4")]
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        original_csv = session.request({"op": "yard_csv"})
+        old_suggestion = session.request({"op": "suggest", **request})
+        location = {**request, "op": "add_stack_dummy", "block": "A", "row": 1, "slot": 1}
+
+        added = session.request(location)
+        placement = added["placement"]
+        self.assertEqual(placement["tier"], 2)
+        self.assertEqual(placement["stacks"][0]["tiers"][-1], {"tier": 2, "dummy": True})
+        self.assertEqual(added["counts"]["stacks_with_dummy_containers"], 1)
+        self.assertEqual(added["tier_gaps"][0]["missing_tiers"], [])
+        self.assertFalse(session.yard_branches[0]["yard"].bad_data.anyBadData())
+        with self.assertRaisesRegex(SimulationError, "suggestion has changed"):
+            session.request({"op": "step", "position": 1, "suggestion_id": old_suggestion["suggestion_id"], **request})
+
+        self.assertEqual(session.request(location)["placement"]["tier"], 3)
+        with self.assertRaisesRegex(ValueError, "no tier available"):
+            session.request(location)
+        with self.assertRaisesRegex(ValueError, "removed stack"):
+            session.request(location | {"slot": 4})
+        with self.assertRaisesRegex(SimulationError, "inside the yard grid"):
+            session.request(location | {"row": 0})
+        empty_placement = session.request(location | {"slot": 2})["placement"]
+        self.assertEqual(empty_placement["stacks"][0]["tiers"], [{"tier": 1, "dummy": True}])
+        self.assertEqual(session.request({"op": "yard_csv"}), original_csv)
+
+        fresh = session.request({"op": "preview", "draft": self.payload})["preview"]["branches"][0]
+        self.assertEqual(fresh["summary"]["stacks_with_dummy_containers"], 0)
+
+    def test_add_stack_dummy_shares_40_ft_footprint_and_keeps_gaps_for_repair(self):
+        self.rows["yard_blocks"][0]["max_tier"] = "4"
+        self.rows["existing_containers"].append(dict(
+            container_id="PAIR", container_size="40", branch_id="JKT74", block_code="A",
+            row_no="2", slot_no="2", tier_no="2",
+        ))
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        location = {**request, "op": "add_stack_dummy", "block": "A", "row": 2, "slot": 1}
+
+        for tier in (3, 4):
+            added = session.request(location)
+            placement = added["placement"]
+            self.assertEqual((placement["slot"], placement["tier"]), (2, tier))
+            left, right = placement["stacks"]
+            self.assertEqual((left["slot"], right["slot"]), (1, 2))
+            self.assertEqual(left["tiers"][-1], {"tier": tier, "dummy": True, "size": "40", "anchor_slot": 2})
+            self.assertEqual(left["tiers"], right["tiers"])
+            self.assertEqual(added["counts"]["anomalous_stacks"], 2)
+        block = session.yard_branches[0]["yard"].getBlockByID("10")
+        self.assertIs(block.getStack(1, 0).getContainer(3), block.getStack(1, 1).getContainer(3))
+        self.assertTrue(session.yard_branches[0]["yard"].bad_data.anyBadData())
+
+        repaired = session.request({"op": "repair_tier_gaps", **request})
+        self.assertEqual(repaired["summary"]["anomalous_stacks"], 0)
+        self.assertEqual([entry["dummy_tiers"] for entry in repaired["tier_gaps"]], [[1, 3, 4], [1, 3, 4]])
+
+    def test_explicit_40_ft_stack_dummy_can_use_a_level_pair(self):
+        self.rows["yard_blocks"][0]["slot_count"] = "5"
+        self.rows["removed_slots"] = [dict(block_id="10", row_no="2", slot_no="4")]
+        existing = self.rows["existing_containers"][0]
+        self.rows["existing_containers"].extend(
+            existing | {"container_id": f"BASE{slot}", "slot_no": str(slot)} for slot in (3, 4)
+        )
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74", "block": "A"}
+        add = {**request, "op": "add_stack_dummy", "size": "40"}
+        original_csv = session.request({"op": "yard_csv"})
+        yard = session.yard_branches[0]["yard"]
+        block = yard.getBlockByID("10")
+        baseline_score = block.parameterCompliance()
+
+        for row, slot, message in ((1, 1, "same stack height"), (2, 3, "removed stack"), (2, 5, "complete slot pair")):
+            with self.subTest(row=row, slot=slot), self.assertRaisesRegex(ValueError, message):
+                session.request(add | {"row": row, "slot": slot})
+        self.assertEqual(block.getStack(0, 0).occupiedHeight(), 1)
+        self.assertEqual(block.getStack(0, 1).occupiedHeight(), 0)
+
+        placed = session.request(add | {"row": 2, "slot": 2})["placement"]
+        self.assertEqual((placed["tier"], placed["slot"]), (1, 2))
+        self.assertEqual([stack["slot"] for stack in placed["stacks"]], [1, 2])
+        tier = {"tier": 1, "dummy": True, "size": "40", "anchor_slot": 2}
+        self.assertEqual([stack["tiers"] for stack in placed["stacks"]], [[tier], [tier]])
+        self.assertIs(block.getStack(1, 0).getContainer(0), block.getStack(1, 1).getContainer(0))
+        self.assertEqual([block.getStack(1, slot).getMode() for slot in (0, 1)], ["40", "40"])
+
+        placed = session.request(add | {"row": 1, "slot": 3})["placement"]
+        self.assertEqual((placed["tier"], placed["slot"]), (2, 4))
+        self.assertEqual([block.getStack(0, slot).getMode() for slot in (2, 3)], ["mixed", "mixed"])
+        removed = session.request({
+            **request, "op": "remove_stack_top", "row": 1, "slot": 4, "tier": 2, "container_id": None,
+        })["placement"]
+        self.assertEqual([stack["tiers"][0]["container_id"] for stack in removed["stacks"]], ["BASE3", "BASE4"])
+        self.assertEqual([block.getStack(0, slot).getMode() for slot in (2, 3)], ["20", "20"])
+        self.assertEqual(block.parameterCompliance(), baseline_score)
+        self.assertEqual(session.request({"op": "yard_csv"}), original_csv)
+
+    def test_remove_stack_top_updates_csv_and_rejects_stale_confirmations(self):
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        location = {**request, "block": "A", "row": 1, "slot": 1}
+        original_csv = session.request({"op": "yard_csv"})
+        session.request({"op": "add_stack_dummy", **location})
+        suggestion = session.request({"op": "suggest", **request})
+        removal = {**location, "op": "remove_stack_top", "tier": 2, "container_id": None}
+        result = session.request(removal)
+        self.assertTrue(result["placement"]["removed"])
+        self.assertTrue(result["placement"]["dummy"])
+        self.assertEqual(result["counts"]["stacks_with_dummy_containers"], 0)
+        self.assertEqual(session.request({"op": "yard_csv"}), original_csv)
+        with self.assertRaisesRegex(ValueError, "top container changed"):
+            session.request(removal)
+        with self.assertRaisesRegex(SimulationError, "suggestion has changed"):
+            session.request({"op": "step", "position": 1, "suggestion_id": suggestion["suggestion_id"], **request})
+
+        removal = removal | {"tier": 1, "container_id": "OLD"}
+        placement = session.request(removal)["placement"]
+        self.assertFalse(placement["dummy"])
+        self.assertEqual(placement["stacks"][0]["tiers"], [])
+        yard = session.yard_branches[0]["yard"]
+        self.assertEqual(yard.getStack("10", 0, 0).getMode(), "0")
+        self.assertNotIn("OLD", yard.containers)
+        self.assertNotIn("OLD", session.request({"op": "yard_csv"}))
+        with self.assertRaisesRegex(ValueError, "selected stack is empty"):
+            session.request(removal)
+
+    def test_remove_stack_top_clears_both_slots_for_a_real_pair_and_repair_dummy(self):
+        self.rows["existing_containers"].append(dict(
+            container_id="PAIR", container_size="40", branch_id="JKT74", block_code="A",
+            row_no="2", slot_no="2", tier_no="2",
+        ))
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        session.request({"op": "repair_tier_gaps", **request})
+        location = {**request, "op": "remove_stack_top", "block": "A", "row": 2, "slot": 1}
+
+        result = session.request(location | {"tier": 2, "container_id": "PAIR"})
+        stacks = result["placement"]["stacks"]
+        self.assertEqual([stack["slot"] for stack in stacks], [1, 2])
+        tier = {"tier": 1, "dummy": True, "size": "40", "anchor_slot": 2}
+        self.assertEqual([stack["tiers"] for stack in stacks], [[tier], [tier]])
+        yard = session.yard_branches[0]["yard"]
+        self.assertEqual([yard.getStack("10", 1, slot).getMode() for slot in (0, 1)], ["40", "40"])
+        self.assertNotIn("PAIR", yard.containers)
+
+        result = session.request(location | {"slot": 2, "tier": 1, "container_id": None})
+        self.assertTrue(result["placement"]["dummy"])
+        self.assertEqual([stack["tiers"] for stack in result["placement"]["stacks"]], [[], []])
+        self.assertEqual([yard.getStack("10", 1, slot).getMode() for slot in (0, 1)], ["0", "0"])
 
     def test_invalid_inbound_date_keeps_yard_map_and_reports_queue_row(self):
         self.rows["inbound_containers"][0]["move_time"] = "not a date"

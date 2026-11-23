@@ -1567,19 +1567,17 @@ function inboundQueue(branch, {firstPendingPosition, onDelete, onAdd, onMove} = 
 }
 
 function tierGapOverview(branch, repair) {
-  const gaps = branch.tier_gaps ?? [];
+  const gaps = (branch.tier_gaps ?? []).filter(gap => gap.missing_tiers.length);
   if (!gaps.length) return null;
-  const open = branch.summary.anomalous_stacks;
-  const filled = branch.summary.stacks_with_dummy_containers;
   const panel = el("div", undefined, "preview-diagnostics tier-gap-overview");
   panel.append(el("h3", "Yard tier gaps"), el("p",
-    "Stack slots with open gaps: " + open + " · Stack slots with dummy tiers: " + filled));
-  if (open && repair && !branch.tier_gap_repair_attempted) {
+    "Stack slots with open gaps: " + gaps.length));
+  if (repair && !branch.tier_gap_repair_attempted) {
     const button = el("button", "Fill gaps with dummy containers", "secondary");
     button.type = "button";
     button.addEventListener("click", repair);
     panel.append(button);
-  } else if (open) {
+  } else {
     panel.append(el("p", branch.tier_gap_repair_attempted ? "Some gaps could not be filled safely." :
       "Generate a fresh preview to fill gaps before starting this branch.", "note"));
   }
@@ -1587,8 +1585,8 @@ function tierGapOverview(branch, repair) {
     "Generate a new preview to clear them.", "note"));
   const details = el("details");
   details.append(el("summary", "View affected stack slots"),
-    table(["Block", "Row", "Slot", "Open tiers", "Dummy-filled tiers"], gaps.map(gap => [
-      gap.block, gap.row, gap.slot, gap.missing_tiers.join(", ") || "—", gap.dummy_tiers.join(", ") || "—"
+    table(["Block", "Row", "Slot", "Open tiers"], gaps.map(gap => [
+      gap.block, gap.row, gap.slot, gap.missing_tiers.join(", ")
     ])));
   panel.append(details);
   return panel;
@@ -1613,6 +1611,19 @@ async function previewOverview(branches, simulation, sharedIssues) {
       const panel = tierGapOverview(branch, repair);
       gapPanel.replaceChildren(...(panel ? [panel] : []));
     }
+    const editStack = edit => simulation && typeof edit === "function" ? async location => {
+      const {placement, counts, tier_gaps} = await edit({
+        id: simulation.id, branch: branch.branch_code, ...location
+      });
+      Object.assign(branch.summary, counts);
+      branch.tier_gaps = tier_gaps;
+      renderGaps();
+      return placement;
+    } : null;
+    const stackEdits = {
+      onAddDummy: editStack(globalThis.addStackingDummy),
+      onRemoveTop: editStack(globalThis.removeStackingTop)
+    };
     renderGaps();
     const branchIssues = issueOverview([...sharedIssues, ...branch.issues]);
     const diagnostics = branchIssues ? [gapPanel, branchIssues] : [gapPanel];
@@ -1620,11 +1631,14 @@ async function previewOverview(branches, simulation, sharedIssues) {
       if (!runs.has(branch)) {
         runs.set(branch, {branch: structuredClone(branch), processed: 0, placed: 0, invalid: 0, last: null, traces: []});
       }
-      selectedView.replaceChildren(...diagnostics, await simulationView(runs.get(branch), branches, simulation.id, renderGaps));
+      selectedView.replaceChildren(...diagnostics, await simulationView(
+        runs.get(branch), branches, simulation.id, renderGaps, stackEdits
+      ));
       return;
     }
     const map = createYardMap(branch, branches, {
       editable: Boolean(simulation && typeof globalThis.updateStackingBlockAccess === "function"),
+      ...stackEdits,
       onChange: (block, side, value) => globalThis.updateStackingBlockAccess({
         id: simulation.id, branch: branch.branch_code,
         policies: [{block_id: block.id, ...block.loader_access, [side]: value}]

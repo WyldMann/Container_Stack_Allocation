@@ -13,13 +13,15 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from config.application.config_loader import ConfigurationError
 from config import DEFAULT_STACKING_INPUT_CONFIG_FILE
 from config.application.input_config import load_input_config
+from entities.container import DummyContainer
 from entities.feasibility.loader_access import LoaderBorderAccessPolicy
 from repository.block_accessibility import access_policies, policies_csv, read_policies
 
 from .comparison import compare_yard
 from .configuration import PROJECT_ROOT, read_project_tomls, save_project_toml, validate_project_toml
-from .scenario import prepare_scenario, public_branch, public_preview
+from .scenario import prepare_scenario, public_branch, public_preview, tier_gap_view
 from .simulation import Simulation, SimulationError, export_yard_csv, save_yard_csv
+from .yard_view import stack_view
 
 
 def prepare_draft(draft):
@@ -89,6 +91,8 @@ class SimulationSession:
             return self.simulation.delete_queue_row(request.get("id"), request.get("branch"), request.get("input_position"))
         if operation == "repair_tier_gaps":
             return self.repair_tier_gaps(request.get("id"), request.get("branch"))
+        if operation in ("add_stack_dummy", "remove_stack_top"):
+            return self.edit_stack(request, remove=operation == "remove_stack_top")
         if operation == "compare_yard":
             return self.compare_completed_yard(request)
         raise SimulationError("Generate a preview before running the simulation.")
@@ -184,6 +188,46 @@ class SimulationSession:
             self.simulation.invalidate_suggestion(branch_code)
             branch["tier_gap_repair_attempted"] = True
         return public_branch(branch)
+
+    def edit_stack(self, request, *, remove):
+        simulation = self.simulation
+        code = request.get("branch")
+        if simulation is None or request.get("id") != simulation.id:
+            raise SimulationError("Generate a fresh preview before editing the yard.")
+        branch = next((item for item in self.yard_branches if item["branch_code"] == code), None)
+        if branch is None:
+            raise SimulationError("Select a branch with a yard.")
+        yard = branch["yard"]
+        block_code = request.get("block")
+        block = next((item for item in yard.blocks_by_id.values() if item.getCode() == block_code), None)
+        row, slot = request.get("row"), request.get("slot")
+        rows = block.getSlots() if block is not None else []
+        if (type(row) is not int or type(slot) is not int
+                or not 1 <= row <= len(rows) or not 1 <= slot <= len(rows[row - 1])):
+            raise SimulationError("Select a stack inside the yard grid.")
+        if remove:
+            tier = request.get("tier")
+            container_id = request.get("container_id")
+            if type(tier) is not int or tier < 1 or (container_id is not None and not isinstance(container_id, str)):
+                raise SimulationError("Select the top container to remove.")
+            tier -= 1
+            top, footprint = yard.removeTopContainer(block, row - 1, slot - 1, tier, container_id)
+            edit = {"removed": True, "dummy": isinstance(top, DummyContainer), "container_id": container_id,
+                    "parameter_compliance": block.parameterCompliance()}
+        else:
+            size = request.get("size")
+            if size not in (None, "40"):
+                raise SimulationError("Choose 20ft/Auto or 40 ft for a dummy container.")
+            tier, footprint = yard.addDummyOnTop(block, row - 1, slot - 1, pair=size == "40")
+            edit = {"dummy": True}
+        simulation.invalidate_suggestion(code)
+        counts, gaps = tier_gap_view(yard)
+        stacks = [stack_view(stack, row, stack.getCoords()[2] + 1) for stack in footprint]
+        return {
+            "placement": {"block": block_code, "row": row, "slot": stacks[-1]["slot"], "tier": tier + 1,
+                          "stacks": stacks, **edit},
+            "counts": counts, "tier_gaps": gaps,
+        }
 
     def compare_completed_yard(self, request):
         simulation = self.simulation

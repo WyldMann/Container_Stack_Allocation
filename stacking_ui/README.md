@@ -193,10 +193,18 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    to pan the map. Select any stack to inspect
    its tiers and assigned parameters. Stack colors show
    the yard plan, and the numbers show occupied tiers over capacity. **Yard tier
-   gaps** lists affected slots. Before starting a branch, **Fill gaps with dummy
+   gaps** lists slots with open gaps. Before starting a branch, **Fill gaps with dummy
    containers** can temporarily fill gaps the simulator can repair safely.
-   Dummy tiers count as occupied and are excluded from the yard CSV. Generate a
-   fresh preview to return to the original inputs. **Input and yard issues**
+   Select a stack on the yard map and click **Add dummy container** to add one
+   temporary tier above its highest occupied tier. An empty stack starts at tier 1.
+   **20ft/Auto** follows the existing footprint. Choose **40 ft** to add a
+   dummy across a complete slot pair with level stack tops and room for another
+   tier. Either slot can be selected. Stack details label these tiers **Dummy
+   container**. They count as occupied and are excluded from the yard CSV.
+   **Remove top container** removes the highest occupied tier after confirmation.
+   If that container spans two slots, it must be on top in both slots. Removing
+   a real container also removes it from the exported yard CSV.
+   Generate a fresh preview to return to the original inputs. **Input and yard issues**
    groups the other errors and warnings with their source files and row numbers.
    Skipped records appear as warnings. You can still run a branch with a usable
    yard and inbound queue.

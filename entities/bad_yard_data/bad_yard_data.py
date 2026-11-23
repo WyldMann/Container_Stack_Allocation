@@ -447,7 +447,6 @@ class BadYardData:
             or self.duplicate_existing_container_i_ds
             or self.duplicate_inbound_container_i_ds
             or self.anomalous_stacks
-            or self.stacks_with_dummy_containers
             or self.container_coords_invalid
             or self.overlapping_containers
         )

@@ -159,12 +159,13 @@ class Container:
 class DummyContainer(Container):
     """An occupied tier whose container record is missing."""
 
-    def __init__(self):
+    def __init__(self, *, spans_pair: bool = False):
         super().__init__(
             container_id="DUMMY", principal="", container_condition="",
             container_fill="", container_size="", container_grade="",
             pol="", pod="", vessel="", voyage="", weight="", move_time="",
         )
+        self.spans_pair = spans_pair
 
 
 class InboundDummyContainer(Container):

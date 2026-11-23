@@ -12,6 +12,8 @@ from repository import CSVLoader, InputError
 from repository.repository import Repository
 from utils import strGeneralize
 
+from .yard_view import dummy_tier_view
+
 
 class SnapshotRepository(Repository):
     required_fields = ("branch_id", "block_code", "row_no", "slot_no", "tier_no", "container_size")
@@ -136,7 +138,7 @@ def _occupied_slots(block):
             tiers = [
                 {"tier": tier, "container": container.getId(), "size": container.getContSize(),
                  "operation": container.getOpType()}
-                if not isinstance(container, DummyContainer) else {"tier": tier, "dummy": True}
+                if not isinstance(container, DummyContainer) else dummy_tier_view(container, tier)
                 for tier, container in enumerate(stack.getContainers(), 1) if container is not None
             ]
             slots.append({"row": row_no, "slot": slot_no, "tiers": tiers})
