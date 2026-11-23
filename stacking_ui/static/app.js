@@ -1370,6 +1370,7 @@ function inboundAddForm(button, onAdd, onAdded) {
     syncDummyFields();
     error.textContent = "";
     form.hidden = true;
+    button.textContent = "Add container";
     button.setAttribute("aria-expanded", "false");
   }
   button.addEventListener("click", () => {
@@ -1378,6 +1379,7 @@ function inboundAddForm(button, onAdd, onAdded) {
       return;
     }
     form.hidden = false;
+    button.textContent = "Cancel adding container";
     button.setAttribute("aria-expanded", "true");
     identifier.focus();
   });

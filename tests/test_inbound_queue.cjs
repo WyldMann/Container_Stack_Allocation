@@ -80,6 +80,11 @@ test("optional container details match the focused card and survive placement", 
   };
 
   await button(page, "Add container").click();
+  await textbox("Container ID").fill("DISCARD");
+  await button(page, "Cancel adding container").click();
+  assert.equal(await form.isVisible(), false);
+  await button(page, "Add container").click();
+  assert.equal(await textbox("Container ID").inputValue(), "");
   await textbox("Container ID").fill("MAN-40");
   await select("Size").selectOption("40");
   assert.equal(await textbox("Vessel").isVisible(), false);
