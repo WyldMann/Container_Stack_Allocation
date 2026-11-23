@@ -39,6 +39,7 @@ class ExistingYardMainTests(unittest.TestCase):
         template = "\n".join(
             'branch_code = "JKT74"' if line.startswith("branch_code =") else line
             for line in template.splitlines()
+            if not line.startswith("shifting_blacklist_file =")
         ) + "\n"
         # Tests choose their own operations source, independent of the user's default.
         template = template.replace('shifting_summary = "csv"', 'shifting_summary = "xlsx"')

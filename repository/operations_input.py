@@ -21,6 +21,7 @@ def load_operations(settings, branches, blocks, *, connection=None, latest_only=
             settings["shifting_block_mapping_file"], blocks,
             period_granularity=settings.get("shifting_granularity", "daily"),
             diagnostics=diagnostics,
+            blacklist_path=settings.get("shifting_blacklist_file"),
         )
     if source == "sql":
         if connection is None:

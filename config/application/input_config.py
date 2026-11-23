@@ -91,8 +91,12 @@ def parse_input_config(document: dict, *, base_dir: str | Path, datasets=REQUIRE
         settings["shifting_period"] = period_settings
     csv = _read_section(document, "csv", {
         "files", "mapping_file", "shifting_block_mapping_file",
-        "shifting_workbook_file", "shifting_workbook_sheet",
+        "shifting_workbook_file", "shifting_workbook_sheet", "shifting_blacklist_file",
     })
+    if shifting_source == "csv" and "shifting_blacklist_file" in csv:
+        settings["shifting_blacklist_file"] = resolve(
+            csv["shifting_blacklist_file"], "csv.shifting_blacklist_file",
+        )
     workbook_file = csv.get("shifting_workbook_file")
     if shifting_source == "xlsx" and workbook_file is not None:
         settings["shifting_workbook_file"] = resolve(workbook_file, "csv.shifting_workbook_file")

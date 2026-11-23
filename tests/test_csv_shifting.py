@@ -15,6 +15,7 @@ from config import ConfigurationError, DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE
 from config.application.shifting_input import shifting_settings
 import shifting_report_calculation
 from repository import InputError, load_yard_inputs
+from repository.operations_blacklist import load_operations_blacklist
 from repository.operations_repository import load_csv_shifting_summary
 from repository.shifting_dates import WIB
 from tests import test_main_existing as main_tests
@@ -25,6 +26,7 @@ HEADER = ("DTL_ID", "DOC_ID", "ACTIVITY", "ACTIVITY_DATE_TIME", "KODE_CABANG", "
 ACTIVITIES = {"lifting": ("Lift On Loading",), "shifting": ("Shifting Delivery",)}
 NOW = int(datetime(2026, 10, 29, 15, tzinfo=WIB).timestamp())
 LATEST = int(datetime(2026, 10, 29, 14, 30, tzinfo=WIB).timestamp())
+BLACKLIST_PATH = DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.with_name("operations_blacklist.toml")
 
 
 def operation(identifier="1", document="100", activity="Lift On Loading",
@@ -39,6 +41,13 @@ def write_csv(path, rows, headers=HEADER):
         writer.writerows(rows)
 
 
+def write_blacklist(path, entries):
+    path.write_text("\n".join(
+        "[[operations]]\n" + "\n".join(f"{key} = {json.dumps(value)}" for key, value in entry.items())
+        for entry in entries
+    ) if entries else "operations = []\n", encoding="utf-8")
+
+
 class CSVOperationsTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -48,10 +57,11 @@ class CSVOperationsTests(unittest.TestCase):
         self.mapping = root / "mapping.toml"
         self.mapping.write_text(f'["{CY}"]\nSL = "B"\nRS = "C"\nABSENT = "9"\n', encoding="utf-8")
 
-    def load(self, rows, *, headers=HEADER, blocks=("10", "11"), activities=ACTIVITIES, **kwargs):
+    def load(self, rows, *, headers=HEADER, blocks=("10", "11"), activities=ACTIVITIES,
+             branch="JKT74", **kwargs):
         write_csv(self.path, rows, headers)
         return load_csv_shifting_summary(
-            self.path, activities, CY, "JKT74", self.mapping,
+            self.path, activities, CY, branch, self.mapping,
             [{"block_id": block, "block_code": {"10": "B", "11": "C"}[block]} for block in blocks],
             **kwargs,
         )
@@ -154,20 +164,30 @@ class CSVOperationsTests(unittest.TestCase):
         rows = self.load([operation(), operation(document="101"), operation()])
         self.assertEqual(rows[0].lifting_count, 3)
 
-    def test_temporarily_blacklisted_operation_cannot_anchor_or_count_in_window(self):
-        self.mapping.write_text('[JKT74]\nSL = "B"\n"RS MDL" = "C"\n', encoding="utf-8")
-        for granularity in ("daily", "weekly"):
-            for timestamp in ("27-11-2026 17:45", "27/11/2026 17:45"):
-                with self.subTest(granularity=granularity, timestamp=timestamp):
-                    blocked = operation(identifier="62", document="65155", activity="Lift Off Discharge",
-                                        timestamp=timestamp, equipment=" rs mdl ", branch=" jkt74 ")
-                    self.assertEqual(self.load([blocked], period_granularity=granularity), [])
-                    rows = self.load([blocked, operation()], period_granularity=granularity)
+    def test_both_configured_blacklist_entries_cannot_anchor_or_count_in_window(self):
+        self.mapping.write_text(
+            '[JKT74]\nSL = "B"\n"RS MDL" = "C"\n[JKT64]\nSL = "B"\nRTG10 = "C"\n',
+            encoding="utf-8",
+        )
+        cases = (
+            dict(identifier="62", document="65155", timestamp="27-11-2026 17:45",
+                 equipment=" rs mdl ", branch=" jkt74 "),
+            dict(identifier="32", document="66261", timestamp="28-11-2026 03:04",
+                 equipment=" rtg10 ", branch=" jkt64 "),
+        )
+        for case in cases:
+            for granularity in ("daily", "weekly"):
+                with self.subTest(case=case, granularity=granularity):
+                    blocked = operation(**case, activity=" lift off discharge ")
+                    kwargs = dict(branch=case["branch"], period_granularity=granularity,
+                                  blacklist_path=BLACKLIST_PATH)
+                    self.assertEqual(self.load([blocked], **kwargs), [])
+                    rows = self.load([blocked, operation(branch=case["branch"])], **kwargs)
                     self.assertEqual({row.period_end for row in rows}, {LATEST})
                     self.assertEqual(sum(row.lifting_count for row in rows), 1)
                     self.assertEqual(sum(row.shifting_count for row in rows), 0)
 
-    def test_temporary_blacklist_preserves_corrected_dates_and_other_operation_identities(self):
+    def test_blacklist_preserves_corrected_dates_and_other_operation_identities(self):
         self.mapping.write_text('[JKT74]\nSL = "B"\n"RS MDL" = "C"\n', encoding="utf-8")
         original = dict(identifier="62", document="65155", activity="Lift Off Discharge",
                         timestamp="27-11-2026 17:45", equipment="RS MDL")
@@ -177,15 +197,51 @@ class CSVOperationsTests(unittest.TestCase):
             dict(identifier="63"), dict(equipment="SL"), dict(activity="Shifting Delivery"),
         ):
             with self.subTest(changed=changed):
-                rows = self.load([operation(**(original | changed))], activities=activities)
+                rows = self.load([operation(**(original | changed))], activities=activities,
+                                 blacklist_path=BLACKLIST_PATH)
                 self.assertEqual(sum(row.lifting_count + row.shifting_count for row in rows), 1)
         self.mapping.write_text('[OTHER]\n"RS MDL" = "C"\n', encoding="utf-8")
         write_csv(self.path, [operation(**original, branch="OTHER")])
         rows = load_csv_shifting_summary(
             self.path, activities, CY, "OTHER", self.mapping,
             [{"block_id": "11", "block_code": "C"}],
+            blacklist_path=BLACKLIST_PATH,
         )
         self.assertEqual(rows[0].lifting_count, 1)
+
+    def test_blacklist_dates_match_both_import_formats_and_diagnostics_log_once(self):
+        self.mapping.write_text('[JKT74]\nSL = "B"\n"RS MDL" = "C"\n', encoding="utf-8")
+        diagnostics = {}
+        self.load([
+            operation(identifier="62", document="65155", activity="Lift Off Discharge",
+                      timestamp="27/11/2026 17:45", equipment="RS MDL"),
+            operation(),
+        ], blacklist_path=BLACKLIST_PATH, diagnostics=diagnostics)
+        self.assertEqual(diagnostics["excluded_activities"], {})
+        self.assertEqual(len(diagnostics["blacklisted_operations"]), 1)
+        excluded = diagnostics["blacklisted_operations"][0]
+        self.assertIn("line 2", excluded["source"])
+        self.assertEqual((excluded["document_id"], excluded["detail_id"]), ("65155", "62"))
+        self.assertIn("pending verification", excluded["reason"])
+        self.load([operation()], diagnostics=diagnostics)
+        self.assertNotIn("blacklisted_operations", diagnostics)
+
+    def test_blacklist_is_optional_and_does_not_implicitly_exclude_fixed_records(self):
+        self.mapping.write_text('[JKT74]\n"RS MDL" = "C"\n', encoding="utf-8")
+        rows = self.load([
+            operation(identifier="62", document="65155", activity="Lift Off Discharge",
+                      timestamp="27-11-2026 17:45", equipment="RS MDL"),
+        ], activities={"lifting": ("Lift Off Discharge",), "shifting": ("Shifting Delivery",)})
+        self.assertEqual(rows[0].lifting_count, 1)
+
+    def test_blacklist_file_changes_take_effect_on_the_next_import(self):
+        path = self.path.with_name("blacklist.toml")
+        write_blacklist(path, [dict(branch_code="JKT74", document_id="100", detail_id="1",
+                                   equipment_code="SL", activity="Lift On Loading",
+                                   activity_time="29-10-2026 14:30", reason="Manual review")])
+        self.assertEqual(self.load([operation()], blacklist_path=path), [])
+        write_blacklist(path, [])
+        self.assertEqual(self.load([operation()], blacklist_path=path)[0].lifting_count, 1)
 
     def test_multiple_codes_can_contribute_to_one_block(self):
         self.mapping.write_text(f'["{CY}"]\nSL = "B"\nRS = "B"\n', encoding="utf-8")
@@ -263,6 +319,52 @@ class CSVOperationsTests(unittest.TestCase):
                 self.load(rows, headers=headers)
 
 
+class OperationsBlacklistValidationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.path = Path(temporary.name) / "blacklist.toml"
+        self.entry = dict(branch_code="JKT74", document_id="100", detail_id="1",
+                          equipment_code="SL", activity="Lift On Loading",
+                          activity_time="29-10-2026 14:30", reason="Manual review")
+
+    def test_missing_files_and_invalid_document_shapes_fail_closed(self):
+        with self.assertRaises(ConfigurationError):
+            load_operations_blacklist(self.path)
+        for text in ("", "[operations]\n", "operations = 'bad'\n", "operations = []\nother = []\n",
+                     "[[operations]\n", "operations = [1]\n"):
+            with self.subTest(text=text), self.assertRaises(ConfigurationError):
+                self.path.write_text(text, encoding="utf-8")
+                load_operations_blacklist(self.path)
+
+    def test_rules_require_all_identity_fields_and_reason_as_nonempty_strings(self):
+        for field in self.entry:
+            for invalid in (None, "", " \t ", 123):
+                entry = dict(self.entry)
+                if invalid is None:
+                    del entry[field]
+                else:
+                    entry[field] = invalid
+                with self.subTest(field=field, invalid=invalid), self.assertRaises(ConfigurationError):
+                    write_blacklist(self.path, [entry])
+                    load_operations_blacklist(self.path)
+        write_blacklist(self.path, [self.entry | {"unknown": "value"}])
+        with self.assertRaises(ConfigurationError):
+            load_operations_blacklist(self.path)
+
+    def test_invalid_dates_and_duplicate_normalized_identities_are_rejected(self):
+        for timestamp in ("31-02-2026 12:00", "2026-10-29 14:30"):
+            with self.subTest(timestamp=timestamp), self.assertRaisesRegex(ConfigurationError, "activity_time"):
+                write_blacklist(self.path, [self.entry | {"activity_time": timestamp}])
+                load_operations_blacklist(self.path)
+        duplicate = self.entry | {"branch_code": " jkt74 ", "equipment_code": " sl ",
+                                  "activity": " lift on loading ",
+                                  "activity_time": "29/10/2026 14:30", "reason": "Another reason"}
+        write_blacklist(self.path, [self.entry, duplicate])
+        with self.assertRaisesRegex(ConfigurationError, "duplicate"):
+            load_operations_blacklist(self.path)
+
+
 class CSVOperationsConfigTests(unittest.TestCase):
     def setUp(self):
         self.document = tomllib.loads(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.read_text(encoding="utf-8"))
@@ -277,6 +379,20 @@ class CSVOperationsConfigTests(unittest.TestCase):
         self.assertEqual(settings["csv_files"]["shifting_summary"],
                          (DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parent / "../operations.csv").resolve())
         self.assertNotIn("shifting_operations_file", settings)
+
+    def test_blacklist_path_is_optional_relative_and_validated_for_csv_only(self):
+        self.document["csv"]["shifting_blacklist_file"] = "exclusions/operations.toml"
+        self.assertEqual(self.settings()["shifting_blacklist_file"],
+                         DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.parent / "exclusions/operations.toml")
+        for value in ("", " ", 123, None):
+            self.document["csv"]["shifting_blacklist_file"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ConfigurationError, "shifting_blacklist_file"):
+                self.settings()
+        self.document["input"]["sources"]["shifting_summary"] = "xlsx"
+        self.assertNotIn("shifting_blacklist_file", self.settings())
+        self.document["input"]["sources"]["shifting_summary"] = "csv"
+        del self.document["csv"]["shifting_blacklist_file"]
+        self.assertNotIn("shifting_blacklist_file", self.settings())
 
     def test_workbook_settings_are_not_read_for_csv_operations(self):
         self.document["csv"]["shifting_workbook_file"] = []
@@ -332,6 +448,7 @@ class CSVOperationsConfigTests(unittest.TestCase):
         with patch("repository.operations_input.load_csv_shifting_summary", return_value=[]) as loader:
             self.assertEqual(load_operations(settings, branches, [{"block_id": "10", "block_code": "B"}]), [])
         self.assertEqual(loader.call_args.args[0], settings["csv_files"]["shifting_summary"])
+        self.assertEqual(loader.call_args.kwargs["blacklist_path"], settings["shifting_blacklist_file"])
 
 
 class CSVOperationsIntegrationTests(unittest.TestCase):
@@ -376,6 +493,23 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         write_csv(self.csv_path, [operation(), operation()])
         updated = load_yard_inputs(settings)["shifting_summary"]
         self.assertEqual(sum(r.lifting_count for r in updated), 2)
+
+    def test_configured_blacklist_filters_future_records_through_report_dispatch(self):
+        blacklist = self.fixture.root / "blacklist.toml"
+        write_blacklist(blacklist, [dict(branch_code="JKT74", document_id="100", detail_id="BAD",
+                                       equipment_code="SL", activity="Lift On Loading",
+                                       activity_time="30-10-2026 14:30", reason="Wrong source date")])
+        self.path.write_text(self.path.read_text(encoding="utf-8").replace(
+            "[csv]", '[csv]\nshifting_blacklist_file = "blacklist.toml"',
+        ), encoding="utf-8")
+        write_csv(self.csv_path, [operation(identifier="BAD", timestamp="30-10-2026 14:30"),
+                                  operation(), operation(activity="Shifting Delivery")])
+        report = shifting_report_calculation.build_report(self.path)
+        self.assertEqual(report["period_end"], LATEST)
+        self.assertEqual(report["avg_shifting_percentage"], 50)
+        blacklist.unlink()
+        with self.assertRaises(ConfigurationError):
+            shifting_report_calculation.build_report(self.path)
 
     def test_latest_activity_window_report_jsonl_and_presenter(self):
         with patch.object(shifting_report_calculation, "time", return_value=NOW + 10 * 86400):

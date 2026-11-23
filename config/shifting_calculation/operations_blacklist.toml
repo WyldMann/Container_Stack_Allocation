@@ -1,0 +1,21 @@
+# CSV operations excluded from both window selection and operation counts.
+# Match every identity field. Dates are day-first in WIB (UTC+7).
+# Add another [[operations]] entry to blacklist a record; remove it to restore it.
+
+[[operations]]
+branch_code = "JKT74"
+document_id = "65155"
+detail_id = "62"
+equipment_code = "RS MDL"
+activity = "Lift Off Discharge"
+activity_time = "27-11-2026 17:45"
+reason = "Future-dated source operation; date pending verification."
+
+[[operations]]
+branch_code = "JKT64"
+document_id = "66261"
+detail_id = "32"
+equipment_code = "RTG10"
+activity = "Lift Off Discharge"
+activity_time = "28-11-2026 03:04"
+reason = "Future-dated source operation; date pending verification."

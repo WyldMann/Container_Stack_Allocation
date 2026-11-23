@@ -58,12 +58,47 @@ whole-row equality because those have not been established as global operation
 keys. Include all relevant operations for the requested window, not a sample or
 a limited query result.
 
-Temporary exclusion: `repository/operations_repository.py` skips the JKT74 operation
-with `DOC_ID=65155`, `DTL_ID=62`, equipment `RS MDL`, activity `Lift Off Discharge`,
-and timestamp `27-11-2026 17:45` WIB (originally CSV line 269545). It is excluded
-from both window selection and counting. The source CSV is preserved; a corrected
-timestamp is accepted. Remove its `TEMPORARILY_EXCLUDED_OPERATIONS` entry after
-the source date is verified and corrected.
+## CSV operation blacklist
+
+Set the optional blacklist path in the input configuration:
+
+```toml
+[csv]
+shifting_blacklist_file = "operations_blacklist.toml"
+```
+
+The path resolves from the input configuration's directory. The blacklist file
+contains one `[[operations]]` table per excluded record:
+
+```toml
+[[operations]]
+branch_code = "JKT64"
+document_id = "66261"
+detail_id = "32"
+equipment_code = "RTG10"
+activity = "Lift Off Discharge"
+activity_time = "28-11-2026 03:04"
+reason = "Future-dated source operation; date pending verification."
+```
+
+All seven fields are required nonempty strings. The six identity fields must all
+match. Branch, equipment and activity comparisons ignore case and surrounding
+whitespace; IDs ignore surrounding whitespace. Dates use the importer's day-first
+formats and WIB timezone. CSV line numbers, `BLOK` and export filenames are not
+part of the match, so reordered or renamed exports retain the same exclusions.
+A corrected timestamp no longer matches the original blacklist entry.
+
+Matching rows are skipped before both window selection and operation counting.
+The file is loaded once per branch import, so additions or removals take effect
+on the next calculation. Missing files, malformed rules and duplicate normalized
+identities raise configuration errors. Remove a table to restore its record,
+use `operations = []` for an empty blacklist, or omit the input setting to disable
+the blacklist. Source CSVs and historical reports are preserved. This setting
+applies only to CSV operations; SQL and XLSX imports retain their existing rules.
+
+The configured blacklist includes the JKT74 record `65155/62` at
+`27-11-2026 17:45` WIB and the JKT64 record `66261/32` at
+`28-11-2026 03:04` WIB. This replaces the former hard-coded temporary exclusion.
 
 ## Counting rules
 
@@ -118,6 +153,11 @@ Importer diagnostics can collect `excluded_activities`, listing unclassified
 activity names and counts within the selected branch, mapped equipment, and
 window, for rows with a nonempty operation identifier. These diagnostics are
 not included in the shortened JSONL output.
+When a nonempty blacklist is configured, diagnostics also contain
+`blacklisted_operations`: source locations, operation identities and reasons for
+matching rows in the selected branch and mapped equipment. Each excluded source
+row appears once, despite the two import passes. These exclusions may be outside
+the resulting report window and are not included in the shortened JSONL output.
 
 ## Recorded JSONL format
 

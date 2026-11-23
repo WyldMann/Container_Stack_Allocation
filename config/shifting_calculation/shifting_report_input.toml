@@ -46,6 +46,8 @@ shifting = [
 
 [csv]
 mapping_file = "csv_mapping.toml"
+# CSV-only blacklist; paths resolve from this input file's directory.
+shifting_blacklist_file = "operations_blacklist.toml"
 # XLSX-only settings: uncomment when input.sources.shifting_summary = "xlsx".
 # CSV operations use csv.files.shifting_summary below; no worksheet is needed.
 # Codes map to initial block assignments, not individual equipment.

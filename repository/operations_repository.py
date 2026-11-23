@@ -8,17 +8,10 @@ from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
 
 from .csvloader import CSVLoader
 from .loader import InputError
+from .operations_blacklist import load_operations_blacklist, operation_key
 from .repository import Repository
 from .shifting_dates import WIB
 from .shifting_repository import ShiftingSummary, resolve_shifting_blocks
-
-
-# Temporary exclusion pending correction of the future-dated source operation.
-# Match its full identity so reordered exports and reused IDs remain safe.
-TEMPORARILY_EXCLUDED_OPERATIONS = frozenset({
-    ("JKT74", "65155", "62", "rs mdl", "LIFT OFF DISCHARGE",
-     int(datetime(2026, 11, 27, 17, 45, tzinfo=WIB).timestamp())),
-})
 
 
 class OperationsRepository(Repository):
@@ -26,7 +19,7 @@ class OperationsRepository(Repository):
         "DTL_ID", "DOC_ID", "ACTIVITY", "ACTIVITY_DATE_TIME", "KODE_CABANG", "ALAT",
     )
 
-    def _iter_operations(self, active, branch_code=None):
+    def _iter_operations(self, active, branch_code=None, *, blacklist=None, blacklisted=None):
         """Read dated, countable operations for equipment in the loaded yard."""
         for location, row in self._iter_rows():
             if branch_code is not None and row["KODE_CABANG"].strip().upper() != branch_code.strip().upper():
@@ -49,23 +42,39 @@ class OperationsRepository(Repository):
                     f"{location}: ACTIVITY_DATE_TIME must be DD-MM-YYYY HH:MM "
                     "or DD/MM/YYYY HH:MM in WIB."
                 ) from error
-            if (row["KODE_CABANG"].strip().upper(), row["DOC_ID"].strip(),
-                    row["DTL_ID"].strip(), code, row["ACTIVITY"].upper(),
-                    timestamp) in TEMPORARILY_EXCLUDED_OPERATIONS:
-                continue
+            if blacklist:
+                key = operation_key(row["KODE_CABANG"], row["DOC_ID"], row["DTL_ID"],
+                                    code, row["ACTIVITY"], timestamp)
+                if key in blacklist:
+                    if blacklisted is not None:
+                        blacklisted.append({"source": location, "branch_code": key[0],
+                                            "document_id": key[1], "detail_id": key[2],
+                                            "equipment_code": row["ALAT"].strip().upper(),
+                                            "activity": row["ACTIVITY"],
+                                            "activity_time": activity_time,
+                                            "reason": blacklist[key]})
+                    continue
             yield timestamp, code, row["ACTIVITY"]
 
     def read_summaries(self, cy_name, mapping, blocks, activities, *,
-                       period_granularity="daily", diagnostics=None, branch_code=None):
+                       period_granularity="daily", diagnostics=None, branch_code=None,
+                       blacklist=None):
         if period_granularity not in ("daily", "weekly"):
             raise ConfigurationError("shifting.period_granularity must be 'daily' or 'weekly'.")
         mapping = resolve_shifting_blocks(mapping, blocks)
         active = {code: ids for code, ids in mapping.items() if ids}
-        # The export has no ordering guarantee. Find its latest timestamp before counting;
-        # two streaming passes avoid retaining the full activity history in memory.
-        period_end = max((timestamp for timestamp, _, _ in self._iter_operations(active, branch_code)), default=None)
+        blacklisted = [] if blacklist and diagnostics is not None else None
         if diagnostics is not None:
             diagnostics["excluded_activities"] = {}
+            if blacklisted is not None:
+                diagnostics["blacklisted_operations"] = blacklisted
+            else:
+                diagnostics.pop("blacklisted_operations", None)
+        # The export has no ordering guarantee. Find its latest timestamp before counting;
+        # two streaming passes avoid retaining the full activity history in memory.
+        period_end = max((timestamp for timestamp, _, _ in self._iter_operations(
+            active, branch_code, blacklist=blacklist, blacklisted=blacklisted,
+        )), default=None)
         if period_end is None:
             return []
         duration = 86400 if period_granularity == "daily" else 7 * 86400
@@ -73,7 +82,7 @@ class OperationsRepository(Repository):
         counts = {code: Counter() for code in active}
         categories = {activity.upper(): kind for kind, names in activities.items() for activity in names}
         excluded = Counter()
-        for timestamp, code, activity in self._iter_operations(active, branch_code):
+        for timestamp, code, activity in self._iter_operations(active, branch_code, blacklist=blacklist):
             # Include the newest activity; exclude the exact trailing-window cutoff.
             if not period_start < timestamp <= period_end:
                 continue
@@ -97,10 +106,12 @@ class OperationsRepository(Repository):
 
 
 def load_csv_shifting_summary(path, activities, cy_name, branch_code, mapping_path, blocks, *,
-                              period_granularity="daily", diagnostics=None):
+                              period_granularity="daily", diagnostics=None, blacklist_path=None):
     mapping = load_shifting_block_mapping(mapping_path, cy_name, branch_code)
+    blacklist = load_operations_blacklist(blacklist_path)
     loader = CSVLoader(path, branch_column="KODE_CABANG", branch_codes=(branch_code,))
     return OperationsRepository(loader).read_summaries(
         cy_name, mapping, blocks, activities,
         period_granularity=period_granularity, diagnostics=diagnostics, branch_code=branch_code,
+        blacklist=blacklist,
     )
