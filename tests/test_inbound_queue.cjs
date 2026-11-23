@@ -116,6 +116,36 @@ test("optional container details match the focused card and survive placement", 
   assert.equal((await containerDetails(page)).Weight, "—");
 });
 
+test("the dummy option disables optional details and leaves drafted values for a regular container", async t => {
+  const page = await openPreview(t, 0);
+  const form = page.locator("#inbound-add-form");
+  await button(page, "Add container").click();
+  const identifier = form.getByRole("textbox", {name: "Container ID", exact: true});
+  const size = form.getByRole("combobox", {name: "Size", exact: true});
+  const dummy = form.getByRole("checkbox", {name: "Dummy container"});
+  const optional = form.getByText("Container details (optional)", {exact: true});
+  await identifier.fill("MANUAL");
+  await size.selectOption("20");
+  await optional.click();
+  const vessel = form.getByRole("textbox", {name: "Vessel", exact: true});
+  await vessel.fill("DRAFT");
+  await dummy.check();
+  assert.equal(await identifier.isDisabled(), true);
+  assert.equal(await vessel.isDisabled(), true);
+  assert.equal(await size.isEnabled(), true);
+  await dummy.uncheck();
+  assert.equal(await identifier.inputValue(), "MANUAL");
+  assert.equal(await vessel.inputValue(), "DRAFT");
+  assert.equal(await vessel.isEnabled(), true);
+  await dummy.check();
+  await button(page, "Add to queue").click();
+  await feedback(page, "DUMMY-INBOUND-1 added to the inbound queue.").waitFor();
+  const details = await containerDetails(page);
+  assert.equal(details.Size, "20 ft");
+  assert.equal(details.Vessel, "—");
+  assert.equal(details.Source, "Dummy container");
+});
+
 test("a highlighted 40 ft pair and coordinate dropdowns select the same alternate placement", async t => {
   const page = await openPreview(t, 0);
   await button(page, "Add container").click();

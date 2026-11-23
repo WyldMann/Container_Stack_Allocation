@@ -72,6 +72,13 @@
   margin-top: 8px;
 }
 .inbound-add-fields input, .inbound-add-fields select { width: 100%; min-width: 0; }
+.inbound-add-options[aria-disabled="true"] { color: #6c7974; }
+.inbound-add-options[aria-disabled="true"] summary { cursor: default; }
+.inbound-add-options[aria-disabled="true"] :is(input, select) {
+  color: #6c7974;
+  background: #edf1ef;
+  border-color: var(--border);
+}
 .inbound-track {
   --queue-gap: 14px;
   display: flex;

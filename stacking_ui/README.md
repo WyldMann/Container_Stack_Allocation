@@ -207,8 +207,8 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    a row to the selected branch for this preview. Enter a container ID and select
    20 ft or 40 ft. Open **Container details (optional)** to enter the same cargo,
    routing, vessel, and move-time fields shown on a focused card. Check **Dummy
-   container** to have the simulator assign the ID and keep the placed dummy out
-   of the yard CSV. Use **Delete container**
+   container** to have the simulator assign the ID and disable the optional
+   details. Placed dummies are excluded from the yard CSV. Use **Delete container**
    and confirm to remove an unprocessed row from this preview. Press **Enter** on a
    focused card to reach its actions. Use **Move to front** to make it next in line
    or **Move to end** to put it last. Hold a dragged card near either edge of the
