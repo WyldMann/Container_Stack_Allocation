@@ -12,11 +12,13 @@ shifting_summary = "../../data_shifting_calculation/shifting_report.csv"
 ```
 
 Paths resolve from the input file's directory. The CSV window ends at the most recent activity
-timestamp for the selected branch and equipment mapped to loaded yard blocks,
-among rows with a nonempty `DTL_ID`. Activities outside the configured categories
-also participate in finding that latest timestamp. Row order does not affect it.
+timestamp at or before the program run time for the selected branch and equipment
+mapped to loaded yard blocks, among rows with a nonempty `DTL_ID`. Activities
+outside the configured categories also participate in finding that latest
+timestamp. Row order does not affect it.
 `generated_at` is the program run time in Unix seconds, rather than a source
-snapshot timestamp. It does not determine the CSV window end.
+snapshot timestamp. It is the upper bound for eligible activity timestamps;
+the latest eligible source activity still determines the CSV window end.
 The report's `latest_date` (`YYYY-MM-DD`) is derived from the window end in WIB
 for both daily and weekly windows, and is `null` when no window is available.
 This label does not restrict the window to a calendar date or month.
@@ -102,6 +104,15 @@ The configured blacklist includes the JKT74 record `65155/62` at
 
 ## Counting rules
 
+- Ignore activity timestamps later than the program run time, before selecting
+  the window or counting operations. A timestamp exactly equal to run time is
+  eligible. Timestamps are interpreted in WIB and compared as Unix seconds,
+  independently of the host timezone. One cutoff is frozen for both CSV passes;
+  batch reports share their `generated_at` cutoff across branches. Direct CSV
+  imports capture the current clock once, or accept `recorded_at` explicitly.
+  If every otherwise qualifying activity is in the future, the report has no operations
+  window. Future rows are re-evaluated on each run, while explicit blacklist
+  entries continue to exclude their matching records.
 - Resolve the selected branch through `terminal_branches`; match `KODE_CABANG`
   ignoring case and surrounding whitespace.
   Set `[input.filters].branch_code` to select the branch. Its terminal and branch
@@ -158,6 +169,11 @@ When a nonempty blacklist is configured, diagnostics also contain
 matching rows in the selected branch and mapped equipment. Each excluded source
 row appears once, despite the two import passes. These exclusions may be outside
 the resulting report window and are not included in the shortened JSONL output.
+When future-dated rows are ignored, diagnostics include `future_operations`,
+listing source locations, operation identities and the `recorded_at` cutoff.
+These rows are logged once during window selection. Explicit blacklist matches
+are logged under `blacklisted_operations` first, so exclusions are not duplicated.
+Neither diagnostic is written into the shortened JSONL output.
 
 ## Recorded JSONL format
 

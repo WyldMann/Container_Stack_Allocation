@@ -26,6 +26,7 @@ HEADER = ("DTL_ID", "DOC_ID", "ACTIVITY", "ACTIVITY_DATE_TIME", "KODE_CABANG", "
 ACTIVITIES = {"lifting": ("Lift On Loading",), "shifting": ("Shifting Delivery",)}
 NOW = int(datetime(2026, 10, 29, 15, tzinfo=WIB).timestamp())
 LATEST = int(datetime(2026, 10, 29, 14, 30, tzinfo=WIB).timestamp())
+TEST_RUN_TIME = int(datetime(2026, 12, 1, tzinfo=WIB).timestamp())
 BLACKLIST_PATH = DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE.with_name("operations_blacklist.toml")
 
 
@@ -60,6 +61,7 @@ class CSVOperationsTests(unittest.TestCase):
     def load(self, rows, *, headers=HEADER, blocks=("10", "11"), activities=ACTIVITIES,
              branch="JKT74", **kwargs):
         write_csv(self.path, rows, headers)
+        kwargs.setdefault("recorded_at", TEST_RUN_TIME)
         return load_csv_shifting_summary(
             self.path, activities, CY, branch, self.mapping,
             [{"block_id": block, "block_code": {"10": "B", "11": "C"}[block]} for block in blocks],
@@ -164,6 +166,69 @@ class CSVOperationsTests(unittest.TestCase):
         rows = self.load([operation(), operation(document="101"), operation()])
         self.assertEqual(rows[0].lifting_count, 3)
 
+    def test_future_operations_cannot_anchor_or_count_in_daily_or_weekly_windows(self):
+        for granularity, duration in (("daily", 86400), ("weekly", 7 * 86400)):
+            with self.subTest(granularity=granularity):
+                diagnostics = {}
+                rows = self.load([
+                    operation(),
+                    operation(timestamp="29-10-2026 15:00"),
+                    operation(timestamp="29-10-2026 14:45", activity="Shifting Delivery"),
+                    operation(timestamp="29-10-2026 15:01", activity="Shifting Delivery"),
+                    operation(timestamp="30-10-2026 12:00", equipment="RS"),
+                    operation(timestamp="01-01-2030 00:00", activity="Unclassified"),
+                ], recorded_at=NOW, period_granularity=granularity, diagnostics=diagnostics)
+                self.assertEqual({(row.period_start, row.period_end) for row in rows},
+                                 {(NOW - duration, NOW)})
+                self.assertEqual([(row.lifting_count, row.shifting_count) for row in rows],
+                                 [(2, 1), (0, 0)])
+                self.assertEqual(diagnostics["excluded_activities"], {})
+                future = diagnostics["future_operations"]
+                self.assertEqual(len(future), 3)
+                self.assertEqual({row["recorded_at"] for row in future}, {NOW})
+                self.assertIn("line 5", future[0]["source"])
+
+    def test_future_only_export_has_no_window_and_is_reconsidered_on_later_runs(self):
+        diagnostics = {}
+        records = [operation(timestamp="29-10-2026 15:01")]
+        self.assertEqual(self.load(records, recorded_at=NOW, diagnostics=diagnostics), [])
+        self.assertEqual(len(diagnostics["future_operations"]), 1)
+        rows = self.load(records, recorded_at=NOW + 60, diagnostics=diagnostics)
+        self.assertEqual(rows[0].lifting_count, 1)
+        self.assertEqual(rows[0].period_end, NOW + 60)
+        self.assertNotIn("future_operations", diagnostics)
+
+    def test_default_run_time_is_captured_once_for_both_csv_passes(self):
+        with patch("repository.operations_repository.unix_time", side_effect=[NOW, NOW + 86400]) as clock:
+            rows = self.load([operation(), operation(timestamp="29-10-2026 15:01")], recorded_at=None)
+        clock.assert_called_once_with()
+        self.assertEqual(rows[0].period_end, LATEST)
+        self.assertEqual(rows[0].lifting_count, 1)
+
+    def test_future_comparison_uses_wib_at_midnight_and_includes_equal_timestamp(self):
+        midnight = int(datetime(2026, 10, 29, tzinfo=WIB).timestamp())
+        rows = self.load([
+            operation(timestamp="28-10-2026 23:59"),
+            operation(timestamp="29/10/2026 00:00"),
+            operation(timestamp="29-10-2026 00:01"),
+        ], recorded_at=midnight)
+        self.assertEqual(rows[0].lifting_count, 2)
+        self.assertEqual(rows[0].period_end, midnight)
+
+    def test_explicit_blacklist_precedes_automatic_future_exclusions(self):
+        self.mapping.write_text('[JKT74]\nSL = "B"\n"RS MDL" = "C"\n', encoding="utf-8")
+        diagnostics = {}
+        rows = self.load([
+            operation(),
+            operation(identifier="62", document="65155", activity="Lift Off Discharge",
+                      timestamp="27-11-2026 17:45", equipment="RS MDL"),
+            operation(identifier="OTHER", timestamp="29-10-2026 15:01"),
+        ], recorded_at=NOW, blacklist_path=BLACKLIST_PATH, diagnostics=diagnostics)
+        self.assertEqual(rows[0].lifting_count, 1)
+        self.assertEqual(len(diagnostics["blacklisted_operations"]), 1)
+        self.assertEqual(len(diagnostics["future_operations"]), 1)
+        self.assertEqual(diagnostics["future_operations"][0]["detail_id"], "OTHER")
+
     def test_both_configured_blacklist_entries_cannot_anchor_or_count_in_window(self):
         self.mapping.write_text(
             '[JKT74]\nSL = "B"\n"RS MDL" = "C"\n[JKT64]\nSL = "B"\nRTG10 = "C"\n',
@@ -205,7 +270,7 @@ class CSVOperationsTests(unittest.TestCase):
         rows = load_csv_shifting_summary(
             self.path, activities, CY, "OTHER", self.mapping,
             [{"block_id": "11", "block_code": "C"}],
-            blacklist_path=BLACKLIST_PATH,
+            blacklist_path=BLACKLIST_PATH, recorded_at=TEST_RUN_TIME,
         )
         self.assertEqual(rows[0].lifting_count, 1)
 
@@ -446,9 +511,11 @@ class CSVOperationsConfigTests(unittest.TestCase):
         settings = self.settings()
         branches = SimpleNamespace(cy_name=lambda: CY, records=[{"branch_code": "JKT74"}])
         with patch("repository.operations_input.load_csv_shifting_summary", return_value=[]) as loader:
-            self.assertEqual(load_operations(settings, branches, [{"block_id": "10", "block_code": "B"}]), [])
+            self.assertEqual(load_operations(settings, branches, [{"block_id": "10", "block_code": "B"}],
+                                             recorded_at=NOW), [])
         self.assertEqual(loader.call_args.args[0], settings["csv_files"]["shifting_summary"])
         self.assertEqual(loader.call_args.kwargs["blacklist_path"], settings["shifting_blacklist_file"])
+        self.assertEqual(loader.call_args.kwargs["recorded_at"], NOW)
 
 
 class CSVOperationsIntegrationTests(unittest.TestCase):
@@ -511,6 +578,24 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         with self.assertRaises(ConfigurationError):
             shifting_report_calculation.build_report(self.path)
 
+    def test_report_uses_generation_time_to_filter_future_rows_without_a_blacklist(self):
+        write_csv(self.csv_path, [operation(), operation(activity="Shifting Delivery"),
+                                  operation(timestamp="29-10-2026 15:01")])
+        with patch.object(shifting_report_calculation, "time", return_value=NOW), patch(
+            "repository.operations_repository.unix_time", return_value=TEST_RUN_TIME,
+        ) as import_clock:
+            report = shifting_report_calculation.build_report(self.path)
+        import_clock.assert_not_called()
+        self.assertEqual(report["generated_at"], NOW)
+        self.assertEqual(report["period_end"], LATEST)
+        self.assertEqual(report["avg_shifting_percentage"], 50)
+        write_csv(self.csv_path, [operation(timestamp="29-10-2026 15:01")])
+        with patch.object(shifting_report_calculation, "time", return_value=NOW):
+            report = shifting_report_calculation.build_report(self.path)
+        self.assertEqual((report["period_start"], report["period_end"]), (None, None))
+        self.assertEqual(report["shifting_observations"], [])
+        self.assertIsNone(report["avg_shifting_percentage"])
+
     def test_latest_activity_window_report_jsonl_and_presenter(self):
         with patch.object(shifting_report_calculation, "time", return_value=NOW + 10 * 86400):
             report = shifting_report_calculation.build_report(self.path)
@@ -550,7 +635,7 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
                 self.path.write_text(original.replace(
                     'period_granularity = "daily"', f'period_granularity = "{granularity}"',
                 ), encoding="utf-8")
-                with patch.object(shifting_report_calculation, "time", return_value=NOW):
+                with patch.object(shifting_report_calculation, "time", return_value=NOW + 4 * 86400):
                     report = shifting_report_calculation.build_report(self.path)
                 self.assertEqual(report["latest_date"], "2026-11-01")
                 self.assertNotIn("report_month", report)

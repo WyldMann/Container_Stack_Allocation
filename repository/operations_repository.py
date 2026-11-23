@@ -2,6 +2,7 @@
 
 from collections import Counter
 from datetime import datetime
+from time import time as unix_time
 
 from config import ConfigurationError
 from config.csv_import.shifting_block_mapping import load_shifting_block_mapping
@@ -19,7 +20,8 @@ class OperationsRepository(Repository):
         "DTL_ID", "DOC_ID", "ACTIVITY", "ACTIVITY_DATE_TIME", "KODE_CABANG", "ALAT",
     )
 
-    def _iter_operations(self, active, branch_code=None, *, blacklist=None, blacklisted=None):
+    def _iter_operations(self, active, branch_code=None, *, recorded_at,
+                         blacklist=None, blacklisted=None, future_operations=None):
         """Read dated, countable operations for equipment in the loaded yard."""
         for location, row in self._iter_rows():
             if branch_code is not None and row["KODE_CABANG"].strip().upper() != branch_code.strip().upper():
@@ -54,18 +56,32 @@ class OperationsRepository(Repository):
                                             "activity_time": activity_time,
                                             "reason": blacklist[key]})
                     continue
+            if timestamp > recorded_at:
+                if future_operations is not None:
+                    future_operations.append({
+                        "source": location, "branch_code": row["KODE_CABANG"].strip().upper(),
+                        "document_id": row["DOC_ID"].strip(), "detail_id": row["DTL_ID"].strip(),
+                        "equipment_code": row["ALAT"].strip().upper(),
+                        "activity": row["ACTIVITY"], "activity_time": activity_time,
+                        "recorded_at": recorded_at,
+                    })
+                continue
             yield timestamp, code, row["ACTIVITY"]
 
     def read_summaries(self, cy_name, mapping, blocks, activities, *,
                        period_granularity="daily", diagnostics=None, branch_code=None,
-                       blacklist=None):
+                       blacklist=None, recorded_at=None):
         if period_granularity not in ("daily", "weekly"):
             raise ConfigurationError("shifting.period_granularity must be 'daily' or 'weekly'.")
+        # Freeze the upper bound for both passes, even if importing takes time.
+        recorded_at = int(unix_time() if recorded_at is None else recorded_at)
         mapping = resolve_shifting_blocks(mapping, blocks)
         active = {code: ids for code, ids in mapping.items() if ids}
         blacklisted = [] if blacklist and diagnostics is not None else None
+        future_operations = [] if diagnostics is not None else None
         if diagnostics is not None:
             diagnostics["excluded_activities"] = {}
+            diagnostics.pop("future_operations", None)
             if blacklisted is not None:
                 diagnostics["blacklisted_operations"] = blacklisted
             else:
@@ -73,8 +89,11 @@ class OperationsRepository(Repository):
         # The export has no ordering guarantee. Find its latest timestamp before counting;
         # two streaming passes avoid retaining the full activity history in memory.
         period_end = max((timestamp for timestamp, _, _ in self._iter_operations(
-            active, branch_code, blacklist=blacklist, blacklisted=blacklisted,
+            active, branch_code, recorded_at=recorded_at, blacklist=blacklist,
+            blacklisted=blacklisted, future_operations=future_operations,
         )), default=None)
+        if future_operations:
+            diagnostics["future_operations"] = future_operations
         if period_end is None:
             return []
         duration = 86400 if period_granularity == "daily" else 7 * 86400
@@ -82,7 +101,8 @@ class OperationsRepository(Repository):
         counts = {code: Counter() for code in active}
         categories = {activity.upper(): kind for kind, names in activities.items() for activity in names}
         excluded = Counter()
-        for timestamp, code, activity in self._iter_operations(active, branch_code, blacklist=blacklist):
+        for timestamp, code, activity in self._iter_operations(
+                active, branch_code, recorded_at=recorded_at, blacklist=blacklist):
             # Include the newest activity; exclude the exact trailing-window cutoff.
             if not period_start < timestamp <= period_end:
                 continue
@@ -106,12 +126,13 @@ class OperationsRepository(Repository):
 
 
 def load_csv_shifting_summary(path, activities, cy_name, branch_code, mapping_path, blocks, *,
-                              period_granularity="daily", diagnostics=None, blacklist_path=None):
+                              period_granularity="daily", diagnostics=None, blacklist_path=None,
+                              recorded_at=None):
     mapping = load_shifting_block_mapping(mapping_path, cy_name, branch_code)
     blacklist = load_operations_blacklist(blacklist_path)
     loader = CSVLoader(path, branch_column="KODE_CABANG", branch_codes=(branch_code,))
     return OperationsRepository(loader).read_summaries(
         cy_name, mapping, blocks, activities,
         period_granularity=period_granularity, diagnostics=diagnostics, branch_code=branch_code,
-        blacklist=blacklist,
+        blacklist=blacklist, recorded_at=recorded_at,
     )

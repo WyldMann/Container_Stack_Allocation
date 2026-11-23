@@ -1,6 +1,7 @@
 """Batch reports keep yard identity, source windows, and JSONL history separate."""
 
 from contextlib import redirect_stdout
+from datetime import datetime
 import importlib.util
 import io
 import json
@@ -11,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from config import ConfigurationError, load_input_config
 from repository import InputError
+from repository.shifting_dates import WIB
 from tests import test_input_filters as filter_tests
 import main
 import shifting_report_calculation
@@ -102,6 +104,20 @@ class MultipleBranchTests(unittest.TestCase):
             shifting_report_calculation.build_report(self.path)
         with self.assertRaises(ConfigurationError):
             shifting_report_calculation.build_report(self.path, branch_code="MISSING")
+
+    def test_batch_branches_share_one_generation_time_for_future_exclusions(self):
+        cutoff = int(datetime(2026, 10, 31, tzinfo=WIB).timestamp())
+        with self.activities.open("a", encoding="utf-8") as stream:
+            stream.write("FUTURE,D,Lift on Loading,01-11-2026 00:00,JKT74,SL\n"
+                         "FUTURE,D,Lift on Loading,01-11-2026 00:00,JKT64,SL\n")
+        with patch.object(shifting_report_calculation, "time", side_effect=[cutoff, cutoff + 86400]) as clock, patch(
+            "repository.operations_repository.unix_time", return_value=cutoff + 86400,
+        ) as import_clock:
+            reports = shifting_report_calculation.build_reports(self.path)
+        clock.assert_called_once_with()
+        import_clock.assert_not_called()
+        self.assert_reports(reports)
+        self.assertEqual({report["generated_at"] for report in reports.values()}, {cutoff})
 
     def test_each_run_appends_only_to_the_matching_branch_file(self):
         output = self.root / "output"
