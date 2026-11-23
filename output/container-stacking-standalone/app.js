@@ -51,7 +51,7 @@ const placementGroups = [
   }},
   {title: "Stacking safety", graph: "pyramid", neighborSwitches: true, options: {
     "feasibility.stacking_safety_mode": ["Pyramid stacking",
-      "Decrease score applies the curve. Enforce maximum difference rejects placements above the maximum. Turn off either one or both."],
+      "The tier gap is the number of tiers the stack would stand above its tallest considered neighbor after placement. If there’s no neighbor support, measure from ground level."],
     "feasibility.stacking_safety_penalty_start": ["Start reducing score",
       "Full score up to this tier difference after placement. Enter a whole number from 0 to one below the maximum difference."],
     "feasibility.stacking_safety_maxima": ["Maximum tier difference",
@@ -419,18 +419,29 @@ function ruleModeSwitch(controls, rows, key, prefix, value, fallback = "feasibil
     group.className = "pyramid-rule-switches";
     group.setAttribute("role", "group");
     control.switches = [];
-    for (const [feature, title] of [["decay", "Decrease score"], ["bound", "Enforce maximum difference"]]) {
+    const features = [
+      ["decay", "Reduce score as the tier gap grows",
+        "Keep the full score through the penalty start. As the gap grows, reduce the score until it reaches the configured multiplier at the tier gap limit."],
+      ["bound", "Reject placements above the tier gap limit",
+        "Reject a placement if its tier gap exceeds the configured limit. A gap equal to the limit is allowed."]
+    ];
+    for (const [feature, title, description] of features) {
       const choice = el("input");
       choice.type = "checkbox";
       choice.setAttribute("role", "switch");
       choice.dataset.feature = feature;
+      const help = el("p", description, "placement-help");
+      help.id = modeKey + "-" + feature + "-help";
+      choice.setAttribute("aria-describedby", help.id);
       const option = el("label", undefined, "pyramid-feature-switch");
       const toggle = el("span", undefined, "toml-switch");
       const track = el("span", undefined, "toml-switch-track");
       track.setAttribute("aria-hidden", "true");
       toggle.append(choice, track);
       option.append(el("span", title), toggle);
-      group.append(option);
+      const setting = el("div");
+      setting.append(option, help);
+      group.append(setting);
       control.switches.push(choice);
       choice.addEventListener("change", () => {
         const [decay, bound] = control.switches.map(input => input.checked);

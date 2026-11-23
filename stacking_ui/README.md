@@ -60,8 +60,9 @@ An empty or omitted optional CSV uses the default open borders. Uploading a
 replacement accessibility CSV uses that file for the current preview.
 
 **Pyramid stacking** has two independent switches, both on by default:
-**Decrease score** applies the declining score curve, and **Enforce maximum
-difference** rejects placements beyond `stacking_safety_maxima`. Turning off
+**Reduce score as the tier gap grows** applies the declining score curve, and
+**Reject placements above the tier gap limit** rejects placements beyond
+`stacking_safety_maxima`. Turning off
 the decrease gives a score multiplier of 1; turning off the bound allows larger
 differences at the curve's endpoint score. Turning both off skips the pyramid
 rule and keeps its settings for later. The difference is the post-placement height

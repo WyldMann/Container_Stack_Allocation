@@ -351,9 +351,7 @@
 .pyramid-rule-switches { display: grid; gap: 10px; min-width: 0; }
 .pyramid-feature-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pyramid-feature-switch .toml-switch { flex: 0 0 40px; }
-@media (max-width: 600px) {
-  .placement-option:has(.pyramid-rule-switches) .toml-setting { grid-template-columns: 1fr; }
-}
+.placement-option:has(.pyramid-rule-switches) .toml-setting { grid-template-columns: 1fr; }
 @media (max-width: 480px) {
   .placement-group:has(.pyramid-rule-switches) .toml-setting { grid-template-columns: 1fr; }
 }
