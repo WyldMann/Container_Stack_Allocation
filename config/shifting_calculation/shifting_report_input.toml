@@ -63,11 +63,11 @@ yard_blocks = "../../data_shifting_calculation/yard_block.csv"
 yard_planning = "../../data_shifting_calculation/yard_planning.csv"
 removed_slots = "../../data_shifting_calculation/removed_slots.csv"
 parameters = "../../data_shifting_calculation/parameters.csv"
-existing_containers = "../../data_shifting_calculation/containers.csv"
+existing_containers = "../../data_shifting_calculation/TRM_TRS_TARGET_CONTAINER.csv"
 master_equipment = "../../data_shifting_calculation/master_equipment.csv"
 equipment_history = "../../data_shifting_calculation/equipment_history.csv"
 # Raw activities with unique headers; see repository/shifting_csv_import.md.
-shifting_summary = "../../data_shifting_calculation/shifting_report.csv"
+shifting_summary = "../../data_shifting_calculation/RECEIVINGDELIVERY.csv"
 
 # Required when any input.sources entry is "sql".
 # Set the named connection environment variables before running.
