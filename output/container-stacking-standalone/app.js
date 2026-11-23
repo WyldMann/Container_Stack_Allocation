@@ -1331,7 +1331,11 @@ function inboundAddForm(button, onAdd, onAdded) {
     fields.append(field);
     return control;
   });
-  options.append(el("summary", "Container details (optional)"), fields);
+  const optionsSummary = el("summary", "Container details (optional)");
+  optionsSummary.addEventListener("click", event => {
+    if (dummy.checked) event.preventDefault();
+  });
+  options.append(optionsSummary, fields);
   options.addEventListener("invalid", () => { options.open = true; }, true);
   const submit = el("button", "Add to queue");
   submit.type = "submit";
@@ -1344,21 +1348,26 @@ function inboundAddForm(button, onAdd, onAdded) {
   form.append(identity, sizeLabel, options, actions, error);
 
   let manualId = "";
-  function syncIdentifier() {
-    identifier.disabled = dummy.checked;
-    identifier.dataset.accessLocked = String(dummy.checked);
+  function syncDummyFields() {
+    for (const control of [identifier, ...detailControls]) {
+      control.disabled = dummy.checked;
+      control.dataset.accessLocked = String(dummy.checked);
+    }
+    options.setAttribute("aria-disabled", String(dummy.checked));
+    optionsSummary.tabIndex = dummy.checked ? -1 : 0;
     identifier.placeholder = dummy.checked ? "Assigned automatically" : "";
     identifier.value = dummy.checked ? "" : manualId;
   }
   dummy.addEventListener("change", () => {
     if (dummy.checked) manualId = identifier.value;
-    syncIdentifier();
+    syncDummyFields();
+    error.textContent = "";
   });
   function close() {
     form.reset();
     options.open = false;
     manualId = "";
-    syncIdentifier();
+    syncDummyFields();
     error.textContent = "";
     form.hidden = true;
     button.setAttribute("aria-expanded", "false");
@@ -1379,7 +1388,7 @@ function inboundAddForm(button, onAdd, onAdded) {
   form.addEventListener("submit", event => {
     event.preventDefault();
     error.textContent = "";
-    const details = Object.fromEntries(detailControls.map(control => [control.name, control.value]));
+    const details = dummy.checked ? {} : Object.fromEntries(detailControls.map(control => [control.name, control.value]));
     return action(async () => {
       const row = await onAdd({container_id: identifier.value, size: size.value, dummy: dummy.checked, details});
       close();

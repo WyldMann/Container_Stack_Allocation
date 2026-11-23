@@ -72,6 +72,13 @@
   margin-top: 8px;
 }
 .inbound-add-fields input, .inbound-add-fields select { width: 100%; min-width: 0; }
+.inbound-add-options[aria-disabled="true"] { color: #6c7974; }
+.inbound-add-options[aria-disabled="true"] summary { cursor: default; }
+.inbound-add-options[aria-disabled="true"] :is(input, select) {
+  color: #6c7974;
+  background: #edf1ef;
+  border-color: var(--border);
+}
 .inbound-track {
   --queue-gap: 14px;
   display: flex;
@@ -264,6 +271,17 @@
 }
 .simulation-trace-picker select { padding: 3px 6px; font-size: 13px; }
 .simulation-trace-picker[hidden] { display: none; }
+.simulation-alternate {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f8faf9;
+}
+.simulation-alternate-fields { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.simulation-alternate > p:empty { display: none; }
+.simulation-alternate-fields label { display: grid; gap: 3px; font-size: 13px; }
+.simulation-alternate-fields select { min-width: 90px; padding: 4px 6px; font-size: 13px; }
 .simulation-trace-stages { margin: 4px 0; padding-left: 22px; font-size: 13px; }
 .heuristic-breakdown { margin: 4px 0 8px; max-width: 360px; }
 .heuristic-breakdown table { font-size: 12px; font-variant-numeric: tabular-nums; }

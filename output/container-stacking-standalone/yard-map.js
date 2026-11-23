@@ -226,7 +226,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   function renderInspector(panel, block, stack, partner, placed, traceEntries) {
     const heading = el("div", undefined, "yard-inspector-heading");
     const extra = Math.max(0, stack.tiers.length - stack.capacity);
-    const occupancy = el("span", stack.removed ? "Removed" :
+    const occupancy = el("span", stack.removed ? "Removed · " + stack.tiers.length + " occupied" :
       stack.tiers.length + " of " + stack.capacity + " occupied", "yard-occupancy");
     occupancy.classList.toggle("yard-overcapacity", extra > 0);
     heading.append(el("h4", "Stack details"), occupancy);
@@ -238,7 +238,8 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     if (traceEntries) {
       panel.append(el("h4", "Assignment trace"));
       for (const {description, breakdown} of traceEntries) {
-        panel.append(el("p", description, "yard-trace-detail"), heuristicTable(breakdown));
+        panel.append(el("p", description, "yard-trace-detail"));
+        if (breakdown) panel.append(heuristicTable(breakdown));
       }
     }
     if (stack.anomaly) panel.append(el("p", "Tier gap below an occupied position.", "yard-gap-note"));
@@ -274,7 +275,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       detail.append(summary, rules);
       panel.append(detail);
     }
-    if (stack.removed) return;
+    if (stack.removed && !stack.tiers.length) return;
 
     panel.append(el("h4", "Tier contents"));
     const tiers = new Map(stack.tiers.map(tier => [tier.tier, tier]));
@@ -421,13 +422,13 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     const names = assigned.map(id => "P" + id);
     tile.setAttribute("aria-label", "Block " + block.code + ", row " + stack.row + ", " + slotLabel(stack, partner) + ", " +
       (partner ? "40 ft, " : "") +
-      (stack.removed ? "removed" : occupancy + " tiers occupied") +
+      (stack.removed ? "removed, " + stack.tiers.length + " tiers occupied" : occupancy + " tiers occupied") +
       (overcapacity ? ", over capacity" : "") +
       (names.length ? ", " + names.join(", ") : ", unassigned") +
       (stack.anomaly ? ", tier gap" : "") +
       (missingRecords ? ", missing container records" : ""));
     tile.replaceChildren();
-    if (stack.removed) {
+    if (stack.removed && !occupied) {
       tile.append(el("strong", "x"));
     } else {
       paint(tile, assigned);
@@ -515,7 +516,12 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
         tile.type = "button";
         tile.tabIndex = index === 0 ? 0 : -1;
         tile.setAttribute("aria-pressed", "false");
-        tile.addEventListener("click", () => selectStack(view, index));
+        tile.addEventListener("click", event => {
+          selectStack(view, index);
+          const bounds = tile.getBoundingClientRect();
+          const leftHalf = event.detail && pairPartner(view, index) && event.clientX < bounds.left + bounds.width / 2;
+          accessOptions.onStackClick?.({block: block.code, row: row + 1, slot: leftHalf ? slot : slot + 1});
+        });
         tile.addEventListener("keydown", event => {
           const direction = {ArrowLeft:[0,-1], ArrowRight:[0,1], ArrowUp:[-1,0], ArrowDown:[1,0]}[event.key];
           if (!direction) return;
@@ -681,7 +687,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       return;
     }
 
-    const {row, calculation} = trace;
+    const {row, calculation, alternate_rank: alternateRank, manual_destination: manual} = trace;
     const candidates = calculation?.candidates ?? [];
     let target;
     for (const candidate of candidates) {
@@ -690,20 +696,36 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       const anchorTile = view.tiles[anchor];
       const footprint = new Set([anchorTile]);
       if (row.size === "40") footprint.add(view.tiles[anchor - 1]);
-      const chosen = candidate.selected && (row.status === "placed" || row.status === "suggested");
+      const selected = alternateRank == null ? candidate.selected : candidate.candidate_rank === alternateRank;
+      const chosen = !manual && selected && (row.status === "placed" || row.status === "suggested");
       const slots = row.size === "40" ? "Slots " + two(candidate.slot - 1) + "–" + two(candidate.slot) :
         "Slot " + two(candidate.slot);
-      const state = chosen ? (row.status === "suggested" ? "Suggested placement" : "Placed") : "Passed parameter selection";
+      const state = chosen ? (row.status === "placed" ? "Placed" : alternateRank == null ? "Suggested placement" : "Alternate selected") :
+        candidate.selected ? "Engine recommendation" : "Passed parameter selection";
       const rankLabel = candidate.rank == null ? "" : "Rank " + candidate.rank + " · ";
       const description = rankLabel + slots + " · Tier " + candidate.tier + " · " + (candidate.equipment ?? "No equipment") + " · " + state;
       const breakdown = heuristicRows(candidate, calculation.enabled_multipliers);
       for (const tile of footprint) {
         if (!traceTiles.has(tile)) traceTiles.set(tile, []);
-        traceTiles.get(tile).push({chosen, description, breakdown, badgeRank: tile === anchorTile ? candidate.rank : null});
+        traceTiles.get(tile).push({chosen, description, breakdown,
+          badgeRank: tile === anchorTile ? candidate.rank : null});
         if (footprint.size === 2) tile.classList.add("yard-trace-pair");
       }
       if (footprint.size === 2) anchorTile.classList.add("yard-trace-pair-anchor");
-      if (!target || candidate.selected) target = {view, anchor};
+      if (!target || selected) target = {view, anchor};
+    }
+    if (manual) {
+      const view = views.find(item => item.block.code === manual.block);
+      const anchor = (manual.row - 1) * view.block.slots + manual.slot - 1;
+      const footprint = row.size === "40" ? [view.tiles[anchor - 1], view.tiles[anchor]] : [view.tiles[anchor]];
+      const description = "Manual " + (row.status === "placed" ? "placement" : "selection") + " · Tier " + manual.tier;
+      for (const tile of new Set(footprint)) {
+        if (!traceTiles.has(tile)) traceTiles.set(tile, []);
+        traceTiles.get(tile).push({chosen: true, description});
+        if (footprint.length === 2) tile.classList.add("yard-trace-pair");
+      }
+      if (footprint.length === 2) view.tiles[anchor].classList.add("yard-trace-pair-anchor");
+      target = {view, anchor};
     }
     for (const [tile, entries] of traceTiles) {
       tile.classList.add(entries.some(entry => entry.chosen) ? "yard-trace-winner" : "yard-trace-candidate");
@@ -723,9 +745,10 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     traceKey.replaceChildren(
       el("strong", (row.status === "suggested" ? "Suggestion #" : "Trace #") + row.position + " · " + (row.container_id || "Missing container ID")),
       el("span", context + (historical ? " · Earlier trace on the current yard" : "")),
-      el("span", candidates.length ?
+      el("span", manual ? "Purple marks the manual location" : candidates.length ?
         candidates.length + " passed parameter selection · Badges mark the top five · Select a location for its score" +
-          (row.status === "suggested" ? " · Purple marks the suggestion" : row.status === "placed" ? " · Purple marks the placement" : "") :
+          (row.status === "suggested" ? (alternateRank == null ? " · Purple marks the suggestion" : " · Purple marks the chosen alternate") :
+            row.status === "placed" ? " · Purple marks the placement" : "") :
         "No locations passed parameter selection")
     );
     if (target) {
@@ -771,18 +794,19 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   function applyPlacement(placed) {
     const view = views.find(item => item.block.code === placed.block);
     const {block, tiles} = view;
-    for (const stack of placed.stacks) {
+    for (const stack of placed.updated_stacks ?? placed.stacks) {
       const index = (stack.row - 1) * block.slots + stack.slot - 1;
       block.occupied_tiers += stack.tiers.length - block.stacks[index].tiers.length;
       block.stacks[index] = stack;
     }
+    block.parameter_compliance = placed.parameter_compliance;
+    block.container_count += 1 - (placed.displaced?.length ?? 0);
+    if (placed.manual) return;
     if (placed.stacks.length === 2) mergePair(view, (placed.row - 1) * block.slots + placed.slot - 1);
     for (const stack of placed.stacks) {
       const index = (stack.row - 1) * block.slots + stack.slot - 1;
       if (tiles[index] !== tiles[index + 1]) paintStack(tiles[index], block, stack, pairPartner(view, index));
     }
-    block.container_count++;
-    block.parameter_compliance = placed.parameter_compliance;
     updateBlockSummary(view);
   }
   syncAccessControls();
