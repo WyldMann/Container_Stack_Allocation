@@ -163,6 +163,7 @@
   background: #f8faf9;
   font-size: 13px;
 }
+.run-to-end { background: #1d7e6a; border-color: #1d7e6a; }
 .simulation-outcome {
   margin: 8px 0 14px;
   padding: 8px 12px;

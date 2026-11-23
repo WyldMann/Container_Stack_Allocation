@@ -131,7 +131,7 @@ async function simulationView(run, branches, id, onStart) {
   progress.setAttribute("aria-live", "polite");
   const next = el("button");
   next.type = "button";
-  const runToEnd = el("button", "Run to end", "secondary");
+  const runToEnd = el("button", "Run to end", "run-to-end");
   runToEnd.type = "button";
   const viewTrace = el("button", "View trace", "secondary");
   viewTrace.type = "button";
@@ -142,7 +142,7 @@ async function simulationView(run, branches, id, onStart) {
   snapshotPicker.accept = ".csv";
   snapshotPicker.hidden = true;
   const buttons = el("div", undefined, "actions");
-  buttons.append(next, runToEnd, viewTrace, compare);
+  buttons.append(next, viewTrace, runToEnd, compare);
   controls.append(progress, buttons);
   const outcome = el("div", undefined, "simulation-outcome");
   const traceLabel = el("label", undefined, "simulation-trace-picker");
@@ -209,8 +209,10 @@ async function simulationView(run, branches, id, onStart) {
   function showTrace() {
     const current = tracePicker.value === "current";
     const trace = current ? run.suggestion : run.traces[Number(tracePicker.value)];
+    const winner = current ? trace?.calculation?.candidates.find(candidate => candidate.selected) : null;
     heading.textContent = current ? "Suggested assignment" : "Assignment trace";
     next.hidden = !current || (!trace && !suggestionError);
+    next.classList.toggle("secondary", Boolean(winner));
     runToEnd.hidden = !current || !trace;
     if (!trace) {
       next.textContent = "Retry suggestion";
@@ -224,7 +226,6 @@ async function simulationView(run, branches, id, onStart) {
     const label = "#" + row.position + " " + (row.container_id || "Missing container ID");
     status.classList.remove("not-ready");
     if (current) {
-      const winner = calculation?.candidates.find(candidate => candidate.selected);
       next.textContent = winner ? "Place container" : "Skip container";
       status.textContent = winner ? label + " · " + placementLocation(winner, row.size) :
         label + " · " + row.reason;
