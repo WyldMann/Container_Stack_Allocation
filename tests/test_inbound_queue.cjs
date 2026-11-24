@@ -80,6 +80,51 @@ const button = (page, name) => page.getByRole("button", {name, exact: true});
 const cardIds = page => page.locator(".inbound-card strong");
 const feedback = (page, text) => page.getByText(text, {exact: true});
 
+test("block access switches show locks once the first inbound row is processed", async t => {
+  const page = await openPreview(t, 2);
+  const switches = page.getByRole("switch", {name: /loader access/});
+  const locks = switches.locator(".yard-access-lock:visible");
+  const above = switches.filter({hasText: "Above"}).first();
+  await above.waitFor();
+  const count = await switches.count();
+  assert.ok(count >= 4);
+  assert.equal(await above.isEnabled(), true);
+  assert.equal(await locks.count(), 0);
+
+  await page.evaluate(() => {
+    const update = globalThis.updateStackingBlockAccess;
+    globalThis.updateStackingBlockAccess = async access => {
+      await new Promise(resolve => { globalThis.finishAccessUpdate = resolve; });
+      return update(access);
+    };
+  });
+  await above.click();
+  await page.waitForFunction(() => typeof globalThis.finishAccessUpdate === "function");
+  assert.equal(await above.isDisabled(), true);
+  assert.equal(await locks.count(), 0);
+  await page.evaluate(() => globalThis.finishAccessUpdate());
+  await page.waitForFunction(() => !document.querySelector(".yard-access-above").disabled);
+  assert.equal(await above.isChecked(), false);
+
+  await page.evaluate(() => {
+    const step = globalThis.stepStackingSimulation;
+    globalThis.stepStackingSimulation = async request => {
+      await new Promise(resolve => { globalThis.finishFirstStep = resolve; });
+      return step(request);
+    };
+  });
+  await button(page, "Place container").click();
+  await page.waitForFunction(() => typeof globalThis.finishFirstStep === "function");
+  assert.equal(await above.isDisabled(), true);
+  assert.equal(await locks.count(), 0);
+  await page.evaluate(() => globalThis.finishFirstStep());
+  await page.getByText(/1 of 2 processed/).waitFor();
+  assert.equal(await locks.count(), count);
+  assert.equal(await above.isDisabled(), true);
+  assert.equal(await above.isChecked(), false);
+  assert.equal(await above.getAttribute("aria-description"), "Block access is locked.");
+});
+
 async function containerDetails(page) {
   return page.getByRole("region", {name: "Container details"}).locator("dl > div").evaluateAll(
     fields => Object.fromEntries(fields.map(field => [

@@ -174,6 +174,8 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     accessButtons.forEach(control => {
       control.disabled = !accessEditable || accessPending;
       control.dataset.accessLocked = String(!accessEditable);
+      if (accessEditable) control.removeAttribute("aria-description");
+      else control.setAttribute("aria-description", "Block access is locked.");
     });
     for (const {block, save} of accessSaves) {
       const dirty = accessChanged(block);
@@ -685,10 +687,14 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     for (const [side, label] of [["above", "Above"], ["below", "Below"], ["left", "Left"], ["right", "Right"]]) {
       const toggle = button("Block " + block.code + " " + side + " loader access", "yard-access-switch yard-access-" + side);
       toggle.setAttribute("role", "switch");
+      const direction = el("span", label, "yard-access-direction");
+      const lock = el("span", undefined, "yard-access-lock");
+      lock.setAttribute("aria-hidden", "true");
+      direction.append(lock);
       function paintAccess() {
         const open = block.loader_access[side];
         toggle.setAttribute("aria-checked", String(open));
-        toggle.replaceChildren(el("span", label), el("strong", open ? "Open" : "Closed"));
+        toggle.replaceChildren(direction, el("strong", open ? "Open" : "Closed"));
         toggle.title = label + " border: " + (open ? "open" : "closed") +
           (side === "above" || side === "below" ? " for loader entry and exterior working space." : " for loader entry and exterior RS working space for 20 ft containers.");
       }

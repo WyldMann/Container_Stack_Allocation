@@ -696,7 +696,10 @@ async function simulationView(run, branches, id, onStart, stackEdits) {
     choosingAlternate = false;
     manualDestination = null;
     run.processed++;
-    if (run.processed === 1) onStart();
+    if (run.processed === 1) {
+      map.setAccessEditable(false);
+      onStart();
+    }
     run.placed += Number(step.row.status === "placed");
     run.invalid += Number(step.row.status === "invalid");
     run.last = step;
@@ -709,7 +712,7 @@ async function simulationView(run, branches, id, onStart, stackEdits) {
       map.applyPlacement(step.placement);
       if (step.placement.manual) {
         const previousMap = map.element;
-        map = createYardMap(branch, branches, mapOptions);
+        map = createYardMap(branch, branches, {...mapOptions, editable: false});
         previousMap.replaceWith(map.element);
       }
     }
@@ -720,7 +723,6 @@ async function simulationView(run, branches, id, onStart, stackEdits) {
     const displaced = displacedContainers();
     if (displaced.length && !window.confirm("Replace " + displaced.join(", ") + " in this simulation?")) return;
     return action(async () => {
-      map.setAccessEditable(false);
       track.inert = true;
       if (toEnd) {
         runToEnd.textContent = "Running…";
