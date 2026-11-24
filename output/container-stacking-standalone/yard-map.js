@@ -12,7 +12,7 @@ function layoutYardBlocks(blocks) {
     const group = groups.get(key);
     // Each 20 ft slot is 90 × 36 px (20:8), with a 3 px grid gap.
     const width = Math.max(270, 144 + block.slots * 93);
-    const height = 206 + block.rows * 39;
+    const height = 224 + block.rows * 39;
     group.blocks.push({block, width, height});
   }
 
@@ -174,6 +174,8 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     accessButtons.forEach(control => {
       control.disabled = !accessEditable || accessPending;
       control.dataset.accessLocked = String(!accessEditable);
+      if (accessEditable) control.removeAttribute("aria-description");
+      else control.setAttribute("aria-description", "Block access is locked.");
     });
     for (const {block, save} of accessSaves) {
       const dirty = accessChanged(block);
@@ -258,11 +260,11 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     await action(async () => {
       const placed = await edit();
       applyPlacement(placed);
-      selectStack(selection.view, selection.index);
+      if (accessOptions.onStackEdit) await accessOptions.onStackEdit();
+      else selectStack(selection.view, selection.index);
       const slots = placed.stacks.length === 2 ?
         "Slots " + two(placed.slot - 1) + "–" + two(placed.slot) : "Slot " + two(placed.slot);
       reportStackEdit(message + " · " + placed.block + " · Row " + two(placed.row) + " · " + slots + " · Tier " + placed.tier);
-      await accessOptions.onStackEdit?.();
     }, reportStackEdit);
     if (restoreFocus && root.isConnected) {
       const target = control.disabled || !control.isConnected ? selection.view.tiles[selection.index] : control;
@@ -596,6 +598,12 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   }
 
   const percent = new Intl.NumberFormat(undefined, {style: "percent", maximumFractionDigits: 1});
+  function updateBlockEquipment({block, equipment}) {
+    const codes = block.equipment_codes ?? [];
+    equipment.textContent = "Equipment: " + (codes.join(", ") || "None");
+    equipment.title = equipment.textContent;
+  }
+
   function updateBlockSummary({block, summary, occupancy, compliance}) {
     summary.textContent = block.rows + " rows × " + block.slots + " slots · " + block.tier_limit + " tiers · " +
       block.container_count + " containers · " + block.occupied_tiers + "/" + block.tier_capacity +
@@ -617,6 +625,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     const summary = el("p", undefined, "yard-caption");
     const occupancy = el("p", undefined, "yard-caption");
     const compliance = el("p", undefined, "yard-caption");
+    const equipment = el("p", undefined, "yard-caption");
     block.loader_access ??= {above: true, below: true, left: true, right: true};
     block.saved_loader_access ??= {...block.loader_access};
     const titleRow = el("div", undefined, "yard-block-title");
@@ -639,7 +648,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       finally { accessPending = false; syncAccessControls(); }
     });
     titleRow.append(el("h4", "Block " + block.code), save);
-    heading.append(titleRow, summary, occupancy, compliance);
+    heading.append(titleRow, equipment, summary, occupancy, compliance);
     const grid = el("table", undefined, "yard-grid");
     grid.style.setProperty("--yard-slot-count", block.slots);
     grid.setAttribute("aria-label", "Stack grid for block " + block.code);
@@ -654,7 +663,8 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     }
     head.append(columns);
 
-    const view = {block, summary, occupancy, compliance, tiles: [], focusIndex: 0};
+    const view = {block, equipment, summary, occupancy, compliance, tiles: [], focusIndex: 0};
+    updateBlockEquipment(view);
     updateBlockSummary(view);
     const rows = el("tbody");
     for (let row = 0; row < block.rows; row++) {
@@ -677,10 +687,14 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     for (const [side, label] of [["above", "Above"], ["below", "Below"], ["left", "Left"], ["right", "Right"]]) {
       const toggle = button("Block " + block.code + " " + side + " loader access", "yard-access-switch yard-access-" + side);
       toggle.setAttribute("role", "switch");
+      const direction = el("span", label, "yard-access-direction");
+      const lock = el("span", undefined, "yard-access-lock");
+      lock.setAttribute("aria-hidden", "true");
+      direction.append(lock);
       function paintAccess() {
         const open = block.loader_access[side];
         toggle.setAttribute("aria-checked", String(open));
-        toggle.replaceChildren(el("span", label), el("strong", open ? "Open" : "Closed"));
+        toggle.replaceChildren(direction, el("strong", open ? "Open" : "Closed"));
         toggle.title = label + " border: " + (open ? "open" : "closed") +
           (side === "above" || side === "below" ? " for loader entry and exterior working space." : " for loader entry and exterior RS working space for 20 ft containers.");
       }
@@ -844,14 +858,17 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     if (manual) {
       const view = views.find(item => item.block.code === manual.block);
       const anchor = (manual.row - 1) * view.block.slots + manual.slot - 1;
-      const footprint = row.size === "40" ? [view.tiles[anchor - 1], view.tiles[anchor]] : [view.tiles[anchor]];
-      const description = "Manual " + (row.status === "placed" ? "placement" : "selection") + " · Tier " + manual.tier;
-      for (const tile of new Set(footprint)) {
+      const anchorTile = view.tiles[anchor];
+      const footprint = new Set([anchorTile]);
+      if (row.size === "40") footprint.add(view.tiles[anchor - 1]);
+      const description = "Manual " + (row.status === "placed" ? "placement" : "selection") + " · Tier " + manual.tier +
+        (manual.equipment ? " · " + manual.equipment : "");
+      for (const tile of footprint) {
         if (!traceTiles.has(tile)) traceTiles.set(tile, []);
         traceTiles.get(tile).push({chosen: true, description});
-        if (footprint.length === 2) tile.classList.add("yard-trace-pair");
+        if (footprint.size === 2) tile.classList.add("yard-trace-pair");
       }
-      if (footprint.length === 2) view.tiles[anchor].classList.add("yard-trace-pair-anchor");
+      if (footprint.size === 2) anchorTile.classList.add("yard-trace-pair-anchor");
       target = {view, anchor};
     }
     for (const [tile, entries] of traceTiles) {
@@ -918,6 +935,11 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   function applyPlacement(placed) {
     const view = views.find(item => item.block.code === placed.block);
     const {block, tiles} = view;
+    for (const [blockId, codes] of Object.entries(placed.equipment_updates ?? {})) {
+      const affected = views.find(item => item.block.id === blockId);
+      affected.block.equipment_codes = codes;
+      updateBlockEquipment(affected);
+    }
     for (const stack of placed.updated_stacks ?? placed.stacks) {
       const index = (stack.row - 1) * block.slots + stack.slot - 1;
       block.occupied_tiers += stack.tiers.length - block.stacks[index].tiers.length;
