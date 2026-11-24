@@ -16,7 +16,7 @@ const localPython = process.platform === "win32" ? ".venv/Scripts/python.exe" : 
 const python = process.env.STACKING_TEST_PYTHON ??
   (existsSync(path.join(root, localPython)) ? path.join(root, localPython) : "python");
 
-function scenarioDraft(count) {
+function scenarioDraft(count, {firstId = "", firstSize = "20", equipmentChoices = ""}) {
   return JSON.parse(execFileSync(python, ["-B", "-c", [
     "import json, sys",
     "from tests.test_stacking_scenario import ScenarioTests",
@@ -24,13 +24,29 @@ function scenarioDraft(count) {
     "scenario.setUp()",
     "scenario.rows['inbound_containers'] = [dict(container_id=f'NEW{i:02d}', container_size='20')",
     "    for i in range(1, int(sys.argv[1]) + 1)]",
+    "if sys.argv[2]: scenario.rows['inbound_containers'][0]['container_id'] = sys.argv[2]",
+    "if scenario.rows['inbound_containers']: scenario.rows['inbound_containers'][0]['container_size'] = sys.argv[4]",
+    "if sys.argv[3]:",
+    "    scenario.rows['yard_blocks'].append(scenario.rows['yard_blocks'][0] |",
+    "        dict(block_id='11', block_code='B', pos_x='10'))",
+    "    equipment = [('SL1', 'SL', 'A'), ('RS1', 'RS', 'A')]",
+    "    if sys.argv[3] == 'open': equipment.append(('RTG2', 'RTG', 'B'))",
+    "    for code, kind, block in equipment:",
+    "        scenario.rows['master_equipment'].append(dict(equipment_code=code, equipment_type=kind))",
+    "        scenario.rows['equipment_history'].append(scenario.rows['equipment_history'][0] |",
+    "            dict(equipment_code=code, block_code=block))",
+    "    if sys.argv[3] == 'blocked':",
+    "        scenario.rows['existing_containers'].append(scenario.rows['existing_containers'][0] |",
+    "            dict(container_id='OBSTACLE', block_code='B', row_no='2', slot_no='2'))",
+    "        scenario.rows['block_accessibility'] = [dict(block_id='11', above='false', below='true',",
+    "            left='true', right='false')]",
     "scenario.write_files()",
     "print(json.dumps(scenario.payload | {'version': 1, 'file_source': 'upload'}))"
-  ].join("\n"), String(count)], {cwd: root, encoding: "utf8"}));
+  ].join("\n"), String(count), firstId, equipmentChoices, firstSize], {cwd: root, encoding: "utf8"}));
 }
 
-async function openPreview(t, count, viewport = {width: 1200, height: 900}) {
-  const draft = scenarioDraft(count);
+async function openPreview(t, count, viewport = {width: 1200, height: 900}, fixture = {}) {
+  const draft = scenarioDraft(count, fixture);
   const browser = await chromium.launch({channel: "msedge", headless: true});
   t.after(() => browser.close());
   const worker = startWorker(python);
@@ -44,10 +60,14 @@ async function openPreview(t, count, viewport = {width: 1200, height: 900}) {
   await page.exposeFunction("generateStackingPreview", () => worker.request({op: "preview", draft}));
   for (const [method, op] of [
     ["suggestStackingAssignment", "suggest"],
+    ["getStackingManualEquipment", "manual_equipment"],
     ["stepStackingSimulation", "step"],
     ["addStackingQueueRow", "add_queue_row"],
     ["reorderStackingQueue", "reorder_queue"],
-    ["deleteStackingQueueRow", "delete_queue_row"]
+    ["deleteStackingQueueRow", "delete_queue_row"],
+    ["updateStackingBlockAccess", "update_block_access"],
+    ["addStackingDummy", "add_stack_dummy"],
+    ["removeStackingTop", "remove_stack_top"]
   ]) {
     await page.exposeFunction(method, request => worker.request({...request, op}));
   }
@@ -186,6 +206,8 @@ test("using the selected 40 ft pair matches selecting its coordinate from the dr
   const preview = await status.textContent();
   assert.match(preview, /Slots \d+–\d+ · Tier \d+/);
   assert.equal(await page.locator(".yard-trace-winner").count(), 2);
+  assert.equal(await page.locator(".yard-trace-winner.yard-trace-pair").count(), 2);
+  assert.equal(await page.locator(".yard-trace-winner.yard-trace-pair-anchor").count(), 1);
   const [block, row, slot] = await Promise.all(["Block", "Row", "Slot"].map(label => select(label).inputValue()));
   await page.locator(".yard-trace-candidate.yard-trace-pair-anchor").first().click();
   assert.equal(await status.textContent(), preview);
@@ -202,6 +224,7 @@ test("using the selected 40 ft pair matches selecting its coordinate from the dr
   await select("Row").selectOption(row);
   assert.equal(await placeManual.isDisabled(), true);
   await select("Slot").selectOption(slot);
+  await status.filter({hasText: preview}).waitFor();
   assert.equal(await status.textContent(), preview);
   const coordinate = preview.split("Alternate selected · ")[1];
   const tier = await select("Tier").inputValue();
@@ -216,6 +239,13 @@ test("using the selected 40 ft pair matches selecting its coordinate from the dr
   await page.getByText(/Engine recommendation · Block/).first().waitFor();
   await page.getByText("Alternate placement · " + coordinate, {exact: false}).first().waitFor();
   assert.equal(await picker.isVisible(), false);
+  const highlighted = page.locator(".yard-trace-winner");
+  assert.equal(await highlighted.count(), 1);
+  assert.deepEqual(await highlighted.evaluate(tile => ({
+    columns: tile.parentElement.colSpan,
+    extension: getComputedStyle(tile, "::after").content,
+    outlineColor: getComputedStyle(tile).outlineColor,
+  })), {columns: 2, extension: "none", outlineColor: "rgb(99, 54, 176)"});
 
   await button(page, "Add container").click();
   await form.getByRole("textbox", {name: "Container ID", exact: true}).fill("USE20");
@@ -257,6 +287,142 @@ test("a manual coordinate can replace an occupied tier after confirmation", asyn
   await page.getByText("Replaced OLD.", {exact: true}).waitFor();
   const placed = page.locator(".yard-placed");
   assert.match(await placed.getAttribute("aria-label"), /Block A, row 1, Slot 01/i);
+  await page.getByText(/placed at alternate.*Tier 1/).waitFor();
+});
+
+test("manual placement warns about a mismatched size anywhere in the footprint", async t => {
+  const page = await openPreview(t, 2, undefined, {firstSize: "40"});
+  const picker = page.locator("#alternate-location");
+  const select = name => picker.getByRole("combobox", {name, exact: true});
+  const status = page.locator(".simulation-outcome [role=status]");
+  const mismatch = picker.getByText(/Size mismatch/);
+  async function selectStack(slot) {
+    await button(page, "Use manual input").click();
+    await select("Block").selectOption("A");
+    await select("Row").selectOption("1");
+    await select("Slot").selectOption(slot);
+  }
+
+  await selectStack("2");
+  await mismatch.filter({hasText: /40 ft placement.*20 ft containers/}).waitFor();
+  assert.equal(await select("Tier").inputValue(), "2");
+  await select("Slot").selectOption("4");
+  await status.filter({hasText: "Slots 3–4"}).waitFor();
+  assert.equal(await mismatch.count(), 0);
+  await select("Slot").selectOption("2");
+  await button(page, "Place using manual input").click();
+  await status.filter({hasText: "#2 NEW02"}).waitFor();
+
+  await selectStack("2");
+  await mismatch.filter({hasText: /20 ft placement.*40 ft containers/}).waitFor();
+  await picker.getByRole("switch", {name: "Auto-select open tier"}).uncheck();
+  await select("Tier").selectOption("2");
+  assert.match(await mismatch.textContent(), /replace NEW01/);
+});
+
+test("manual equipment options follow the selected stack and the chosen loader moves", async t => {
+  const page = await openPreview(t, 1, undefined, {equipmentChoices: "open"});
+  await button(page, "Use manual input").click();
+  const picker = page.locator("#alternate-location");
+  const select = name => picker.getByRole("combobox", {name, exact: true});
+  const equipment = select("Equipment");
+  const codes = () => equipment.locator('option[value]:not([value=""])').allTextContents();
+  assert.equal(await equipment.isDisabled(), true);
+  await select("Block").selectOption("A");
+  assert.equal(await equipment.isDisabled(), true);
+  await select("Row").selectOption("1");
+  await select("Slot").selectOption("1");
+  await equipment.locator('option[value="RTG1"]').waitFor({state: "attached"});
+  assert.deepEqual(await codes(), ["RTG1", "RS1", "SL1"]);
+  await equipment.selectOption("RTG1");
+  await select("Block").selectOption("B");
+  assert.deepEqual(await codes(), []);
+  assert.equal(await equipment.inputValue(), "");
+  await select("Row").selectOption("2");
+  await select("Slot").selectOption("2");
+  await equipment.locator('option[value="RTG2"]').waitFor({state: "attached"});
+  assert.deepEqual(await codes(), ["RTG2", "RS1", "SL1"]);
+  const place = button(page, "Place using manual input");
+  assert.equal(await place.isDisabled(), true);
+  assert.equal(await button(page, "Run to end").isDisabled(), true);
+  await page.getByRole("button", {name: /^Block B, row 2, Slot 02,/}).click();
+  await button(page, "Use selected stack").click();
+  await equipment.locator('option[value="RTG2"]:checked').waitFor({state: "attached"});
+  assert.equal(await place.isEnabled(), true);
+  await equipment.selectOption("SL1");
+  assert.equal(await place.isEnabled(), true);
+  await place.click();
+  await page.getByText(/Alternate placement.*Manual override.*SL1/).waitFor();
+  const block = code => page.locator(".yard-block").filter({has: page.getByRole("heading", {name: "Block " + code, exact: true})});
+  await block("A").getByText("Equipment: RTG1, RS1", {exact: true}).waitFor();
+  await block("B").getByText("Equipment: RTG2, SL1", {exact: true}).waitFor();
+});
+
+test("manual equipment refreshes as approaches change and allows a placement without equipment", async t => {
+  const page = await openPreview(t, 1, undefined, {equipmentChoices: "blocked"});
+  await button(page, "Use manual input").click();
+  const picker = page.locator("#alternate-location");
+  const select = name => picker.getByRole("combobox", {name, exact: true});
+  const equipment = select("Equipment");
+  const reachable = equipment.locator('optgroup[label="Can reach this stack"]');
+  const blocked = equipment.locator('optgroup[label="Cannot reach this stack"]');
+  const option = (group, code) => group.locator('option[value="' + code + '"]');
+  await select("Block").selectOption("B");
+  await select("Row").selectOption("1");
+  await select("Slot").selectOption("2");
+  await option(reachable, "RS1").waitFor({state: "attached"});
+  assert.equal(await equipment.inputValue(), "RS1");
+  assert.equal(await option(blocked, "SL1").evaluate(node => node.matches(":disabled")), true);
+
+  await page.getByRole("button", {name: /^Block B, row 2, Slot 02,/}).click();
+  page.once("dialog", dialog => dialog.accept());
+  await button(page, "Remove top container").click();
+  await option(reachable, "SL1").waitFor({state: "attached"});
+  assert.equal(await option(reachable, "SL1").evaluate(node => node.matches(":enabled")), true);
+  assert.equal(await equipment.inputValue(), "RS1");
+  const block = page.locator(".yard-block").filter({has: page.getByRole("heading", {name: "Block B", exact: true})});
+  for (const side of ["Below", "Left"]) {
+    await block.getByRole("switch", {name: new RegExp(side + ".*loader access", "i")}).click();
+  }
+  await picker.getByText("Manual override will place this container without equipment.", {exact: true}).waitFor();
+  assert.equal(await equipment.isEnabled(), true);
+  assert.equal(await equipment.inputValue(), "");
+  assert.equal(await reachable.count(), 0);
+  assert.equal(await option(blocked, "RS1").evaluate(node => node.matches(":disabled")), true);
+  assert.equal(await option(blocked, "SL1").evaluate(node => node.matches(":disabled")), true);
+  await button(page, "Place using manual input").click();
+  await page.getByText(/Alternate placement.*Manual override.*No equipment/).waitFor();
+  await block.getByText("Equipment: None", {exact: true}).waitFor();
+});
+
+test("yard edits refresh the recommendation and the selected manual tier", async t => {
+  const page = await openPreview(t, 1, undefined, {firstId: "OLD"});
+  await button(page, "Skip container").waitFor();
+  const stack = page.getByRole("button", {name: /^Block A, row 1, Slot 01,/});
+  await stack.click();
+  page.once("dialog", dialog => dialog.accept());
+  await button(page, "Remove top container").click();
+  await button(page, "Place container").waitFor();
+  assert.equal(await page.locator(".inbound-card.inbound-pending strong").textContent(), "OLD");
+
+  await button(page, "Use manual input").click();
+  await button(page, "Use selected stack").click();
+  const picker = page.locator("#alternate-location");
+  const tier = picker.getByRole("combobox", {name: "Tier", exact: true});
+  assert.equal(await tier.inputValue(), "1");
+  await button(page, "Add dummy container").click();
+  await page.locator(".yard-stack-actions [role=status]").filter({hasText: "Dummy added"}).waitFor();
+  assert.equal(await picker.isVisible(), true);
+  assert.equal(await tier.inputValue(), "2");
+  assert.match(await stack.getAttribute("aria-description"), /Rank \d+.*Tier 2/);
+
+  page.once("dialog", dialog => dialog.accept());
+  await button(page, "Remove top container").click();
+  await page.locator(".yard-stack-actions [role=status]").filter({hasText: "Removed dummy container"}).waitFor();
+  assert.equal(await picker.isVisible(), true);
+  assert.equal(await tier.inputValue(), "1");
+  assert.match(await stack.getAttribute("aria-description"), /Rank \d+.*Tier 1/);
+  await button(page, "Place using manual input").click();
   await page.getByText(/placed at alternate.*Tier 1/).waitFor();
 });
 

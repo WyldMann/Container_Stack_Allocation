@@ -231,12 +231,19 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    yard grid. Select a stack on the map and click **Use selected stack**, or use
    the **Block**, **Row**, **Slot**, and **Tier** dropdowns. **Auto-select open tier** starts on and picks the lowest
    unoccupied tier across the footprint. Turn it off to select a tier directly.
-   **Use selected stack** copies the stack and its lowest open tier once. The
-   button is disabled when those values already match the form.
+   **Use selected stack** fills in the stack, its lowest open tier, and the preferred
+   reachable equipment. It prefers the block's RTG, then the closest loader in the
+   block, then a loader from the nearest block. You can choose another reachable option.
    A 40 ft container uses a complete slot pair. The simulator asks for
    confirmation before replacing an occupant in the selected footprint.
-   **Place using manual input** appears when the alternate picker opens and
-   becomes enabled when a coordinate is selected. **Use engine recommendation**
+   The picker also warns if either stack in the footprint contains a different container size.
+   Choose **Equipment** for the selected stack. The block's RTG and loaders that can
+   reach the footprint appear under **Can reach this stack**. Other loaders appear
+   as disabled options under **Cannot reach this stack**.
+   The simulator selects a sole option automatically and updates the chosen equipment's
+   location when the placement is committed. If no equipment can reach the stack,
+   **Place using manual input** can still assign the container without equipment.
+   **Use engine recommendation**
    returns to the engine's location, which **Place container** commits.
    **View trace** shows the engine recommendation and committed alternate, and
    **Save yard CSV** exports the actual placement. When a row is invalid or has no

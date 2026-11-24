@@ -78,6 +78,11 @@ class SimulationSession:
             }}
         if operation == "suggest" and self.simulation is not None:
             return self.simulation.suggest(request.get("id"), request.get("branch"))
+        if operation == "manual_equipment" and self.simulation is not None:
+            return self.simulation.manual_equipment(
+                request.get("id"), request.get("branch"), request.get("suggestion_id"), request.get("destination"),
+                preferred_first=request.get("preferred_first") is True,
+            )
         if operation == "step" and self.simulation is not None:
             return self.simulation.step(request.get("id"), request.get("branch"), request.get("position"),
                                         request.get("suggestion_id"), request.get("alternate_rank"),

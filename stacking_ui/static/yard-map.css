@@ -93,7 +93,7 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
   border-radius: 8px;
   background: #fff;
 }
-.yard-block-heading { height: 76px; }
+.yard-block-heading { height: 94px; }
 .yard-block-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .yard-block-save { font-size: 11px; line-height: 1.2; padding: 3px 8px; flex: none; }
 .yard-block-save:disabled {

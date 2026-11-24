@@ -16,7 +16,7 @@ from repository.branch_repository import BranchDirectory
 from utils import parse_optional_finite_float, strGeneralize
 
 from .scenario import inbound_queue_row
-from .yard_view import stack_view
+from .yard_view import block_equipment_codes, stack_view
 
 
 CONTAINER_EXPORT_COLUMNS = {
@@ -103,18 +103,33 @@ def _location(yard, coordinates):
     return {"block": yard.getBlockByID(block_id).getCode(), "row": row + 1, "slot": slot + 1, "tier": tier + 1}
 
 
-def _manual_proposal(yard, container, destination):
-    if not isinstance(destination, dict) or destination.keys() != {"block", "row", "slot", "tier"}:
+def _manual_proposal(yard, size, destination):
+    coordinates = {"block", "row", "slot", "tier"}
+    if not isinstance(destination, dict) or destination.keys() - {"equipment"} != coordinates:
         raise SimulationError("Choose a block, row, slot, and tier.")
     block = next((block for block in yard.blocks_by_id.values() if block.getCode() == destination["block"]), None)
     indices = [destination[key] for key in ("row", "slot", "tier")]
     if block is None or any(type(index) is not int or index < 1 for index in indices):
         raise SimulationError("Choose a coordinate inside the yard grid.")
     row, slot, tier = (index - 1 for index in indices)
+    if row >= len(block.getSlots()) or slot >= len(block.getSlots()[row]) or tier >= block.max_tier:
+        raise SimulationError("Choose a coordinate inside the yard grid.")
     try:
-        return PlacementProposal(block.getId(), row, slot, tier, container.getContSize())
+        return PlacementProposal(block.getId(), row, slot, tier, size)
     except ValueError as error:
         raise SimulationError("Choose a complete 40 ft slot pair inside the yard grid.") from error
+
+
+def _manual_equipment(yard, proposal, code):
+    if code is None:
+        if not yard.manualPlacementEquipment(proposal):
+            return None
+    else:
+        rtg = yard.getBlockByID(proposal.block_id).getRTG()
+        for equipment in (rtg, *yard.master_loaders):
+            if equipment is not None and equipment.getCode() == code:
+                return equipment
+    raise SimulationError("Choose equipment available for the selected stack.")
 
 
 def _placement_view(yard, container, proposal):
@@ -348,6 +363,17 @@ class Simulation:
         self._suggestions[branch_code] = (suggestion, result)
         return suggestion
 
+    def manual_equipment(self, simulation_id, branch_code, suggestion_id, destination, *, preferred_first=False):
+        yard = self._active_branch(simulation_id, branch_code)["yard"]
+        suggestion = self.suggest(simulation_id, branch_code)
+        if suggestion is None or suggestion_id != suggestion["suggestion_id"]:
+            raise SimulationError("The current suggestion has changed.")
+        if suggestion["calculation"] is None:
+            raise SimulationError("Choose a valid inbound container.")
+        proposal = _manual_proposal(yard, suggestion["row"]["size"], destination)
+        equipment = yard.manualPlacementEquipment(proposal, preferred_first=preferred_first)
+        return [item.getCode() for item in equipment]
+
     def step(self, simulation_id, branch_code, position, suggestion_id=None, alternate_rank=None, manual_destination=None):
         branch = self._active_branch(simulation_id, branch_code)
         manual = manual_destination is not None
@@ -378,20 +404,25 @@ class Simulation:
         outcome = {**suggestion, "row": row, "placement": None}
         result = self._suggestions[branch_code][1]
         yard = branch["yard"]
+        source_id = None
         if alternate_rank is not None and (result is None or alternate_rank > len(result.sorted_candidate_evaluations)):
             raise SimulationError("Choose an alternate location from the current assignment.")
         if manual:
             if suggestion["calculation"] is None:
                 raise SimulationError("Choose a valid inbound container.")
             container = result.container if result is not None else _inbound_container(branch, row)
-            proposal = _manual_proposal(yard, container, manual_destination)
+            proposal = _manual_proposal(yard, container.getContSize(), manual_destination)
+            equipment = (_manual_equipment(yard, proposal, manual_destination["equipment"])
+                         if "equipment" in manual_destination else None)
+            source_id = equipment.getCoords()[0] if equipment is not None else None
             try:
-                updates, displaced = yard.placeContainerManually(container, proposal)
+                updates, displaced = yard.placeContainerManually(container, proposal, equipment)
             except PlacementRejected as error:
                 raise SimulationError(str(error)) from error
-            outcome["manual_destination"] = _location(yard, proposal.coordinates)
+            outcome["manual_destination"] = dict(manual_destination)
             outcome["placement"] = {
                 **_placement_view(yard, container, proposal),
+                "equipment": manual_destination.get("equipment"),
                 "updated_stacks": [stack_view(stack, stack.getCoords()[1] + 1, stack.getCoords()[2] + 1) for stack in updates],
                 "displaced": displaced,
                 "manual": True,
@@ -400,8 +431,10 @@ class Simulation:
         elif result is not None:
             candidate = result.sorted_candidate_evaluations[alternate_rank - 1] if alternate_rank else result.getBestCandidate()
             coordinates = candidate.coordinates
+            equipment = candidate.equipment
+            source_id = equipment.getCoords()[0] if equipment is not None else None
             try:
-                yard.placeContainer(result.container, coordinates, candidate.equipment)
+                yard.placeContainer(result.container, coordinates, equipment)
             except PlacementRejected as error:
                 if alternate_rank is not None:
                     self.invalidate_suggestion(branch_code)
@@ -413,6 +446,11 @@ class Simulation:
                     outcome["alternate_rank"] = alternate_rank
                 proposal = PlacementProposal(*coordinates, result.container.getContSize())
                 outcome["placement"] = _placement_view(yard, result.container, proposal)
+        if source_id is not None and outcome["placement"] is not None and source_id != proposal.block_id:
+            outcome["placement"]["equipment_updates"] = {
+                block_id: block_equipment_codes(yard.getBlockByID(block_id))
+                for block_id in (source_id, proposal.block_id)
+            }
         self.last_steps[branch_code] = outcome
         self.invalidate_suggestion(branch_code)
         return outcome

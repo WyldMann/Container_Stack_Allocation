@@ -146,13 +146,13 @@ function enableQueueReordering({summary, track, focusCard, report}, run, id, acc
   return {move, refresh};
 }
 
-function alternateLocationPicker(branch, onSelect, getSelectedStack) {
+function alternateLocationPicker(branch, onSelect, getSelectedStack, getEquipment) {
   const element = el("div", undefined, "simulation-alternate");
   element.id = "alternate-location";
   element.hidden = true;
   element.append(el("p", "Choose coordinates below or select a stack on the map and click Use selected stack."));
   const fields = el("div", undefined, "simulation-alternate-fields");
-  const [block, row, slot, tier] = ["Block", "Row", "Slot", "Tier"].map(name => {
+  const [block, row, slot, tier, equipment] = ["Block", "Row", "Slot", "Tier", "Equipment"].map(name => {
     const label = el("label", name);
     const select = el("select");
     label.append(select);
@@ -177,23 +177,27 @@ function alternateLocationPicker(branch, onSelect, getSelectedStack) {
   warning.setAttribute("aria-live", "polite");
   element.append(fields, warning);
   const blocks = new Map(branch.yard_map.blocks.map(item => [item.code, item]));
+  const loaderCodes = branch.yard_map.loader_codes;
+  const hasEquipment = loaderCodes.length > 0 || [...blocks.values()].some(item => item.rtg_code);
   let containerSize;
+  let equipmentError = "";
+  let canPlaceWithoutEquipment = !hasEquipment;
   const numbers = count => Array.from({length: count}, (_, index) => index + 1);
   const currentBlock = () => blocks.get(block.value);
   const footprintSize = () => containerSize === "40" ? 2 : 1;
 
-  function options(select, prompt, values) {
-    const placeholder = el("option", prompt);
-    placeholder.value = "";
+  function choice(value, label = value) {
+    const option = el("option", label);
+    option.value = value;
+    return option;
+  }
+
+  function options(select, prompt, entries) {
     const choices = document.createDocumentFragment();
-    choices.append(placeholder);
-    for (const [value, label] of values) {
-      const option = el("option", label);
-      option.value = value;
-      choices.append(option);
-    }
+    choices.append(choice("", prompt));
+    for (const entry of entries) choices.append(entry);
     select.replaceChildren(choices);
-    select.disabled = values.length === 0;
+    select.disabled = entries.length === 0;
     select.dataset.accessLocked = String(select.disabled);
   }
 
@@ -214,26 +218,95 @@ function alternateLocationPicker(branch, onSelect, getSelectedStack) {
   }
 
   function updateTiers() {
-    options(tier, "Select tier", slot.value ? numbers(currentBlock().tier_limit).map(value => [value, value]) : []);
+    options(tier, "Select tier", slot.value ? numbers(currentBlock().tier_limit).map(value => choice(value)) : []);
     syncTierMode();
   }
 
   function updateSlots() {
     const size = footprintSize();
     const count = row.value ? Math.floor(currentBlock().slots / size) : 0;
-    options(slot, "Select slot", numbers(count).map(index => [
+    options(slot, "Select slot", numbers(count).map(index => choice(
       index * size, size === 2 ? (index * size - 1) + "–" + index * size : index
-    ]));
+    )));
     updateTiers();
   }
 
   function updateRows() {
-    options(row, "Select row", numbers(currentBlock()?.rows ?? 0).map(value => [value, value]));
+    options(row, "Select row", numbers(currentBlock()?.rows ?? 0).map(value => choice(value)));
     updateSlots();
   }
 
+  function resetEquipment() {
+    equipmentError = "";
+    canPlaceWithoutEquipment = !hasEquipment;
+    options(equipment, slot.value ? "No equipment" : "Select a stack first", []);
+  }
+
+  function showEquipmentOptions(reachable) {
+    const reachableCodes = new Set(reachable);
+    const blocked = loaderCodes.filter(code => !reachableCodes.has(code));
+    const groups = [];
+    for (const [label, codes, disabled] of [
+      ["Can reach this stack", reachable, false],
+      ["Cannot reach this stack", blocked, true]
+    ]) {
+      if (!codes.length) continue;
+      const group = el("optgroup");
+      group.label = label;
+      for (const code of codes) {
+        const option = choice(code);
+        option.disabled = disabled;
+        group.append(option);
+      }
+      groups.push(group);
+    }
+    options(equipment, reachable.length ? "Select equipment" : "No equipment can reach this stack", groups);
+  }
+
+  async function refreshEquipment(pickBest = false) {
+    if (!slot.value || !hasEquipment) {
+      resetEquipment();
+      return;
+    }
+    const previous = equipment.value;
+    equipmentError = "";
+    canPlaceWithoutEquipment = false;
+    options(equipment, "Checking stack access…", []);
+    try {
+      const codes = await getEquipment({block: block.value, row: Number(row.value), slot: Number(slot.value),
+        tier: Number(tier.value) || 1}, pickBest);
+      showEquipmentOptions(codes);
+      canPlaceWithoutEquipment = codes.length === 0;
+      if (pickBest || codes.length === 1) equipment.value = codes[0] ?? "";
+      else if (codes.includes(previous)) equipment.value = previous;
+    } catch (error) {
+      options(equipment, "Equipment check failed", []);
+      equipmentError = error.message;
+    }
+  }
+
+  function coordinate() {
+    if (!tier.value) return null;
+    return {block: block.value, row: Number(row.value), slot: Number(slot.value), tier: Number(tier.value),
+      equipment: equipment.value || null};
+  }
+
   function selectCoordinate() {
-    onSelect(tier.value ? {block: block.value, row: Number(row.value), slot: Number(slot.value), tier: Number(tier.value)} : null);
+    onSelect(coordinate());
+  }
+
+  async function selectStack(pickBest = false) {
+    if (!slot.value || !hasEquipment) {
+      resetEquipment();
+      selectCoordinate();
+      return;
+    }
+    const focused = document.activeElement;
+    await action(async () => {
+      await refreshEquipment(pickBest);
+      selectCoordinate();
+    });
+    if (fields.contains(focused) && !focused.disabled) focused.focus({preventScroll: true});
   }
 
   function selectedStackCoordinate() {
@@ -249,13 +322,14 @@ function alternateLocationPicker(branch, onSelect, getSelectedStack) {
   function refreshSelectedStack() {
     if (element.hidden) return;
     const location = selectedStackCoordinate();
-    const locked = !location || (block.value === location.block && Number(row.value) === location.row &&
+    const equipmentChosen = equipment.value || canPlaceWithoutEquipment;
+    const locked = !location || (!equipmentError && equipmentChosen && block.value === location.block && Number(row.value) === location.row &&
       Number(slot.value) === (location.slot ?? 0) && Number(tier.value) === (location.tier ?? 0));
     if (locked || useSelectedStack.dataset.accessLocked === "true") useSelectedStack.disabled = locked;
     useSelectedStack.dataset.accessLocked = String(locked);
   }
 
-  useSelectedStack.addEventListener("click", () => {
+  useSelectedStack.addEventListener("click", async () => {
     if (busy) return;
     const location = selectedStackCoordinate();
     if (!location) return;
@@ -266,14 +340,15 @@ function alternateLocationPicker(branch, onSelect, getSelectedStack) {
     slot.value = location.slot ?? "";
     updateTiers();
     tier.value = location.tier ?? "";
-    selectCoordinate();
+    await selectStack(true);
     if (!location.slot) warning.textContent = "The selected stack has no complete 40 ft slot pair.";
     else if (!location.tier && !autoTier.checked) warning.textContent = "This footprint has no open tier. Choose a tier manually.";
   });
-  block.addEventListener("change", () => { updateRows(); selectCoordinate(); });
-  row.addEventListener("change", () => { updateSlots(); selectCoordinate(); });
-  slot.addEventListener("change", () => { updateTiers(); selectCoordinate(); });
+  block.addEventListener("change", () => { updateRows(); selectStack(); });
+  row.addEventListener("change", () => { updateSlots(); selectStack(); });
+  slot.addEventListener("change", () => { updateTiers(); selectStack(); });
   tier.addEventListener("change", selectCoordinate);
+  equipment.addEventListener("change", selectCoordinate);
   autoTier.addEventListener("change", () => { syncTierMode(); selectCoordinate(); });
   return {
     element,
@@ -281,16 +356,31 @@ function alternateLocationPicker(branch, onSelect, getSelectedStack) {
       containerSize = suggestion.row.size;
       autoTier.checked = true;
       options(block, "Select block", [...blocks.values()].filter(item => item.slots >= footprintSize())
-        .map(item => [item.code, item.code]));
+        .map(item => choice(item.code)));
       updateRows();
+      resetEquipment();
       element.hidden = false;
       block.focus();
     },
     warn(displaced) {
-      warning.textContent = autoTier.checked && slot.value && !tier.value ?
+      const locationWarning = autoTier.checked && slot.value && !tier.value ?
         "This footprint has no open tier. Turn off Auto-select open tier to choose a tier." :
         displaced.length ? "This placement would replace " + displaced.join(", ") + "." : "";
+      const otherSize = containerSize === "40" ? "20" : "40";
+      const sizeMismatch = slot.value && footprintStacks(currentBlock(), Number(row.value), Number(slot.value), containerSize)
+        .some(stack => stack.tiers.some(item => (item.size ?? "20") === otherSize));
+      const sizeWarning = sizeMismatch ? "Size mismatch. This " + containerSize +
+        " ft placement overlaps a stack with " + otherSize + " ft containers." : "";
+      const equipmentWarning = equipmentError || (hasEquipment && canPlaceWithoutEquipment && tier.value ?
+        "Manual override will place this container without equipment." : "");
+      warning.textContent = [sizeWarning, locationWarning, equipmentWarning].filter(Boolean).join(" ");
     },
+    async refreshCoordinate() {
+      syncTierMode();
+      await refreshEquipment();
+      return coordinate();
+    },
+    equipmentReady: () => canPlaceWithoutEquipment || Boolean(equipment.value),
     refreshSelectedStack
   };
 }
@@ -317,13 +407,13 @@ async function simulationView(run, branches, id, onStart, stackEdits) {
     onStackEdit: async () => {
       clearComparison();
       if (finished()) showTrace(true);
-      else await loadSuggestion(true);
+      else await loadSuggestion({yardEdited: true});
     },
     onChange: async (block, side, value) => {
       await globalThis.updateStackingBlockAccess({
         id, branch: branch.branch_code, policies: [{block_id: block.id, ...block.loader_access, [side]: value}]
       });
-      await loadSuggestion();
+      await loadSuggestion({yardEdited: true});
     },
     onSave: block => globalThis.saveStackingBlockAccess({id, branch: branch.branch_code, block_id: block.id}),
     onSelectionChange: () => {
@@ -341,7 +431,9 @@ async function simulationView(run, branches, id, onStart, stackEdits) {
   const chooseAlternate = el("button", "Use manual input", "secondary");
   chooseAlternate.type = "button";
   chooseAlternate.setAttribute("aria-controls", "alternate-location");
-  const picker = alternateLocationPicker(branch, selectAlternate, () => map.selectedLocation());
+  const picker = alternateLocationPicker(branch, selectAlternate, () => map.selectedLocation(), (destination, pickBest) =>
+    globalThis.getStackingManualEquipment({id, branch: branch.branch_code,
+      suggestion_id: run.suggestion.suggestion_id, destination, preferred_first: pickBest}));
   const runToEnd = el("button", "Run to end", "run-to-end");
   runToEnd.type = "button";
   const viewTrace = el("button", "View trace", "secondary");
@@ -406,19 +498,33 @@ async function simulationView(run, branches, id, onStart, stackEdits) {
   let suggestionError = "";
   let choosingAlternate = false;
   let manualDestination = null;
-  async function loadSuggestion(preserveSelection = false) {
+  async function loadSuggestion({yardEdited = false} = {}) {
+    const keepManual = yardEdited && choosingAlternate;
     run.suggestion = null;
-    choosingAlternate = false;
     manualDestination = null;
+    choosingAlternate = false;
     suggestionError = "";
     tracePicker.value = "current";
-    showTrace(preserveSelection);
+    showTrace(yardEdited);
     try {
       run.suggestion = await globalThis.suggestStackingAssignment({id, branch: branch.branch_code});
     } catch (error) {
       suggestionError = error.message;
     }
-    showTrace(preserveSelection);
+    if (run.suggestion?.calculation) {
+      const row = branch.queue[run.processed];
+      if (row.status === "invalid") {
+        const pending = {...row, status: "pending", reason: null};
+        branch.queue[run.processed] = pending;
+        renderInboundCard(track.children[run.processed], pending);
+        refreshDetails();
+      }
+      if (keepManual) {
+        manualDestination = await picker.refreshCoordinate();
+        choosingAlternate = true;
+      }
+    }
+    showTrace(yardEdited);
   }
 
   function selectAlternate(destination) {
@@ -460,9 +566,11 @@ async function simulationView(run, branches, id, onStart, stackEdits) {
     heading.textContent = manualMode ? "Manual assignment" : current ? "Suggested assignment" : "Assignment trace";
     next.hidden = !current || (!trace && !suggestionError);
     next.classList.toggle("secondary", Boolean(manualMode || winner));
-    const awaitingCoordinate = manualMode && !manual;
-    if (awaitingCoordinate || next.dataset.accessLocked === "true") next.disabled = awaitingCoordinate;
-    next.dataset.accessLocked = String(awaitingCoordinate);
+    const manualIncomplete = manualMode && (!manual || !picker.equipmentReady());
+    for (const button of [next, runToEnd]) {
+      if (manualIncomplete || button.dataset.accessLocked === "true") button.disabled = manualIncomplete;
+      button.dataset.accessLocked = String(manualIncomplete);
+    }
     runToEnd.hidden = !current || !trace;
     if (!trace) {
       next.textContent = "Retry suggestion";
@@ -885,8 +993,9 @@ function placementTrace(calculation, status, size, alternate, manual, displaced 
   }
   if (alternate) {
     const label = status === "placed" ? "Alternate placement" : "Alternate selected";
+    const equipment = alternate.equipment ?? (status === "placed" || !manual ? "No equipment" : null);
     const decision = el("li", label + " · " + placementLocation(alternate, size) +
-      (manual ? " · Manual override" : " · " + (alternate.equipment ?? "No equipment")));
+      (manual ? " · Manual override" : "") + (equipment ? " · " + equipment : ""));
     if (manual && displaced.length) decision.append(el("p", "Replaced " + displaced.join(", ") + "."));
     if (!manual) decision.append(heuristicTable(heuristicRows(alternate, multipliers)));
     stages.append(decision);

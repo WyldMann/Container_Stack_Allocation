@@ -72,6 +72,7 @@ async function openSetup(python, pageUrl) {
     await page.exposeBinding("saveStackingYard", ({frame}) => request(frame, {op: "save_yard_csv"}));
     await page.exposeBinding("generateStackingPreview", ({frame}, draft) => request(frame, {op: "preview", draft}));
     await page.exposeBinding("suggestStackingAssignment", ({frame}, input) => request(frame, {...input, op: "suggest"}));
+    await page.exposeBinding("getStackingManualEquipment", ({frame}, input) => request(frame, {...input, op: "manual_equipment"}));
     await page.exposeBinding("stepStackingSimulation", ({frame}, step) => request(frame, {...step, op: "step"}));
     await page.exposeBinding("reorderStackingQueue", ({frame}, edit) => request(frame, {...edit, op: "reorder_queue"}));
     await page.exposeBinding("addStackingQueueRow", ({frame}, edit) => request(frame, {...edit, op: "add_queue_row"}));

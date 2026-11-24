@@ -469,6 +469,114 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual([container[key] for key in ("CONTNO", "BLOK", "ROW", "SLOT", "TIER")],
                          ["NEW1", "A", "2", "1", "3"])
 
+    def test_manual_placement_only_accepts_available_equipment_and_moves_it(self):
+        self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {
+            "block_id": "11", "block_code": "B", "pos_x": "10",
+        })
+        self.rows["master_equipment"].append(dict(equipment_code="SL1", equipment_type="SL"))
+        self.rows["equipment_history"].append(self.rows["equipment_history"][0] | {"equipment_code": "SL1"})
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        yard_map = preview["preview"]["branches"][0]["yard_map"]
+        self.assertEqual(yard_map["loader_codes"], ["SL1"])
+        self.assertEqual([block["rtg_code"] for block in yard_map["blocks"]], ["RTG1", None])
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        suggestion = session.request({"op": "suggest", **request})
+        step = {"op": "step", "position": 1, "suggestion_id": suggestion["suggestion_id"], **request}
+        destination = {"block": "B", "row": 2, "slot": 2, "tier": 1}
+        yard = session.yard_branches[0]["yard"]
+        loader, = yard.master_loaders
+        for unavailable in ("RTG1", "UNKNOWN", None):
+            with self.subTest(equipment=unavailable), self.assertRaisesRegex(SimulationError, "equipment available"):
+                session.request(step | {"manual_destination": destination | {"equipment": unavailable}})
+        self.assertEqual(loader.getCoords(), ("10", 0, 0))
+        self.assertNotIn("NEW1", yard.containers)
+
+        destination["equipment"] = "SL1"
+        result = session.request(step | {"manual_destination": destination})
+        self.assertEqual(result["manual_destination"], destination)
+        self.assertEqual(result["placement"]["equipment"], "SL1")
+        self.assertEqual(result["placement"]["equipment_updates"], {"10": ["RTG1"], "11": ["SL1"]})
+        self.assertEqual(loader.getCoords(), ("11", 1, 1))
+        self.assertEqual(session.request(step | {"manual_destination": destination}), result)
+        with self.assertRaisesRegex(SimulationError, "already been processed"):
+            session.request(step | {"manual_destination": destination | {"equipment": "RTG1"}})
+
+    def test_manual_equipment_can_prefer_local_or_nearer_reachable_equipment(self):
+        for block_id, code, x in (("11", "B", "10"), ("12", "C", "11")):
+            self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {
+                "block_id": block_id, "block_code": code, "pos_x": x,
+            })
+        for code, block, row, slot in (("A-REMOTE", "A", "1", "1"), ("C-REMOTE", "C", "1", "1"),
+                                       ("FAR", "B", "2", "4"), ("NEAR", "B", "1", "2")):
+            self.rows["master_equipment"].append(dict(equipment_code=code, equipment_type="SL"))
+            self.rows["equipment_history"].append(self.rows["equipment_history"][0] | {
+                "equipment_code": code, "block_code": block, "row_no": row, "slot_no": slot,
+            })
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        suggestion = session.request({"op": "suggest", **request})
+        destination = {"block": "B", "row": 1, "slot": 2, "tier": 1}
+        lookup = {"op": "manual_equipment", "suggestion_id": suggestion["suggestion_id"],
+                  "destination": destination, **request}
+        self.assertEqual(session.request(lookup), ["A-REMOTE", "C-REMOTE", "FAR", "NEAR"])
+        preferred = lookup | {"preferred_first": True}
+        self.assertEqual(session.request(preferred)[0], "NEAR")
+        self.assertEqual(session.request(preferred | {"destination": destination | {"block": "A"}})[0], "RTG1")
+
+        yard = session.yard_branches[0]["yard"]
+        for loader in yard.getBlockByID("11").getLoaders()[:]:
+            yard.moveEquipment(loader, ("10", 0, 0))
+        self.assertEqual(session.request(preferred)[0], "C-REMOTE")
+
+    def test_manual_equipment_respects_loader_approaches_and_allows_overrides_without_equipment(self):
+        self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {
+            "block_id": "11", "block_code": "B", "pos_x": "10",
+        })
+        self.rows["existing_containers"].append(self.rows["existing_containers"][0] | {
+            "container_id": "OBSTACLE", "block_code": "B", "row_no": "2", "slot_no": "2",
+        })
+        self.rows["block_accessibility"] = [dict(block_id="11", above="false", below="true", left="true", right="true")]
+        for code, kind in (("SL1", "SL"), ("RS1", "RS")):
+            self.rows["master_equipment"].append(dict(equipment_code=code, equipment_type=kind))
+            self.rows["equipment_history"].append(self.rows["equipment_history"][0] | {"equipment_code": code})
+        config = tomllib.loads(self.payload["config_toml"])
+        config["feasibility"]["loader_destination_access_mode"] = "off"
+        self.payload["config_toml"] = dump_toml(config)
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        destination = {"block": "B", "row": 1, "slot": 2, "tier": 1}
+        suggestion = session.request({"op": "suggest", **request})
+        lookup = {"op": "manual_equipment", "suggestion_id": suggestion["suggestion_id"],
+                  "destination": destination, **request}
+        self.assertEqual(session.request(lookup), ["RS1"])
+        self.assertEqual(session.request(lookup | {"preferred_first": True}), ["RS1"])
+        self.assertEqual(session.request(lookup | {"destination": destination | {"block": "A"}}),
+                         ["RTG1", "RS1", "SL1"])
+        step = {"op": "step", "position": 1, "suggestion_id": suggestion["suggestion_id"], **request}
+        with self.assertRaisesRegex(SimulationError, "SL1 cannot reach the selected stack"):
+            session.request(step | {"manual_destination": destination | {"equipment": "SL1"}})
+        self.assertFalse(session.simulation.last_steps)
+
+        session.request({"op": "reorder_queue", "order": [2, 1], **request})
+        with self.assertRaisesRegex(SimulationError, "suggestion has changed"):
+            session.request(lookup)
+        suggestion = session.request({"op": "suggest", **request})
+        self.assertEqual(suggestion["row"]["size"], "40")
+        self.assertEqual(session.request(lookup | {"suggestion_id": suggestion["suggestion_id"]}), [])
+        yard = session.yard_branches[0]["yard"]
+        before = [loader.getCoords() for loader in yard.master_loaders]
+        placed = session.request(step | {"suggestion_id": suggestion["suggestion_id"],
+                                         "manual_destination": destination | {"equipment": None}})
+        self.assertEqual(placed["row"]["status"], "placed")
+        self.assertIsNone(placed["placement"]["equipment"])
+        self.assertEqual([loader.getCoords() for loader in yard.master_loaders], before)
+
     def test_suggestions_refresh_after_changes_to_yard_access_or_tier_gaps(self):
         session = SimulationSession()
         preview = session.request({"op": "preview", "draft": self.payload})
@@ -1094,6 +1202,34 @@ class ScenarioTests(unittest.TestCase):
         self.assertIn("Block A has no RTG and no registered loader", equipment_warning["message"])
         self.assertEqual(equipment_warning["severity"], "warning")
 
+    def test_block_equipment_updates_when_a_placement_moves_a_loader(self):
+        self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {
+            "block_id": "11", "block_code": "B", "pos_x": "10",
+        })
+        for code in ("SL2", "SL1"):
+            self.rows["master_equipment"].append(dict(equipment_code=code, equipment_type="SL"))
+            self.rows["equipment_history"].append(self.rows["equipment_history"][0] | {"equipment_code": code})
+        self.rows["parameters"] = [dict(parameter_id="P", container_size="20",
+                                        container_size_score="1", terminal_id="1", branch_id="2")]
+        self.rows["yard_planning"] = [dict(parameter_id="P", block_id="11", row_no="1", slot_no="1",
+                                           terminal_id="1", branch_id="2")]
+        self.write_files()
+
+        scenario = prepare_scenario(self.payload)
+        branch, = public_preview(scenario)["branches"]
+        source, destination = branch["yard_map"]["blocks"]
+        self.assertEqual(source["equipment_codes"], ["RTG1", "SL1", "SL2"])
+        self.assertEqual(destination["equipment_codes"], [])
+
+        simulation = Simulation(scenario)
+        step = simulation.step(simulation.id, "JKT74", 1)
+        self.assertEqual(step["placement"]["block"], "B")
+        moved = next(candidate["equipment"] for candidate in step["calculation"]["candidates"] if candidate["selected"])
+        self.assertIn(moved, ("SL1", "SL2"))
+        self.assertEqual(step["placement"]["equipment_updates"], {
+            "10": [code for code in source["equipment_codes"] if code != moved], "11": [moved],
+        })
+
     def test_missing_equipment_uses_null_and_keeps_distance_disabled(self):
         self.rows["master_equipment"] = []
         self.rows["equipment_history"] = []
@@ -1115,6 +1251,12 @@ class ScenarioTests(unittest.TestCase):
         self.assertNotIn("distance_multiplier", step["calculation"]["enabled_multipliers"])
         self.assertEqual(step["calculation"]["candidates"][0]["distance_multiplier"], 1.0)
         self.assertIn("NEW1", scenario["branches"][0]["yard"].containers)
+        suggestion = simulation.suggest(simulation.id, "JKT74")
+        manual = simulation.step(simulation.id, "JKT74", 2, suggestion["suggestion_id"], manual_destination={
+            "block": "A", "row": 2, "slot": 2, "tier": 1, "equipment": None,
+        })
+        self.assertEqual(manual["row"]["status"], "placed")
+        self.assertIsNone(manual["placement"]["equipment"])
 
     def test_two_yards_run_independently_when_one_has_no_equipment(self):
         self.rows["terminal_branches"].append(dict(branch_id="3", terminal_id="1", branch_code="JKT64", branch_name="Second yard"))

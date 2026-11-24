@@ -1,5 +1,6 @@
 import math
 import warnings
+from contextlib import contextmanager
 
 from config import FeasibilitySettings, HeuristicSettings
 
@@ -305,13 +306,13 @@ class Yard:
 
         self.containers[container.getId()] = container
 
-    def _commitPlacement(
+    @contextmanager
+    def _placementTransaction(
         self,
         container: Container,
-        proposal: PlacementProposal,
-        movement: tuple[Equipment, Block, Block] | None = None,
-    ) -> None:
-        stacks = [self.getStack(*coordinate) for coordinate in proposal.footprint]
+        stacks: list[Stack],
+        movement: tuple[Equipment, Block, Block] | None,
+    ):
         stack_before = [
             (stack, list(stack.getContainers()), stack.getMode())
             for stack in stacks
@@ -335,21 +336,7 @@ class Yard:
             )
 
         try:
-            for stack in stacks:
-                if proposal.tier_index >= stack.getMaxTier():
-                    stack.addContainer(container, proposal.tier_index, allow_overcapacity=True)
-                else:
-                    stack.addContainer(container, proposal.tier_index)
-            container.setCoordsInt(
-                self.getBlockBranchCodebyID(proposal.block_id)
-                + (proposal.row_index, proposal.slot_index, proposal.tier_index)
-            )
-            self.addContainer(container)
-            if movement is not None:
-                self.moveEquipment(
-                    movement[0],
-                    (proposal.block_id, proposal.row_index, proposal.slot_index),
-                )
+            yield
         except Exception:
             # Restore directly without calling update methods that may fail.
             for stack, contents, mode in stack_before:
@@ -366,6 +353,30 @@ class Yard:
                 for block, loaders in membership_before:
                     block.loaders[:] = loaders
             raise
+
+    def _commitPlacement(
+        self,
+        container: Container,
+        proposal: PlacementProposal,
+        movement: tuple[Equipment, Block, Block] | None = None,
+    ) -> None:
+        stacks = [self.getStack(*coordinate) for coordinate in proposal.footprint]
+        with self._placementTransaction(container, stacks, movement):
+            for stack in stacks:
+                if proposal.tier_index >= stack.getMaxTier():
+                    stack.addContainer(container, proposal.tier_index, allow_overcapacity=True)
+                else:
+                    stack.addContainer(container, proposal.tier_index)
+            container.setCoordsInt(
+                self.getBlockBranchCodebyID(proposal.block_id)
+                + (proposal.row_index, proposal.slot_index, proposal.tier_index)
+            )
+            self.addContainer(container)
+            if movement is not None:
+                self.moveEquipment(
+                    movement[0],
+                    (proposal.block_id, proposal.row_index, proposal.slot_index),
+                )
 
     def addContainerByCoords(self, container, coordinates):
         proposal = self.bad_data.validateInboundDestination(
@@ -663,8 +674,36 @@ class Yard:
     def placeContainerWithAssignResult(self, result: AssignResult) -> None:
         self.placeContainer(result.container, result.getBestCoordinate(), result.getBestEquipment())
 
-    def placeContainerManually(self, container: Container, proposal: PlacementProposal):
-        """Place within the block grid and remove any containers the footprint displaces."""
+    def manualPlacementEquipment(self, proposal: PlacementProposal, *, preferred_first: bool = False) -> list[Equipment]:
+        """List equipment that can reach a validated manual destination."""
+        block = self.getBlockByID(proposal.block_id)
+        rtg = block.getRTG()
+        equipment = [rtg] if rtg is not None else []
+        if not self.master_loaders:
+            return equipment
+
+        policy = self.loader_access_policies.get(proposal.block_id, LoaderBorderAccessPolicy())
+        rule = self.feasibility.loader_access
+        reachable = rule._reachable_ground(block, policy)
+        location = ReceivingLocation(proposal.row_index, proposal.slot_index, proposal.container_size)
+        access = {
+            side_access: rule._can_serve(block, location, reachable, policy, twenty_foot_side_access=side_access)
+            for side_access in {loader.twenty_foot_side_access for loader in self.master_loaders}
+        }
+        loaders = sorted(
+            (loader for loader in self.master_loaders if access[loader.twenty_foot_side_access]),
+            key=Equipment.getCode,
+        )
+        if preferred_first and rtg is None and loaders:
+            preferred, _ = self._nearestLoaderDistance(loaders, *proposal.coordinates[:3])
+            loaders.remove(preferred)
+            loaders.insert(0, preferred)
+        equipment.extend(loaders)
+        return equipment
+
+    def placeContainerManually(self, container: Container, proposal: PlacementProposal,
+                               equipment: Equipment | None = None):
+        """Place within the block grid, displace occupants, and move the selected equipment."""
         self.bad_data.validateInboundContainer(container, self.containers)
         if proposal.container_size != container.getContSize():
             raise PlacementRejected("The selected footprint must match the container size.")
@@ -675,6 +714,19 @@ class Yard:
         row = block.getSlots()[proposal.row_index]
         if any(not 0 <= slot < len(row) for _, _, slot in proposal.footprint):
             raise PlacementRejected("Choose a coordinate with the entire container inside the yard grid.")
+        movement = None
+        equipment_location = (proposal.block_id, proposal.row_index, proposal.slot_index)
+        if equipment is not None:
+            try:
+                source, destination = self.bad_data.validateEquipmentMove(
+                    equipment, equipment_location,
+                    blocks_by_id=self.blocks_by_id, master_loaders=self.master_loaders,
+                )
+            except (TypeError, ValueError, KeyError) as error:
+                raise PlacementRejected(str(error)) from error
+            if isinstance(equipment, Loader) and equipment not in self.manualPlacementEquipment(proposal):
+                raise PlacementRejected(f"{equipment.getCode()} cannot reach the selected stack.")
+            movement = (equipment, source, destination)
         targets = {row[slot] for _, _, slot in proposal.footprint}
         tier = proposal.tier_index
         displaced = {
@@ -695,16 +747,20 @@ class Yard:
             mode = "X" if stack.getMode() == "X" else self._stackMode(changed)
             updates.append((stack, changed, mode))
 
-        container.setCoordsInt(self.getBlockBranchCodebyID(proposal.block_id) + proposal.coordinates[1:])
-        for stack, changed, mode in updates:
-            stack.containers[:] = changed
-            stack.setMode(mode)
         displaced_ids = sorted(item.getId() for item in displaced if not isinstance(item, DummyContainer))
-        for container_id in displaced_ids:
-            self.containers.pop(container_id, None)
-        self.addContainer(container)
-        self.anomalyCheck()
-        return [stack for stack, _, _ in updates], displaced_ids
+        changed_stacks = [stack for stack, _, _ in updates]
+        with self._placementTransaction(container, changed_stacks, movement):
+            container.setCoordsInt(self.getBlockBranchCodebyID(proposal.block_id) + proposal.coordinates[1:])
+            for stack, changed, mode in updates:
+                stack.containers[:] = changed
+                stack.setMode(mode)
+            for container_id in displaced_ids:
+                self.containers.pop(container_id, None)
+            self.addContainer(container)
+            if equipment is not None:
+                self.moveEquipment(equipment, equipment_location)
+            self.anomalyCheck()
+        return changed_stacks, displaced_ids
 
     def placeContainer(self, container, coordinates, equipment):
         validated = self.bad_data.validateInboundPlacement(
@@ -748,6 +804,16 @@ class Yard:
         else:
             raise ValueError("Only loaders can move between blocks.")
 
+    def _nearestLoaderDistance(self, loaders: list[Loader], block_id: str, row_index: int,
+                               slot_index: int) -> tuple[Loader, float]:
+        local = [loader for loader in loaders if loader.getCoords()[0] == block_id]
+        if local:
+            return min(
+                ((loader, loader.inBlockDistance(row_index, slot_index)) for loader in local),
+                key=lambda item: item[1],
+            )
+        return min(loaders, key=lambda loader: self.distanceBetweenBlock(block_id, loader.getCoords()[0])), float("inf")
+
     # nearest equipment and its distance for a stack coord (without tier)
     def nearestEquipmentDistance(
         self, block_id: str, row_index: int, slot_index: int, *,
@@ -774,16 +840,7 @@ class Yard:
                     )
                 ]
                 if reachable_loaders:
-                    local = [loader for loader in reachable_loaders if loader.getCoords()[0] == block_id]
-                    if local:
-                        return min(
-                            ((loader, loader.inBlockDistance(row_index, slot_index)) for loader in local),
-                            key=lambda item: item[1],
-                        )
-                    return min(
-                        reachable_loaders,
-                        key=lambda loader: self.distanceBetweenBlock(block_id, loader.getCoords()[0]),
-                    ), float("inf")
+                    return self._nearestLoaderDistance(reachable_loaders, block_id, row_index, slot_index)
             # if loader is present in block
             if loaders:
                 return  min(((loader,loader.inBlockDistance(row_index,slot_index)) for loader in loaders), key = lambda x : x[1])

@@ -5,6 +5,7 @@ from config import FeasibilitySettings
 from entities import Container, Yard
 from entities.bad_yard_data import PlacementRejected
 from entities.equipment import Equipment, Loader, RTG
+from entities.feasibility import PlacementProposal
 
 
 class PlacementAtomicityTests(unittest.TestCase):
@@ -121,6 +122,23 @@ class PlacementAtomicityTests(unittest.TestCase):
                         yard, container, equipment,
                         lambda: yard.placeContainer(container, ("B", 0, 1, 0), equipment),
                     )
+
+    def test_manual_replacement_rolls_back_when_equipment_move_fails(self):
+        yard, loader, container = self.make_yard()
+        original = Container(**(self.record | {"container_id": "OLD"}))
+        yard.addContainerByCoords(original, ("B", 0, 1, 0))
+        proposal = PlacementProposal("B", 0, 1, 0, "20")
+        move_equipment = yard.moveEquipment
+
+        def move_then_fail(equipment, coordinates):
+            move_equipment(equipment, coordinates)
+            raise RuntimeError("Equipment move failed.")
+
+        with patch.object(yard, "moveEquipment", side_effect=move_then_fail):
+            self.assert_unchanged_on_failure(
+                yard, container, loader, lambda: yard.placeContainerManually(container, proposal, loader),
+                error=RuntimeError,
+            )
 
     def test_duplicate_id_is_rejected_at_assignment_and_placement(self):
         yard, equipment, container = self.make_yard()

@@ -69,12 +69,20 @@ def stack_view(stack, row, slot):
     }
 
 
+def block_equipment_codes(block):
+    rtg = block.getRTG()
+    codes = [rtg.getCode()] if rtg is not None else []
+    codes.extend(sorted(loader.getCode() for loader in block.getLoaders()))
+    return codes
+
+
 def yard_view(yard):
     """Build a read-only map with one-based locations and sparse tier contents."""
     parameters = {}
     blocks = []
     for block in sorted(yard.blocks_by_id.values(), key=lambda b: (b.getPosY(), b.getPosX(), b.getCode())):
         grid = block.getSlots()
+        rtg = block.getRTG()
         stacks = []
         containers = set()
         for row_no, row in enumerate(grid, 1):
@@ -90,6 +98,8 @@ def yard_view(yard):
             "id": block.getId(),
             "loader_access": asdict(yard.loader_access_policies.get(block.getId(), LoaderBorderAccessPolicy())),
             "code": block.getCode(), "x": block.getPosX(), "y": block.getPosY(),
+            "rtg_code": rtg.getCode() if rtg is not None else None,
+            "equipment_codes": block_equipment_codes(block),
             "rows": len(grid), "slots": len(grid[0]),
             "tier_limit": block.max_tier,
             "occupied_tiers": sum(len(stack["tiers"]) for stack in stacks),
@@ -98,4 +108,5 @@ def yard_view(yard):
             "parameter_compliance": block.parameterCompliance(),
             "stacks": stacks,
         })
-    return {"blocks": blocks, "parameters": parameters}
+    return {"blocks": blocks, "parameters": parameters,
+            "loader_codes": sorted(loader.getCode() for loader in yard.master_loaders)}
