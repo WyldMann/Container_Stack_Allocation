@@ -36,7 +36,7 @@ stacking_safety_limit_multiplier = 0.5
 loader_occupied_access_loss_weight = 0.5
 loader_future_access_loss_weight = 0.15
 # Disabled factors skip scoring and contribute a neutral multiplier of 1.
-enable_delta_container_mass = true
+enable_delta_container_mass = false
 enable_equipment_distance = false
 
 # Maximum mass-compatibility score, reached when the incoming
