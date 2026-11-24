@@ -1,5 +1,6 @@
 # Placement settings for main.py.
 [feasibility]
+preserve_occupied_loader_access_mode = "heuristic"
 loader_destination_access_mode = "feasibility"
 # Score height differences and reject placements beyond the maximum.
 stacking_safety_mode = "feasibility"
@@ -22,7 +23,7 @@ stacking_safety_neighbor_right = false
 # Future access covers receiving options and must use the same or a weaker
 # mode (off < heuristic < feasibility). Omit it to inherit the current mode.
 loader_access_mode = "heuristic"
-preserve_future_loader_access_mode = "heuristic"
+preserve_future_loader_access_mode = "off"
 # Exclude fully occupied stacks from current access protection.
 ignore_full_stacks_for_loader_access = true
 
@@ -62,7 +63,7 @@ no_delta_container_mass_value = 0.1
 
 # Same-size reward = 2 ** (bias * S / (S + prior)).
 # S is the distance-weighted total of occupied same-size stacks.
-enable_size_cluster_reward = true
+enable_size_cluster_reward = false
 # Search radius in closest-footprint grid units. Zero disables only the reward.
 size_cluster_reward_radius = 1
 # Distance at which a matching stack's evidence halves. Must be positive.
@@ -74,7 +75,7 @@ size_cluster_reward_bias = 2.0
 
 # Different-size penalty = 2 ** (-bias * O / (O + prior)).
 # O is the distance-weighted total of occupied different-size stacks.
-enable_size_cluster_penalty = true
+enable_size_cluster_penalty = false
 # Search radius in closest-footprint grid units. Zero disables only the penalty.
 size_cluster_penalty_radius = 4
 # Distance at which a different-size stack's evidence halves. Must be positive.
