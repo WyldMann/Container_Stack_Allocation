@@ -596,6 +596,57 @@ class CSVOperationsIntegrationTests(unittest.TestCase):
         self.assertEqual(report["shifting_observations"], [])
         self.assertIsNone(report["avg_shifting_percentage"])
 
+    def test_main_prints_only_nonblacklisted_future_rows_once_and_preserves_saved_metrics(self):
+        blacklist = self.fixture.root / "blacklist.toml"
+        write_blacklist(blacklist, [dict(
+            branch_code="JKT74", document_id="BLOCKED-DOC", detail_id="BLACKLISTED-FUTURE",
+            equipment_code="SL", activity="Lift On Loading", activity_time="29-10-2026 15:02",
+            reason="Already reviewed",
+        )])
+        self.path.write_text(self.path.read_text(encoding="utf-8").replace(
+            "[csv]", '[csv]\nshifting_blacklist_file = "blacklist.toml"',
+        ), encoding="utf-8")
+        valid = operation(identifier="VALID")
+        future = operation(identifier="UNLISTED-FUTURE", document="FUTURE-DOC",
+                           timestamp="29-10-2026 15:01")
+        blocked = operation(identifier="BLACKLISTED-FUTURE", document="BLOCKED-DOC",
+                            timestamp="29-10-2026 15:02")
+        output = self.fixture.root / "output"
+        for records, expected_future, expected_lifts in (
+            ([valid, future, blocked], 1, 1),
+            ([valid, blocked], 0, 1),
+            ([future, blocked], 1, 0),
+        ):
+            with self.subTest(records=records):
+                write_csv(self.csv_path, records)
+                source_before = self.csv_path.read_bytes()
+                console = io.StringIO()
+                with patch.object(shifting_report_calculation, "time", return_value=NOW), patch.object(
+                    shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.path,
+                ), patch.object(shifting_report_calculation, "OUTPUT_DIR", output), patch.object(
+                    shifting_report_calculation.YardPresenter, "outYard",
+                ), redirect_stdout(console):
+                    shifting_report_calculation.main()
+                text = console.getvalue()
+                self.assertEqual(text.count("UNLISTED-FUTURE"), expected_future)
+                self.assertEqual(text.count("FUTURE-DOC"), expected_future)
+                self.assertNotIn("BLACKLISTED-FUTURE", text)
+                self.assertNotIn("BLOCKED-DOC", text)
+                if expected_future:
+                    self.assertIn("Future-dated operations ignored (not blacklisted): 1", text)
+                    self.assertIn("29-10-2026 15:01", text)
+                    self.assertIn("recorded_at", text)
+                    self.assertIn(str(self.csv_path), text)
+                else:
+                    self.assertNotIn("Future-dated operations ignored", text)
+                saved = json.loads((output / "existing_yard_metrics_JKT74.jsonl").read_text().splitlines()[-1])
+                self.assertNotIn("future_operations", saved)
+                self.assertNotIn("blacklisted_operations", saved)
+                self.assertEqual(sum(row["lifting_count"] for row in saved["shifting_observations"]),
+                                 expected_lifts)
+                self.assertEqual(saved["period_end"], LATEST if expected_lifts else None)
+                self.assertEqual(self.csv_path.read_bytes(), source_before)
+
     def test_latest_activity_window_report_jsonl_and_presenter(self):
         with patch.object(shifting_report_calculation, "time", return_value=NOW + 10 * 86400):
             report = shifting_report_calculation.build_report(self.path)

@@ -174,6 +174,13 @@ listing source locations, operation identities and the `recorded_at` cutoff.
 These rows are logged once during window selection. Explicit blacklist matches
 are logged under `blacklisted_operations` first, so exclusions are not duplicated.
 Neither diagnostic is written into the shortened JSONL output.
+Running `shifting_report_calculation.py` prints non-blacklisted future operations
+under their branch before the recorded metrics. The console table includes the
+branch, document/detail IDs, equipment, activity, activity time in WIB, run-time
+cutoff in Unix seconds, and CSV source location. Each ignored source row is
+printed once. Blacklisted matches are omitted from this table. If no such future
+rows are present, no future-operations section is printed. Library calls to
+`build_report()` and `build_reports()` remain silent.
 
 ## Recorded JSONL format
 

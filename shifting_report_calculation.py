@@ -107,7 +107,7 @@ def _build_report_and_yard(input_path, *, branch_code=None):
         return _build_loaded_report(input_settings, inputs, connection)
 
 
-def _build_reports_and_yards(input_path):
+def _build_reports_and_yards(input_path, *, diagnostics=None):
     """Build every yard separately using one shared read-only SQL snapshot."""
     settings = load_input_config(input_path, datasets=EXISTING_YARD_DATASETS)
     results = {}
@@ -118,11 +118,16 @@ def _build_reports_and_yards(input_path):
             branches = BranchDirectory(inputs["terminal_branches"])
             branches.cy_name()  # Require an unambiguous identity even without observations.
             code = branches.records[0]["branch_code"].strip().upper()
-            results[code] = _build_loaded_report(scoped, inputs, connection, generated_at=generated_at)
+            branch_diagnostics = {} if diagnostics is not None else None
+            results[code] = _build_loaded_report(
+                scoped, inputs, connection, generated_at=generated_at, diagnostics=branch_diagnostics,
+            )
+            if diagnostics is not None:
+                diagnostics[code] = branch_diagnostics
     return results
 
 
-def _build_loaded_report(input_settings, inputs, connection, *, generated_at=None):
+def _build_loaded_report(input_settings, inputs, connection, *, generated_at=None, diagnostics=None):
     period_settings = input_settings.get("shifting_period")
     operations_source = input_settings.get("shifting_source", "xlsx")
     sql_operations = operations_source == "sql"
@@ -149,6 +154,7 @@ def _build_loaded_report(input_settings, inputs, connection, *, generated_at=Non
         connection=connection, latest_only=True,
         today=datetime.fromtimestamp(generated_at, WIB).date(),
         recorded_at=generated_at,
+        diagnostics=diagnostics,
     )
     latest_start = max((row.period_start for row in observations), default=None)
     latest_observations = [row for row in observations if row.period_start == latest_start]
@@ -225,7 +231,8 @@ def build_reports(input_path=DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE):
 
 
 def main():
-    reports = _build_reports_and_yards(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE)
+    diagnostics = {}
+    reports = _build_reports_and_yards(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE, diagnostics=diagnostics)
     # Validate every record before appending any of this run's reports.
     lines = {code: json.dumps(report, ensure_ascii=False, allow_nan=False, separators=(", ", ": "))
              for code, (report, _) in reports.items()}
@@ -237,6 +244,7 @@ def main():
             file.write(lines[code] + "\n")
 
         print("Branch:", code)
+        presenter.outFutureOperations(diagnostics.get(code, {}).get("future_operations", []))
         presenter.outRecordedMetrics(report)
         print("Recorded to:", output)
         print()

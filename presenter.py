@@ -70,6 +70,16 @@ class YardPresenter(Presenter):
         else:
             self.out("No operations observations.")
 
+    def outFutureOperations(self, operations: list[dict]) -> None:
+        """Show automatically excluded future rows that did not match the blacklist."""
+        if not operations:
+            return
+        self.out(f"Future-dated operations ignored (not blacklisted): {len(operations)}")
+        fields = ("branch_code", "document_id", "detail_id", "equipment_code", "activity",
+                  "activity_time", "recorded_at", "source")
+        self.out(pd.DataFrame(operations, columns=fields).to_string(index=False))
+        self.out("Activity times are in WIB; recorded_at is the program run time in Unix seconds.")
+
     def outBlock(self, block: Block) -> None:
         self.out("ID:", block.getId(),
                  " Branch/Code:", block.getBranch() + "/" + block.getCode())
