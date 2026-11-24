@@ -80,6 +80,37 @@ const button = (page, name) => page.getByRole("button", {name, exact: true});
 const cardIds = page => page.locator(".inbound-card strong");
 const feedback = (page, text) => page.getByText(text, {exact: true});
 
+test("scan order switch writes the selected mode into the preview TOML", async t => {
+  const page = await openPreview(t, 1);
+  await page.waitForFunction(() => !document.getElementById("generate-preview").disabled);
+  const switchGroup = page.getByRole("radiogroup", {name: "Scan order"});
+  const rowWise = switchGroup.getByRole("radio", {name: "Row-wise"});
+  const slotWise = switchGroup.getByRole("radio", {name: "Slot-wise"});
+  const penaltyStart = page.getByRole("spinbutton", {name: "Start reducing score", exact: true});
+  const previewToml = () => page.evaluate(() => buildDraft().config_toml);
+  const load = text => page.locator("#load-config").setInputFiles({
+    name: "scan-order.toml", mimeType: "application/toml", buffer: Buffer.from(text)
+  });
+
+  assert.equal(await slotWise.isChecked(), true);
+  assert.equal(await penaltyStart.inputValue(), "0");
+  await load("[heuristic]\nenable_equipment_distance = false\n");
+  await feedback(page, "Loaded scan-order.toml.").waitFor();
+  assert.equal(await slotWise.isChecked(), true);
+  assert.equal(await penaltyStart.inputValue(), "0");
+  await switchGroup.getByText("Row-wise", {exact: true}).click();
+  assert.equal(await rowWise.isChecked(), true);
+  assert.equal(await previewToml(), '[heuristic]\nscan_order = "row_wise"\nenable_equipment_distance = false\n');
+  await switchGroup.getByText("Slot-wise", {exact: true}).click();
+  assert.equal(await previewToml(), "[heuristic]\nenable_equipment_distance = false\n");
+
+  await load("heuristic = { scan_order = 'slot_wise', enable_equipment_distance = false }\n");
+  await feedback(page, "Loaded scan-order.toml.").waitFor();
+  assert.equal(await slotWise.isChecked(), true);
+  await switchGroup.getByText("Row-wise", {exact: true}).click();
+  assert.equal(await previewToml(), 'heuristic = { scan_order = "row_wise", enable_equipment_distance = false }\n');
+});
+
 test("block access switches show locks once the first inbound row is processed", async t => {
   const page = await openPreview(t, 2);
   const switches = page.getByRole("switch", {name: /loader access/});

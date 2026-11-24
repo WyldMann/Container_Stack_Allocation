@@ -70,9 +70,20 @@ class HeuristicConfigTests(unittest.TestCase):
                 with self.assertRaises(ConfigurationError):
                     self.load_text(text)
 
+    def test_scan_order_accepts_both_modes_and_rejects_other_values(self):
+        self.assertEqual(self.load_text('').heuristic.scan_order, 'slot_wise')
+        for mode in ('row_wise', 'slot_wise'):
+            with self.subTest(mode=mode):
+                settings = self.load_text(f'[heuristic]\nscan_order = "{mode}"\n')
+                self.assertEqual(settings.to_document()['heuristic']['scan_order'], mode)
+        for value in ('"diagonal"', 'true', '1', '[]'):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ConfigurationError, 'scan_order'):
+                    self.load_text(f'[heuristic]\nscan_order = {value}\n')
+
     def test_invalid_numeric_values_are_rejected(self):
         for field in fields(HeuristicSettings):
-            if field.name in FACTOR_SWITCHES:
+            if field.name in (*FACTOR_SWITCHES, 'scan_order'):
                 continue
             values = ('true', '"1"', '[]', '-1')
             if field.name.endswith('_radius'):

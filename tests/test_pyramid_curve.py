@@ -26,6 +26,7 @@ class PyramidCurveTests(unittest.TestCase):
             "heuristic": {"stacking_safety_limit_multiplier": 0.25},
         })
         self.assertEqual(parse_config(parsed.to_document()).to_document(), parsed.to_document())
+        self.assertEqual(parse_config({}).feasibility.stacking_safety_penalty_start, 0)
         self.assertEqual(FeasibilitySettings(stacking_safety_maxima=1).stacking_safety_penalty_start, 0)
         self.assertEqual(HeuristicSettings(unsafe_stacking_multiplier=0.4).stacking_safety_limit_multiplier, 0.4)
         self.assertEqual(HeuristicSettings(unsafe_stacking_multiplier=0.4, stacking_safety_limit_multiplier=0.2).stacking_safety_limit_multiplier, 0.2)

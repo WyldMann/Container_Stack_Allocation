@@ -574,6 +574,7 @@ class Yard:
         parameter_scores = dict(sorted(parameter_scores.items(), key=lambda item: item[1], reverse=True))
 
         score_groups: dict[float, list[tuple[Block, int, int, float]]] = {}
+        slot_wise = self.model.settings.scan_order == "slot_wise"
         for block in self.blocks_by_id.values():
             if require_equipment and not self.canServeBlock(block):
                 if rejection_counts is not None:
@@ -582,22 +583,21 @@ class Yard:
                         len(row) for row in block.getSlots()
                     )
                 continue
-            for row_index, slots in enumerate(block.getSlots()):
-                for slot_index, stack in enumerate(slots):
-                    parameters = stack.getParameters()
-                    current_score = max(
-                        (parameter_scores[str(parameter)] for parameter in parameters),
-                        default=0,
-                    )
-                    if rejection_counts is None and (
-                        current_score < 0 or (current_score == 0 and parameters)
-                    ):
-                        continue
-                    # A trace uses one group in yard order to count every rejection.
-                    group_score = current_score if rejection_counts is None else 0
-                    score_groups.setdefault(group_score, []).append(
-                        (block, row_index, slot_index, current_score)
-                    )
+            for row_index, slot_index, stack in block.iterStacks(slot_wise=slot_wise):
+                parameters = stack.getParameters()
+                current_score = max(
+                    (parameter_scores[str(parameter)] for parameter in parameters),
+                    default=0,
+                )
+                if rejection_counts is None and (
+                    current_score < 0 or (current_score == 0 and parameters)
+                ):
+                    continue
+                # A trace uses one group to count every rejection in scan order.
+                group_score = current_score if rejection_counts is None else 0
+                score_groups.setdefault(group_score, []).append(
+                    (block, row_index, slot_index, current_score)
+                )
 
         # Contexts belong to this read-only search and are prepared only as needed.
         loader_contexts = {}

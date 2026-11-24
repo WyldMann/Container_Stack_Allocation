@@ -67,7 +67,7 @@ the decrease gives a score multiplier of 1; turning off the bound allows larger
 differences at the curve's endpoint score. Turning both off skips the pyramid
 rule and keeps its settings for later. The difference is the post-placement height
 above the tallest considered neighbor, with ground height zero as the fallback.
-The score is 1 through `feasibility.stacking_safety_penalty_start` (default `1`),
+The score is 1 through `feasibility.stacking_safety_penalty_start` (default `0`),
 then declines linearly to `heuristic.stacking_safety_limit_multiplier` (default
 `0.25`) at `feasibility.stacking_safety_maxima` (default `2`). Differences above
 the maximum are rejected; the maximum itself remains feasible.

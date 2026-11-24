@@ -37,6 +37,7 @@ class HeuristicSettings:
     overcapacity_tier_multiplier: float = 0.01
     heavier_container_fallback_score: float | None = None
     equipment_outside_block_fallback_score: float | None = None
+    scan_order: str = "slot_wise"
 
     def __post_init__(self) -> None:
         if self.stacking_safety_limit_multiplier is None:
@@ -64,6 +65,10 @@ class HeuristicSettings:
         for field in fields(self):
             name = field.name
             value = getattr(self, name)
+            if name == "scan_order":
+                if value not in ("row_wise", "slot_wise"):
+                    raise ValueError("scan_order must be 'row_wise' or 'slot_wise'.")
+                continue
             if value is None and name in (
                 "heavier_container_fallback_score", "equipment_outside_block_fallback_score",
             ):

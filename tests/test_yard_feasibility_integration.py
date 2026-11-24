@@ -5,10 +5,29 @@ from unittest.mock import Mock, patch
 from config import FeasibilitySettings, HeuristicSettings
 from entities import Container
 from entities.bad_yard_data import PlacementRejected
+from entities.equipment import RTG
 from entities.yard import Yard
+from tests.test_parameter_evaluation import make_container
 
 
 class YardFeasibilityIntegrationTests(unittest.TestCase):
+    def test_scan_order_breaks_ties_without_overriding_higher_scores(self):
+        block = dict(branch_id='B', block_id='A', block_code='A', slot_count='2',
+                     row_count='2', max_tier='1', pos_x='0', pos_y='0')
+        across = ('A', 0, 1, 0)
+        down = ('A', 1, 0, 0)
+        for mode, first, second in (('row_wise', across, down), ('slot_wise', down, across)):
+            with self.subTest(mode=mode):
+                yard = Yard([block], removed_slots_input=[('A', 0, 0), ('A', 1, 1)],
+                            heuristic_settings=HeuristicSettings(scan_order=mode))
+                container = make_container(container_size='20')
+                for trace in (None, {}):
+                    result = yard.assignContainer(container, trace=trace)
+                    self.assertEqual(result.getCoords(), [first, second])
+
+                yard.getBlockByID('A').setRTG(RTG('RTG', second[:3]))
+                self.assertEqual(yard.assignContainer(container).getBestCoordinate(), second)
+
     def test_candidate_selection_applies_feasibility(self):
         yard = Yard(
             yard_blocks_input=[
@@ -183,7 +202,9 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                     trace = {}
                     result = yard.assignContainer(incoming, trace=trace)
                     scores = {candidate.coordinates: candidate for candidate in result.sorted_candidate_evaluations}
-                    self.assertEqual(scores[safe].stacking_safety_multiplier, 1.0)
+                    # A one-tier gap is halfway through the default scoring range.
+                    safe_factor = 0.6 if mode == 'heuristic' else 1.0
+                    self.assertAlmostEqual(scores[safe].stacking_safety_multiplier, safe_factor)
                     if mode == 'feasibility':
                         self.assertNotIn(unsafe, scores)
                         self.assertEqual(trace['rejections']['unsafe_stacking'], 1)

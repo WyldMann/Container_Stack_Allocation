@@ -6,7 +6,7 @@ loader_destination_access_mode = "feasibility"
 stacking_safety_mode = "feasibility"
 # Full score up to this post-placement tier difference; then linear decay.
 # Integer from 0 to stacking_safety_maxima - 1.
-stacking_safety_penalty_start = 1
+stacking_safety_penalty_start = 0
 # Maximum tiers above at least one neighboring stack after placement.
 # An isolated stack may reach this height. Must be a positive integer.
 stacking_safety_maxima = 2
@@ -29,8 +29,10 @@ ignore_full_stacks_for_loader_access = true
 
 
 [heuristic]
+# Break placement ties by scanning each row or each slot first.
+scan_order = "slot_wise"
 # Score multiplier at stacking_safety_maxima. Range: 0 to 1.
-stacking_safety_limit_multiplier = 1
+stacking_safety_limit_multiplier = 0.5
 loader_occupied_access_loss_weight = 0.5
 loader_future_access_loss_weight = 0.15
 # Disabled factors skip scoring and contribute a neutral multiplier of 1.

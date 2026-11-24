@@ -1,3 +1,6 @@
+from collections.abc import Iterator
+from itertools import zip_longest
+
 from .stack import Stack
 from .container import DummyContainer, InboundDummyContainer
 from .equipment import *
@@ -47,6 +50,18 @@ class Block:
     def getCode(self) -> str: return self.block_code
     def getSlots(self) -> list[list[Stack]]:return self.slots
     def getStack(self, row_index:int, slot_index:int) -> Stack: return self.slots[row_index][slot_index]
+
+    def iterStacks(self, *, slot_wise: bool) -> Iterator[tuple[int, int, Stack]]:
+        if slot_wise:
+            for slot_index, stacks in enumerate(zip_longest(*self.slots)):
+                for row_index, stack in enumerate(stacks):
+                    if stack is not None:
+                        yield row_index, slot_index, stack
+        else:
+            for row_index, stacks in enumerate(self.slots):
+                for slot_index, stack in enumerate(stacks):
+                    yield row_index, slot_index, stack
+
     def getPosX(self) -> int: return self.pos_x
     def getPosY(self) -> int: return self.pos_y
     def getLoaders(self) -> list[Loader]: return self.loaders

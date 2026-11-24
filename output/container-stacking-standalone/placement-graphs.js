@@ -96,7 +96,7 @@ function createPlacementGraphs(read) {
     pyramid: {title: "Pyramid stacking", axis: "Height above the tallest considered neighbor after placement (tiers)", calculate() {
       const current = mode("stacking_safety_mode", () => flag("feasibility.stacking_safety", true) ? "feasibility" : "off");
       const hard = number("stacking_safety_maxima", 2, 1, Number.MAX_VALUE, true, "feasibility");
-      const soft = number("stacking_safety_penalty_start", Math.min(1, hard - 1), 0, hard - 1, true, "feasibility");
+      const soft = number("stacking_safety_penalty_start", 0, 0, hard - 1, true, "feasibility");
       const end = Math.max(3, hard + 1, hard * 1.2);
       const ticks = [...new Set([0, soft, hard, end])];
       if (current === "off") return {start: 0, end, ticks, ...neutral(0, end, "Rule off · No pyramid score or height rejection.")};

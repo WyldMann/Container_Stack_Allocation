@@ -28,7 +28,7 @@ class FeasibilitySettings:
         if type(self.stacking_safety_maxima) is not int or self.stacking_safety_maxima < 1:
             raise ValueError("stacking_safety_maxima must be a positive integer.")
         if self.stacking_safety_penalty_start is None:
-            object.__setattr__(self, "stacking_safety_penalty_start", min(1, self.stacking_safety_maxima - 1))
+            object.__setattr__(self, "stacking_safety_penalty_start", 0)
         if type(self.stacking_safety_penalty_start) is not int or not 0 <= self.stacking_safety_penalty_start < self.stacking_safety_maxima:
             raise ValueError("stacking_safety_penalty_start must be a non-negative integer below stacking_safety_maxima.")
         for name in (
