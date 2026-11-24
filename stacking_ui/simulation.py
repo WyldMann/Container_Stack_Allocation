@@ -326,10 +326,13 @@ class Simulation:
         if index == len(branch["queue"]):
             return None
         row = dict(branch["queue"][index])
+        yard = branch["yard"]
+        if (row["input_position"] in branch.get("yard_conflicts", ())
+                and row["container_id"] not in yard.containers):
+            row.update(status="pending", reason=None)
         suggestion = {"suggestion_id": uuid4().hex, "row": row, "calculation": None}
         result = None
         if row["status"] == "pending":
-            yard = branch["yard"]
             container = _inbound_container(branch, row)
             search = {}
             try:

@@ -297,7 +297,9 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
                 {"container_id": container.getId()}, severity="warning", category="overlap")
     # Queue validation uses a separate collector and never places anything.
     validator = BadYardData(0, 0)
-    seen = dict(yard.containers)
+    seen = {}
+    # Only the first valid inbound row for an ID can recover after a yard edit.
+    yard_conflicts = set()
     origins_by_record = {}
     for index, row in enumerate(inputs.get("inbound_containers", ())):
         key = tuple(sorted(row.items()))
@@ -320,13 +322,18 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
                                               severity="warning", sources=origin, field="weight"))
             try:
                 validator.validateInboundContainer(container, seen)
-                seen[container.getId()] = container
+                container_id = container.getId()
+                seen[container_id] = container
+                if container_id in yard.containers:
+                    yard_conflicts.add(index + 1)
+                    validator.validateInboundContainer(container, yard.containers)
             except PlacementRejected as error:
                 status, reason = "invalid", str(error)
                 branch["issues"].append(issue("inbound_containers", reason, sources=origin, severity="warning"))
         branch["queue"].append(inbound_queue_row(
             row, index + 1, index + 1, weight=weight, status=status, reason=reason, sources=origin,
         ))
+    branch["yard_conflicts"] = yard_conflicts
     if not yard.blocks_by_id:
         add("yard_blocks", "No valid blocks are available for this branch.")
     unserved_blocks = [block for block in yard.blocks_by_id.values() if not yard.canServeBlock(block)]
@@ -364,7 +371,7 @@ def tier_gap_view(yard):
 
 def public_branch(branch):
     entry = {key: value for key, value in branch.items()
-             if key not in ("yard", "inputs", "container_profile", "saved_block_access")}
+             if key not in ("yard", "inputs", "container_profile", "saved_block_access", "yard_conflicts")}
     yard = branch["yard"]
     entry["yard_map"] = yard_view(yard) if yard is not None else None
     if entry["yard_map"] is not None:

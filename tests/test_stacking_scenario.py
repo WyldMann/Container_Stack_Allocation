@@ -926,6 +926,28 @@ class ScenarioTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "selected stack is empty"):
             session.request(removal)
 
+    def test_removing_an_existing_container_reopens_its_inbound_assignment(self):
+        self.rows["inbound_containers"] = [dict(container_id="OLD", container_size="20")] * 2
+        self.write_files()
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        suggest = {"op": "suggest", **request}
+        before = session.request(suggest)
+        self.assertEqual(before["row"]["status"], "invalid")
+
+        session.request({"op": "remove_stack_top", "block": "A", "row": 1, "slot": 1,
+                         "tier": 1, "container_id": "OLD", **request})
+        step = {"op": "step", "position": 1, **request}
+        with self.assertRaisesRegex(SimulationError, "suggestion has changed"):
+            session.request(step | {"suggestion_id": before["suggestion_id"]})
+        current = session.request(suggest)
+        self.assertEqual(current["row"]["status"], "suggested")
+        self.assertIsNone(current["row"]["reason"])
+        placed = session.request(step | {"suggestion_id": current["suggestion_id"]})
+        self.assertEqual(placed["placement"]["container_id"], "OLD")
+        self.assertEqual(session.request(suggest)["row"]["status"], "invalid")
+
     def test_remove_stack_top_clears_both_slots_for_a_real_pair_and_repair_dummy(self):
         self.rows["existing_containers"].append(dict(
             container_id="PAIR", container_size="40", branch_id="JKT74", block_code="A",
