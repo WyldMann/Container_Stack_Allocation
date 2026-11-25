@@ -86,8 +86,8 @@ const placementGroups = [
       "Check whether this placement cuts off access to containers already in the yard."],
     "feasibility.preserve_future_loader_access_mode": ["Preserve access to future receiving locations",
       "Check whether this placement cuts off access to locations with room for more containers."],
-    "feasibility.ignore_full_stacks_for_loader_access": ["Ignore full stacks",
-      "Exclude stacks at or above capacity from occupied-stack access preservation."],
+    "feasibility.ignore_full_stacks_for_loader_access": ["Ignore stacks that can’t receive another container",
+      "Skip occupied-stack access protection when the stack has no legal next tier for its container size."],
     ...Object.fromEntries(loaderScoringOptions.map(({key, label, description}) =>
       ["heuristic." + key, [label, description]]))
   }},

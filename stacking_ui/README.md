@@ -30,6 +30,13 @@ lose access after placement. Each rule has its own mode and enables its weight
 in **Heuristic** mode. The default unreachable destination multiplier is 0.25.
 Each access loss weight defaults to 1 per location that loses access.
 
+**Ignore stacks that can’t receive another container** exempts occupied stacks
+with no legal next tier for their container size before placement. The check
+uses the hard placement rules, including enforced tier capacity, pyramid
+support, and 40-foot pairing. Future receiving access also uses these rules to
+determine which receiving locations have room. The toggle uses the existing
+`ignore_full_stacks_for_loader_access` setting in TOML.
+
 Each block has **Above**, **Below**, **Left**, and **Right** access switches around
 its grid. Set them before starting that branch's simulation. Green **Open** and
 red **Closed** states control loader entry; Above and Below also provide exterior

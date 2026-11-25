@@ -8,7 +8,7 @@ from entities import Container
 from entities.bad_yard_data import PlacementRejected
 from entities.equipment import Loader, RTG
 from entities.feasibility.loader_access import LoaderAccessResult, LoaderBorderAccessPolicy, ReceivingLocation
-from entities.feasibility.placement_feasibility import RejectionReason
+from entities.feasibility.placement_feasibility import PlacementFeasibility, RejectionReason
 from entities.heuristic_model import HeuristicModel
 from entities.yard import Yard
 from stacking_ui.simulation import _calculation
@@ -279,6 +279,94 @@ class LoaderAccessIntegrationTests(unittest.TestCase):
                 self.set_stack(1, 1, container_size=size, count=2)
                 result = evaluator.evaluate(self.container, self.block, 0, 1)
                 self.assertEqual(result.rejection_reason, RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED)
+
+    def test_ignoring_infeasible_stacks_applies_only_enforced_pyramid_limits(self):
+        self.set_stack(0, 0)
+        self.set_stack(0, 1)
+        evaluator = self.yard.feasibility
+        for size in ('20', '40'):
+            self.set_stack(1, 0, container_size=size, count=2)
+            self.set_stack(1, 1, container_size=size, count=2)
+            for mode, ignore, allowed in (
+                ('off', True, False),
+                ('heuristic', True, False),
+                ('feasibility', True, True),
+                ('combined', True, True),
+                ('feasibility', False, False),
+            ):
+                with self.subTest(size=size, mode=mode, ignore=ignore):
+                    evaluator.settings = replace(
+                        evaluator.settings, stacking_safety_mode=mode,
+                        stacking_safety_neighbor_down=False, preserve_future_loader_access=False,
+                        ignore_full_stacks_for_loader_access=ignore,
+                    )
+                    context = evaluator.prepare_loader_context(self.block)
+                    result = evaluator.evaluate(self.container, self.block, 0, 1, loader_context=context)
+                    self.assertEqual(result.feasible, allowed)
+                    if not allowed:
+                        self.assertEqual(result.rejection_reason, RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED)
+
+    def test_ignoring_infeasible_stacks_protects_room_allowed_by_overcapacity(self):
+        self.set_stack(0, 1)
+        evaluator = PlacementFeasibility(replace(
+            self.yard.feasibility.settings, stack_capacity_mode='heuristic',
+            preserve_future_loader_access=False, ignore_full_stacks_for_loader_access=True,
+        ))
+        result = evaluator.evaluate(self.container, self.block, 0, 1)
+        self.assertEqual(result.rejection_reason, RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED)
+        self.assertIn(ReceivingLocation(1, 1, '20'), result.loader_access.isolated_occupied_locations)
+
+    def test_ignoring_infeasible_stacks_checks_both_halves_of_a_forty_foot_stack(self):
+        self.set_stack(0, 0)
+        self.set_stack(0, 1)
+        self.set_stack(1, 0, container_size='40', count=1)
+        self.set_stack(1, 1, container_size='40', count=2)
+        self.set_stack(2, 0, count=2)
+        self.set_stack(2, 1, count=1)
+        evaluator = self.yard.feasibility
+        evaluator.settings = replace(
+            evaluator.settings, stacking_safety_maxima=1, preserve_future_loader_access=False,
+            ignore_full_stacks_for_loader_access=True,
+        )
+        result = evaluator.evaluate(self.container, self.block, 0, 1)
+        self.assertEqual(result.coordinates, ('A', 0, 1, 0))
+
+        self.set_stack(1, 0, container_size='40', count=2)
+        result = evaluator.evaluate(self.container, self.block, 0, 1)
+        self.assertEqual(result.rejection_reason, RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED)
+        self.assertEqual(result.loader_access.isolated_occupied_locations, (ReceivingLocation(1, 1, '40'),))
+
+    def test_future_access_protects_stacks_with_a_legal_next_tier(self):
+        self.set_stack(0, 1)
+        self.set_stack(1, 1, count=2)
+        evaluator = self.yard.feasibility
+        evaluator.settings = replace(
+            evaluator.settings, stacking_safety_neighbor_down=False,
+            preserve_occupied_loader_access_mode='off', preserve_future_loader_access_mode='feasibility',
+        )
+        result = evaluator.evaluate(self.container, self.block, 0, 1)
+        self.assertEqual(result.coordinates, ('A', 0, 1, 0))
+        self.assertEqual(result.loader_access.isolated_locations, ())
+
+        evaluator.settings = replace(evaluator.settings, stacking_safety_mode='heuristic')
+        result = evaluator.evaluate(self.container, self.block, 0, 1)
+        self.assertEqual(result.rejection_reason, RejectionReason.LOADER_ACCESS_BLOCKED)
+        self.assertEqual(result.loader_access.isolated_locations, (ReceivingLocation(1, 1, '20'),))
+
+    def test_future_access_skips_a_destination_filled_to_the_pyramid_limit(self):
+        self.set_stack(0, 1)
+        self.set_stack(1, 0)
+        self.set_stack(1, 1)
+        evaluator = self.yard.feasibility
+        evaluator.settings = replace(
+            evaluator.settings, stacking_safety_maxima=1, stacking_safety_neighbor_down=False,
+        )
+        policy = LoaderBorderAccessPolicy(above=False, below=False, left=True, right=False)
+
+        result = evaluator.evaluate(self.container, self.block, 1, 1, loader_policy=policy)
+
+        self.assertTrue(result.loader_access.destination_accessible)
+        self.assertEqual(result.loader_access.isolated_locations, (ReceivingLocation(0, 1, '20'),))
 
     def test_alternate_approach_allows_placement(self):
         self.set_stack(0, 1)

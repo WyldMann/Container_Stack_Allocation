@@ -125,6 +125,7 @@ class Block:
             self, row_index: int, slot_index: int, *,
             neighbors: tuple[str, ...] = ("up", "down"),
             container_size: str | None = None,
+            resulting_height: int | None = None,
     ) -> int:
         """Post-placement height above the tallest considered neighbor.
 
@@ -147,7 +148,9 @@ class Block:
             for direction in neighbors for row, slot in sides[direction]
             if 0 <= row < len(self.slots) and 0 <= slot < len(self.slots[row])
         ), default=0)
-        return max(0, stack.occupiedHeight() + 1 - support_height)
+        if resulting_height is None:
+            resulting_height = stack.occupiedHeight() + 1
+        return max(0, resulting_height - support_height)
 
     #row1,slot1 must exist, row2,slot2 doesn't need to
     def compareTier(self,first_row_index:int,first_slot_index:int,second_row_index:int,second_slot_index:int) -> int:
