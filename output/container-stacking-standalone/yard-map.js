@@ -168,7 +168,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   let accessEditable = Boolean(accessOptions.editable);
   let accessPending = false;
   function accessChanged(block) {
-    return accessSides.some(side => block.loader_access[side] !== block.saved_loader_access[side]);
+    return accessSides.some(side => block.border_access[side] !== block.saved_border_access[side]);
   }
   function syncAccessControls() {
     accessButtons.forEach(control => {
@@ -626,8 +626,8 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     const occupancy = el("p", undefined, "yard-caption");
     const compliance = el("p", undefined, "yard-caption");
     const equipment = el("p", undefined, "yard-caption");
-    block.loader_access ??= {above: true, below: true, left: true, right: true};
-    block.saved_loader_access ??= {...block.loader_access};
+    block.border_access ??= {above: true, below: true, left: true, right: true};
+    block.saved_border_access ??= {...block.border_access};
     const titleRow = el("div", undefined, "yard-block-title");
     const save = button("Save block access settings for block " + block.code, "yard-block-save");
     save.textContent = "Save block access settings";
@@ -640,7 +640,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
       try {
         await action(async () => {
           await accessOptions.onSave(block);
-          block.saved_loader_access = {...block.loader_access};
+          block.saved_border_access = {...block.border_access};
           syncAccessControls();
           showAccessChanges();
         }, accessMessage);
@@ -685,28 +685,30 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     const accessFrame = el("div", undefined, "yard-access-frame");
     accessFrame.append(grid);
     for (const [side, label] of [["above", "Above"], ["below", "Below"], ["left", "Left"], ["right", "Right"]]) {
-      const toggle = button("Block " + block.code + " " + side + " loader access", "yard-access-switch yard-access-" + side);
+      const toggle = button("Block " + block.code + " " + side + " border access", "yard-access-switch yard-access-" + side);
       toggle.setAttribute("role", "switch");
       const direction = el("span", label, "yard-access-direction");
       const lock = el("span", undefined, "yard-access-lock");
       lock.setAttribute("aria-hidden", "true");
       direction.append(lock);
       function paintAccess() {
-        const open = block.loader_access[side];
+        const open = block.border_access[side];
         toggle.setAttribute("aria-checked", String(open));
         toggle.replaceChildren(direction, el("strong", open ? "Open" : "Closed"));
-        toggle.title = label + " border: " + (open ? "open" : "closed") +
-          (side === "above" || side === "below" ? " for loader entry and exterior working space." : " for loader entry and exterior RS working space for 20 ft containers.");
+        const use = side === "above" || side === "below"
+          ? "ground equipment entry and exterior working space"
+          : "ground equipment entry and exterior reach stacker working space for 20 ft containers";
+        toggle.title = label + " border is " + (open ? "open" : "closed") + " for " + use + ".";
       }
       toggle.addEventListener("click", async () => {
         if (!accessEditable || accessPending || busy) return;
-        const next = !block.loader_access[side];
+        const next = !block.border_access[side];
         accessPending = true;
         syncAccessControls();
         try {
           await action(async () => {
             await accessOptions.onChange(block, side, next);
-            block.loader_access[side] = next;
+            block.border_access[side] = next;
             paintAccess();
             syncAccessControls();
             showAccessChanges();

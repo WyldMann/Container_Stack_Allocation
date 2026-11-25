@@ -177,8 +177,8 @@ function alternateLocationPicker(branch, onSelect, getSelectedStack, getEquipmen
   warning.setAttribute("aria-live", "polite");
   element.append(fields, warning);
   const blocks = new Map(branch.yard_map.blocks.map(item => [item.code, item]));
-  const loaderCodes = branch.yard_map.loader_codes;
-  const hasEquipment = loaderCodes.length > 0 || [...blocks.values()].some(item => item.rtg_code);
+  const groundEquipmentCodes = branch.yard_map.ground_equipment_codes;
+  const hasEquipment = groundEquipmentCodes.length > 0 || [...blocks.values()].some(item => item.rtg_code);
   let containerSize;
   let equipmentError = "";
   let canPlaceWithoutEquipment = !hasEquipment;
@@ -244,7 +244,7 @@ function alternateLocationPicker(branch, onSelect, getSelectedStack, getEquipmen
 
   function showEquipmentOptions(reachable) {
     const reachableCodes = new Set(reachable);
-    const blocked = loaderCodes.filter(code => !reachableCodes.has(code));
+    const blocked = groundEquipmentCodes.filter(code => !reachableCodes.has(code));
     const groups = [];
     for (const [label, codes, disabled] of [
       ["Can reach this stack", reachable, false],
@@ -411,7 +411,7 @@ async function simulationView(run, branches, id, onStart, stackEdits) {
     },
     onChange: async (block, side, value) => {
       await globalThis.updateStackingBlockAccess({
-        id, branch: branch.branch_code, policies: [{block_id: block.id, ...block.loader_access, [side]: value}]
+        id, branch: branch.branch_code, policies: [{block_id: block.id, ...block.border_access, [side]: value}]
       });
       await loadSuggestion({yardEdited: true});
     },
@@ -910,18 +910,18 @@ const multiplierLabels = {
   mass_multiplier: "Mass multiplier",
   distance_multiplier: "Equipment distance multiplier",
   cluster_multiplier: "Size cluster multiplier",
-  loader_destination_multiplier: "Destination reachability multiplier",
-  loader_access_multiplier: "Occupied access preservation multiplier",
-  future_loader_access_multiplier: "Future access preservation multiplier",
+  destination_access_multiplier: "Destination reachability multiplier",
+  occupied_access_multiplier: "Occupied access preservation multiplier",
+  future_access_multiplier: "Future access preservation multiplier",
   stacking_safety_multiplier: "Pyramid stacking multiplier",
   capacity_multiplier: "Stack capacity multiplier"
 };
 
-const loaderAccessLabels = ["Loader can serve destination", "Occupied stacks losing access",
+const equipmentAccessLabels = ["Equipment can reach the destination", "Occupied stacks losing access",
   "Future receiving options losing access"];
 
-function loaderAccessValues(candidate) {
-  const destination = candidate.loader_destination_accessible;
+function equipmentAccessValues(candidate) {
+  const destination = candidate.destination_accessible;
   return [
     destination == null ? "—" : destination ? "Yes" : "No",
     traceNumber(candidate.isolated_occupied_locations),
@@ -931,16 +931,16 @@ function loaderAccessValues(candidate) {
 
 function heuristicRows(candidate, multipliers = Object.keys(multiplierLabels)) {
   return [
-    ...(!hasLoaderAccessDetails(candidate) ? [] :
-      loaderAccessValues(candidate).map((value, i) => [loaderAccessLabels[i], value])),
+    ...(!hasEquipmentAccessDetails(candidate) ? [] :
+      equipmentAccessValues(candidate).map((value, i) => [equipmentAccessLabels[i], value])),
     ...(candidate.overcapacity_tiers ? [["Tiers above capacity", candidate.overcapacity_tiers]] : []),
     ...multipliers.map(key => [multiplierLabels[key], traceNumber(candidate[key])]),
     ["Heuristic score", traceNumber(candidate.score)]
   ];
 }
 
-function hasLoaderAccessDetails(candidate) {
-  return candidate.loader_destination_accessible != null || candidate.isolated_occupied_locations != null ||
+function hasEquipmentAccessDetails(candidate) {
+  return candidate.destination_accessible != null || candidate.isolated_occupied_locations != null ||
     candidate.isolated_future_locations != null;
 }
 
@@ -964,9 +964,9 @@ function placementTrace(calculation, status, size, alternate, manual, displaced 
     partner_tier_mismatch: "Partner slot has no matching tier",
     anomalous_stack: "Tier gap in the footprint",
     unsafe_stacking: "Stacking safety limit",
-    loader_destination_inaccessible: "Loader cannot reach the destination",
-    loader_occupied_access_blocked: "Placement would block access to existing containers",
-    loader_access_blocked: "Placement would block access to future receiving locations"
+    destination_inaccessible: "Equipment cannot reach the destination",
+    occupied_access_blocked: "Placement would block access to existing containers",
+    future_access_blocked: "Placement would block access to future receiving locations"
   };
   const rejections = Object.entries(calculation.rejections).sort((a, b) => b[1] - a[1]);
   const rejected = rejections.reduce((total, [, count]) => total + count, 0);
@@ -1016,10 +1016,10 @@ function placementTrace(calculation, status, size, alternate, manual, displaced 
     ])));
   }
   if (calculation.candidates.length) {
-    const showLoaderAccess = calculation.candidates.some(hasLoaderAccessDetails);
+    const showEquipmentAccess = calculation.candidates.some(hasEquipmentAccessDetails);
     details.append(el("p", "Locations that passed parameter selection, in yard order."));
-    if (calculation.prioritize_current_loader_access) {
-      details.append(el("p", calculation.prioritize_loader_destination ?
+    if (calculation.prioritize_current_access) {
+      details.append(el("p", calculation.prioritize_destination_access ?
         "Ranking prefers accessible destinations, then fewer occupied stacks losing access, then a higher heuristic score." :
         "Ranking prefers fewer occupied stacks losing access, then a higher heuristic score."));
     }
@@ -1031,7 +1031,7 @@ function placementTrace(calculation, status, size, alternate, manual, displaced 
       if (!details.open) return;
       details.removeEventListener("toggle", showCandidates);
       details.append(table(["Location", "Selection", "Parameters", "Equipment", "Distance", "Mass difference",
-        ...(showLoaderAccess ? loaderAccessLabels : []),
+        ...(showEquipmentAccess ? equipmentAccessLabels : []),
         ...multipliers.map(key => multiplierLabels[key]), "Heuristic score"],
       calculation.candidates.map(candidate => [
         placementLocation(candidate, size),
@@ -1039,7 +1039,7 @@ function placementTrace(calculation, status, size, alternate, manual, displaced 
           candidate.selected ? (alternate ? "Engine recommendation" : status === "placed" ? "Selected" : "Proposed") : "Alternative",
         candidate.parameters.map(parameter => "P" + parameter).join(", ") || "—", candidate.equipment ?? "No equipment",
         candidate.equipment_outside_block ? "Outside block" : number(candidate.distance),
-        number(candidate.mass_difference), ...(showLoaderAccess ? loaderAccessValues(candidate) : []),
+        number(candidate.mass_difference), ...(showEquipmentAccess ? equipmentAccessValues(candidate) : []),
         ...multipliers.map(key => number(candidate[key])), number(candidate.score)
       ])));
     }

@@ -4,7 +4,7 @@ const $ = id => document.getElementById(id);
 const descriptions = {
   terminal_branches: ["Terminal branches", "Branch codes, IDs, and display names."],
   yard_blocks: ["Yard blocks", "Dimensions, tier limits, and block positions."],
-  block_accessibility: ["Block accessibility", "Loader entry and working space at each border. Optional; defaults to all borders open."],
+  block_accessibility: ["Block border access", "Set which borders allow ground equipment to enter or work from outside the block. All borders are open by default."],
   existing_containers: ["Current containers", "The current yard snapshot."],
   inbound_containers: ["Inbound containers", "CSV rows set the initial queue order."],
   removed_slots: ["Removed slots", "Locations unavailable for stacking."],
@@ -21,8 +21,21 @@ const tomlEditors = {
 const tomlDocuments = {};
 const scanOrderPath = "heuristic.scan_order";
 const ruleModes = ["off", "heuristic", "feasibility"];
-const ruleModeKeys = ["stacking_safety_mode", "stack_capacity_mode", "loader_destination_access_mode",
-  "preserve_occupied_loader_access_mode", "preserve_future_loader_access_mode"];
+const accessModeKeys = ["destination_access_mode", "preserve_occupied_access_mode", "preserve_future_access_mode"];
+const ruleModeKeys = ["stacking_safety_mode", "stack_capacity_mode", ...accessModeKeys];
+// Match the aliases accepted by config/application/config_loader.py.
+const accessOptionAliases = new Map([
+  ["feasibility.loader_access", "equipment_access"],
+  ["feasibility.loader_access_mode", "equipment_access_mode"],
+  ["feasibility.loader_destination_access_mode", "destination_access_mode"],
+  ["feasibility.preserve_occupied_loader_access_mode", "preserve_occupied_access_mode"],
+  ["feasibility.preserve_future_loader_access", "preserve_future_access"],
+  ["feasibility.preserve_future_loader_access_mode", "preserve_future_access_mode"],
+  ["feasibility.ignore_full_stacks_for_loader_access", "ignore_stacks_without_legal_next_tier"],
+  ["heuristic.loader_inaccessible_destination_multiplier", "unreachable_destination_multiplier"],
+  ["heuristic.loader_occupied_access_loss_weight", "occupied_access_loss_weight"],
+  ["heuristic.loader_future_access_loss_weight", "future_access_loss_weight"]
+]);
 const stackingScoringOption = {key: "stacking_safety_limit_multiplier", mode: "stacking", defaultValue: "0.25",
   label: "Score at maximum difference",
   description: "The score declines linearly to this multiplier (0–1) at the maximum difference. Enable the bound to reject larger differences."};
@@ -31,14 +44,14 @@ const capacityScoringOption = {key: "overcapacity_tier_multiplier", mode: "capac
   description: "Apply this multiplier (0–1) once per tier above nominal capacity. One removes the penalty."};
 const boundedRuleWeights = [stackingScoringOption, capacityScoringOption];
 const fallbackScoreKeys = ["heavier_container_fallback_score", "equipment_outside_block_fallback_score"];
-const loaderScoringOptions = [
-  {key: "loader_inaccessible_destination_multiplier", mode: "destination", defaultValue: "0.25",
+const accessScoringOptions = [
+  {key: "unreachable_destination_multiplier", mode: "destination", defaultValue: "0.25",
     label: "Unreachable destination multiplier",
-    description: "Multiply the placement score by this value (0–1) when the loader cannot reach the destination."},
-  {key: "loader_occupied_access_loss_weight", mode: "occupied", defaultValue: "1.0",
+    description: "Multiply the placement score by this value (0–1) when the equipment cannot reach the destination."},
+  {key: "occupied_access_loss_weight", mode: "occupied", defaultValue: "1.0",
     label: "Occupied access loss weight",
     description: "Higher values penalize cutting off occupied stacks more. Zero removes this score penalty."},
-  {key: "loader_future_access_loss_weight", mode: "future", defaultValue: "1.0",
+  {key: "future_access_loss_weight", mode: "future", defaultValue: "1.0",
     label: "Future access loss weight",
     description: "Higher values penalize cutting off future receiving options more. Zero removes this score penalty."}
 ];
@@ -70,25 +83,29 @@ const placementGroups = [
         "Consider the " + direction + " side of the stack footprint for pyramid support."]])),
     "heuristic.stacking_safety_limit_multiplier": [stackingScoringOption.label, stackingScoringOption.description]
   }},
-  {title: "Loader reachability and access preservation", description:
-    "Off skips the rule. Heuristic scores it. Feasibility rejects placements that fail it. These rules apply to loader-served blocks.",
+  {title: "Equipment access", description:
+    "Check whether equipment can reach the proposed placement and whether placing the container would cut off access to occupied stacks or future receiving locations. " +
+    "Loaders and reach stackers (RS) use open borders and reachable working space. Reach stackers can also serve 20 ft containers from the left or right when working space is available. " +
+    "When the block’s RTG serves the placement, the ground-access checks are skipped. " +
+    "Off skips the rule. Heuristic adjusts the score. Feasibility rejects placements that fail the rule.",
+  diagramTemplate: "equipment-reach-diagram",
   rowGraphs: ["destination", "occupied", "future"],
   optionRows: [
-    ["feasibility.loader_destination_access_mode", "heuristic.loader_inaccessible_destination_multiplier"],
-    ["feasibility.preserve_occupied_loader_access_mode", "heuristic.loader_occupied_access_loss_weight",
-      "feasibility.ignore_full_stacks_for_loader_access"],
-    ["feasibility.preserve_future_loader_access_mode", "heuristic.loader_future_access_loss_weight"]
+    ["feasibility.destination_access_mode", "heuristic.unreachable_destination_multiplier"],
+    ["feasibility.preserve_occupied_access_mode", "heuristic.occupied_access_loss_weight",
+      "feasibility.ignore_stacks_without_legal_next_tier"],
+    ["feasibility.preserve_future_access_mode", "heuristic.future_access_loss_weight"]
   ],
   options: {
-    "feasibility.loader_destination_access_mode": ["Currently loader accessible",
-      "Check whether the loader can reach this placement location before placing the container."],
-    "feasibility.preserve_occupied_loader_access_mode": ["Preserve access to occupied stacks",
-      "Check whether this placement cuts off access to containers already in the yard."],
-    "feasibility.preserve_future_loader_access_mode": ["Preserve access to future receiving locations",
-      "Check whether this placement cuts off access to locations with room for more containers."],
-    "feasibility.ignore_full_stacks_for_loader_access": ["Ignore stacks that can’t receive another container",
+    "feasibility.destination_access_mode": ["Check destination reachability",
+      "Check whether equipment can reach the destination before placement."],
+    "feasibility.preserve_occupied_access_mode": ["Preserve access to occupied stacks",
+      "Check whether the placement would cut off access to containers already in the yard."],
+    "feasibility.preserve_future_access_mode": ["Preserve access to future receiving locations",
+      "Check whether the placement would cut off access to locations that can receive another container."],
+    "feasibility.ignore_stacks_without_legal_next_tier": ["Ignore stacks that can’t receive another container",
       "Skip occupied-stack access protection when the stack has no legal next tier for its container size."],
-    ...Object.fromEntries(loaderScoringOptions.map(({key, label, description}) =>
+    ...Object.fromEntries(accessScoringOptions.map(({key, label, description}) =>
       ["heuristic." + key, [label, description]]))
   }},
   {title: "Container weight difference", graph: "weight", sideBySide: true, toggle: "heuristic.enable_delta_container_mass", options: {
@@ -283,7 +300,8 @@ function addPlacementOption(rows, path, row, control) {
 function showPlacementGroups(editor, rows, graphs) {
   const groups = el("div", undefined, "placement-groups");
   const weightAndDistance = el("div", undefined, "placement-weight-distance");
-  for (const {title, description, formulaText, options, optionRows, sideBySide, graph, rowGraphs, sections, neighborSwitches} of placementGroups) {
+  for (const {title, description, formulaText, options, optionRows, sideBySide, graph, rowGraphs,
+    sections, neighborSwitches, diagramTemplate} of placementGroups) {
     const sectionPaths = new Set(sections?.flatMap(section => section.paths));
     if (neighborSwitches) for (const path of stackingNeighborPaths) sectionPaths.add(path);
     const entries = Object.keys(options).filter(path => !sectionPaths.has(path)).flatMap(path => rows.get(path) ?? []);
@@ -291,6 +309,7 @@ function showPlacementGroups(editor, rows, graphs) {
     group.append(el("legend", title));
     if (description) group.append(el("p", description, "placement-help"));
     if (formulaText) group.append(el("p", formulaText, "cluster-formula"));
+    if (diagramTemplate) group.append($(diagramTemplate).content.cloneNode(true));
     if (optionRows) {
       for (const [index, paths] of optionRows.entries()) {
         const related = paths.flatMap(path => rows.get(path) ?? []);
@@ -358,7 +377,9 @@ function readInlinePlacementOptions(options, section, literal, offset, onValue) 
     if (!match) break;
     const start = cursor + match[1].length;
     const end = tomlValueEnd(body, start, true);
-    const path = section + "." + tomlParts(match[2]).join(".");
+    const sourceKey = tomlParts(match[2]).join(".");
+    const key = accessOptionAliases.get(section + "." + sourceKey) ?? sourceKey;
+    const path = section + "." + key;
     const value = body.slice(start, end).trimEnd();
     options.set(path, value);
     onValue(path, {start: offset + 1 + start, end: offset + 1 + start + value.length, value});
@@ -492,9 +513,9 @@ function ruleModeSwitch(controls, rows, key, prefix, value, fallback = "feasibil
       group.append(option);
       control.choices.push(choice);
       choice.addEventListener("change", () => {
-        control.select(mode, modeKey === "preserve_occupied_loader_access_mode" && value === null);
-        if (modeKey === "preserve_future_loader_access_mode" && !controls.preserve_occupied_loader_access_mode?.input.value) {
-          controls.preserve_occupied_loader_access_mode?.select(controls.preserve_occupied_loader_access_mode.mode, true);
+        control.select(mode, modeKey === "preserve_occupied_access_mode" && value === null);
+        if (modeKey === "preserve_future_access_mode" && !controls.preserve_occupied_access_mode?.input.value) {
+          controls.preserve_occupied_access_mode?.select(controls.preserve_occupied_access_mode.mode, true);
         }
         updateRuleControls(controls, rows);
         updateTomlSave("config");
@@ -511,9 +532,9 @@ function ruleModeSwitch(controls, rows, key, prefix, value, fallback = "feasibil
 function updateRuleControls(controls, rows) {
   const stacking = controls.stacking_safety_mode;
   const capacity = controls.stack_capacity_mode;
-  const destination = controls.loader_destination_access_mode;
-  const occupied = controls.preserve_occupied_loader_access_mode;
-  const future = controls.preserve_future_loader_access_mode;
+  const destination = controls.destination_access_mode;
+  const occupied = controls.preserve_occupied_access_mode;
+  const future = controls.preserve_future_access_mode;
   const occupiedMode = occupied?.mode ?? "feasibility";
   for (const control of [stacking, capacity, destination, occupied, future]) {
     for (const choice of control?.choices ?? []) {
@@ -535,7 +556,7 @@ function updateRuleControls(controls, rows) {
   }
   const effectiveModes = {stacking: stacking?.mode, capacity: capacity?.mode, destination: destination?.mode,
     occupied: occupiedMode, future: future?.mode ?? occupiedMode};
-  for (const {key, mode: scoringMode} of [...boundedRuleWeights, ...loaderScoringOptions]) {
+  for (const {key, mode: scoringMode} of [...boundedRuleWeights, ...accessScoringOptions]) {
     for (const option of rows.get("heuristic." + key) ?? []) {
       setPlacementInactive(option, effectiveModes[scoringMode] !== "heuristic" &&
         !(scoringMode === "stacking" && effectiveModes.stacking === "combined"));
@@ -637,7 +658,7 @@ function addMissingHeuristicScores(rows, fields, source, offset, legacyFallbackS
     })),
     {key: "hl_size_cluster_" + term + "_distance", defaultValue: inline.get("heuristic.hl_size_cluster_distance") ?? "1.5"}
   ]);
-  for (const setting of [...boundedRuleWeights, ...loaderScoringOptions, ...fallbacks, ...clustering]) {
+  for (const setting of [...boundedRuleWeights, ...accessScoringOptions, ...fallbacks, ...clustering]) {
     const {key, defaultValue} = setting;
     const path = "heuristic." + key;
     if (rows.has(path)) continue;
@@ -828,7 +849,7 @@ function showToml(kind, text, loadedFrom) {
   let scanOrderSource;
   let inlineFeasibility = false;
   let inlineHeuristic = false;
-  let legacyLoaderMode = "feasibility";
+  let sharedAccessMode = "feasibility";
   let legacyFallbackScore = "0.001";
   const seenModes = new Set();
   const comments = [];
@@ -848,13 +869,15 @@ function showToml(kind, text, loadedFrom) {
     const match = tomlAssignment.exec(line);
     const path = match ? [section, match[2]].filter(Boolean).join(".") : section;
     const parts = tomlParts(path);
-    const [root, key, dataset] = parts;
+    const [root, sourceKey, dataset] = parts;
+    const key = kind === "config" && parts.length === 2
+      ? accessOptionAliases.get(root + "." + sourceKey) ?? sourceKey : sourceKey;
     const modeKey = kind === "config" && root === "feasibility" && parts.length === 2 &&
       ruleModeKeys.find(mode => mode === key || mode === key + "_mode");
     const optionPath = [root, modeKey || key].join(".");
     const knownOption = kind === "config" && parts.length === 2 && Object.hasOwn(placementOptions, optionPath);
-    const legacyLoaderOption = kind === "config" && root === "feasibility" && parts.length === 2 &&
-      (key === "loader_access" || key === "loader_access_mode");
+    const sharedAccessOption = kind === "config" && root === "feasibility" && parts.length === 2 &&
+      (key === "equipment_access" || key === "equipment_access_mode");
     const legacyFallbackOption = kind === "config" && parts.length === 2 && optionPath === "heuristic.min_value";
     const legacyStackingOption = kind === "config" && parts.length === 2 && optionPath === "heuristic.unsafe_stacking_multiplier";
     const legacyClusterOption = kind === "config" && root === "heuristic" && parts.length === 2 &&
@@ -882,7 +905,7 @@ function showToml(kind, text, loadedFrom) {
       const boundary = tomlValueEnd(source, start);
       lineEnd = source.indexOf("\n", boundary);
       if (lineEnd === -1) lineEnd = source.length;
-      if ((visible && (kind !== "config" || knownOption || legacyLoaderOption || legacyFallbackOption || legacyClusterOption || legacyStackingOption)) || isCsvPath) {
+      if ((visible && (kind !== "config" || knownOption || sharedAccessOption || legacyFallbackOption || legacyClusterOption || legacyStackingOption)) || isCsvPath) {
         const value = source.slice(start, boundary).trimEnd();
         if (legacyFallbackOption || legacyClusterOption || legacyStackingOption) {
           if (legacyFallbackOption) legacyFallbackScore = value;
@@ -890,13 +913,13 @@ function showToml(kind, text, loadedFrom) {
           offset = statementStart = lineEnd + 1;
           continue;
         }
-        if (legacyLoaderOption) {
+        if (sharedAccessOption) {
           inlinePlacement.set(optionPath, value);
-          const legacy = key === "loader_access" ?
+          const legacy = key === "equipment_access" ?
             (value === "true" ? "feasibility" : value === "false" ? "off" : null) :
             value.match(/^["']{1,3}(off|heuristic|feasibility)["']{1,3}$/)?.[1];
           if (legacy) {
-            legacyLoaderMode = legacy;
+            sharedAccessMode = legacy;
           }
           offset = statementStart = lineEnd + 1;
           continue;
@@ -966,7 +989,7 @@ function showToml(kind, text, loadedFrom) {
           }
           if (knownOption) {
             const option = addPlacementOption(placementRows, optionPath, label, input);
-            if (optionPath === "feasibility.ignore_full_stacks_for_loader_access" && boolean) {
+            if (optionPath === "feasibility.ignore_stacks_without_legal_next_tier" && boolean) {
               ruleControls.ignoreFull = option;
             }
           } else {
@@ -1001,7 +1024,7 @@ function showToml(kind, text, loadedFrom) {
       const separator = feasibilityStart && source[feasibilityStart - 1] !== "\n" ? "\n" : "";
       for (const key of ruleModeKeys.filter(key => !seenModes.has(key))) {
         const prefix = separator + (feasibilityStart ? key : "feasibility." + key) + " = ";
-        const fallback = key.includes("loader_") ? legacyLoaderMode : "feasibility";
+        const fallback = accessModeKeys.includes(key) ? sharedAccessMode : "feasibility";
         const control = ruleModeSwitch(ruleControls, placementRows, key, prefix, null, fallback);
         fields.push({start: feasibilityStart, end: feasibilityStart, input: control.input});
       }
@@ -1689,7 +1712,7 @@ async function previewOverview(branches, simulation, sharedIssues) {
       ...stackEdits,
       onChange: (block, side, value) => globalThis.updateStackingBlockAccess({
         id: simulation.id, branch: branch.branch_code,
-        policies: [{block_id: block.id, ...block.loader_access, [side]: value}]
+        policies: [{block_id: block.id, ...block.border_access, [side]: value}]
       }),
       onSave: block => globalThis.saveStackingBlockAccess({id: simulation.id, branch: branch.branch_code, block_id: block.id})
     });
