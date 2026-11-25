@@ -116,6 +116,10 @@ test("equipment access controls can edit a TOML with legacy loader keys", async 
   await page.waitForFunction(() => !document.getElementById("generate-preview").disabled);
   const group = page.getByRole("group", {name: "Equipment access", exact: true});
   await group.getByText(/When the block’s RTG serves the placement/).waitFor();
+  for (const name of ["Loss of access to occupied stacks", "Loss of access to future receiving locations"]) {
+    assert.equal(await group.getByRole("radiogroup", {name, exact: true}).count(), 1);
+  }
+  assert.equal(await page.getByRole("radiogroup", {name: "Placements above the stack height limit", exact: true}).count(), 1);
   const text = '[feasibility]\nloader_destination_access_mode = "heuristic"\n' +
     '[heuristic]\nloader_inaccessible_destination_multiplier = 0.6\n';
   await page.locator("#load-config").setInputFiles({
@@ -123,12 +127,18 @@ test("equipment access controls can edit a TOML with legacy loader keys", async 
   });
   await feedback(page, "Loaded legacy-access.toml.").waitFor();
 
-  const modes = group.getByRole("radiogroup", {name: "Check destination reachability"});
+  const modes = group.getByRole("radiogroup", {name: "Unreachable destinations"});
   const weight = group.getByRole("textbox", {name: "Unreachable destination multiplier"});
-  assert.equal(await modes.getByRole("radio", {name: "Heuristic"}).isChecked(), true);
+  assert.equal(await modes.getByRole("radio", {name: "Reduce score"}).isChecked(), true);
   assert.equal(await weight.inputValue(), "0.6");
   await weight.fill("0.7");
   assert.equal(await page.evaluate(() => buildDraft().config_toml), text.replace("0.6", "0.7"));
+  await modes.getByText("Reject", {exact: true}).click();
+  assert.match(await page.evaluate(() => buildDraft().config_toml), /loader_destination_access_mode = "feasibility"/);
+  await modes.getByText("Off", {exact: true}).click();
+  assert.match(await page.evaluate(() => buildDraft().config_toml), /loader_destination_access_mode = "off"/);
+  await modes.getByText("Reduce score", {exact: true}).click();
+  assert.match(await page.evaluate(() => buildDraft().config_toml), /loader_destination_access_mode = "heuristic"/);
 });
 
 test("block access switches show locks once the first inbound row is processed", async t => {

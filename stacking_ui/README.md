@@ -27,11 +27,11 @@ intact. The bundled TOML already names the standard CSV files.
 and whether placing the container would cut off access to occupied stacks or
 future receiving locations. Loaders and reach stackers use ground access.
 When the block's RTG serves the placement, the ground-access checks are
-skipped. **Check destination reachability** checks access before placement.
-**Preserve access to occupied stacks** and
-**Preserve access to future receiving locations** check which locations would
+skipped. **Unreachable destinations** checks access before placement.
+**Loss of access to occupied stacks** and
+**Loss of access to future receiving locations** check which locations would
 lose access after placement. Each rule has its own mode and enables its weight
-in **Heuristic** mode. The default unreachable destination multiplier is 0.25.
+in **Reduce score** mode. The default unreachable destination multiplier is 0.25.
 Each access loss weight defaults to 1 per location that loses access.
 
 **Ignore stacks that can’t receive another container** exempts occupied stacks

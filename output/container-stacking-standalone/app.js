@@ -63,8 +63,8 @@ const placementGroups = [
       "Break placement ties by visiting all slots in each row, or all rows at each slot."]
   }},
   {title: "Stack capacity", graph: "capacity", options: {
-    "feasibility.stack_capacity_mode": ["Enforce stack height limit",
-      "Feasibility enforces the tier limit. Heuristic allows overcapacity with a score penalty. Off allows overcapacity without a capacity penalty."],
+    "feasibility.stack_capacity_mode": ["Placements above the stack height limit",
+      "Off allows placements above the limit without a capacity penalty. Reduce score allows them with a penalty per extra tier. Reject prevents placements above the limit."],
     "heuristic.overcapacity_tier_multiplier": [capacityScoringOption.label, capacityScoringOption.description]
   }},
   {title: "Stacking safety", graph: "pyramid", neighborSwitches: true,
@@ -87,7 +87,7 @@ const placementGroups = [
     "Check whether equipment can reach the proposed placement and whether placing the container would cut off access to occupied stacks or future receiving locations. " +
     "Loaders and reach stackers (RS) use open borders and reachable working space. Reach stackers can also serve 20 ft containers from the left or right when working space is available. " +
     "When the block’s RTG serves the placement, the ground-access checks are skipped. " +
-    "Off skips the rule. Heuristic adjusts the score. Feasibility rejects placements that fail the rule.",
+    "Off skips the rule. Reduce score lowers the placement score when the rule is not met. Reject prevents placements that fail the rule.",
   diagramTemplate: "equipment-reach-diagram",
   rowGraphs: ["destination", "occupied", "future"],
   optionRows: [
@@ -97,11 +97,11 @@ const placementGroups = [
     ["feasibility.preserve_future_access_mode", "heuristic.future_access_loss_weight"]
   ],
   options: {
-    "feasibility.destination_access_mode": ["Check destination reachability",
+    "feasibility.destination_access_mode": ["Unreachable destinations",
       "Check whether equipment can reach the destination before placement."],
-    "feasibility.preserve_occupied_access_mode": ["Preserve access to occupied stacks",
+    "feasibility.preserve_occupied_access_mode": ["Loss of access to occupied stacks",
       "Check whether the placement would cut off access to containers already in the yard."],
-    "feasibility.preserve_future_access_mode": ["Preserve access to future receiving locations",
+    "feasibility.preserve_future_access_mode": ["Loss of access to future receiving locations",
       "Check whether the placement would cut off access to locations that can receive another container."],
     "feasibility.ignore_stacks_without_legal_next_tier": ["Ignore stacks that can’t receive another container",
       "Skip occupied-stack access protection when the stack has no legal next tier for its container size."],
@@ -509,7 +509,8 @@ function ruleModeSwitch(controls, rows, key, prefix, value, fallback = "feasibil
       choice.name = modeKey;
       choice.value = mode;
       const option = el("label");
-      option.append(choice, el("span", mode[0].toUpperCase() + mode.slice(1)));
+      const labels = {off: "Off", heuristic: "Reduce score", feasibility: "Reject"};
+      option.append(choice, el("span", labels[mode]));
       group.append(option);
       control.choices.push(choice);
       choice.addEventListener("change", () => {
