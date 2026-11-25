@@ -445,6 +445,62 @@
 .placement-related-options {
   gap: 10px 20px;
 }
+.equipment-reach {
+  margin: 0 0 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.equipment-reach figcaption {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.equipment-reach-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.equipment-reach-panel {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  text-align: center;
+}
+.equipment-reach-panel h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.equipment-reach-panel svg {
+  display: block;
+  color: var(--green);
+  width: 100%;
+  max-width: 220px;
+  margin: 2px auto 0;
+}
+.reach-yard-grid { fill: none; stroke: #b8c9c1; }
+.reach-yard-grid rect { stroke: #8fa69c; }
+.reach-coverage, .reach-working-cell { fill: #e7f1eb; }
+.reach-target { fill: #c5e0d3; stroke: currentColor; }
+.reach-roof-ribs { fill: none; stroke: #71978a; }
+.reach-arrow {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.reach-crane-lane { fill: none; stroke: #8a9b94; stroke-dasharray: 5 3; }
+.reach-crane { fill: #72998e; stroke: #274a40; stroke-width: 1.5; }
+.reach-crane-wheel { fill: #274a40; }
+@media (min-width: 1020px) {
+  .equipment-reach-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .equipment-reach-grid { grid-template-columns: 1fr; }
+}
 .pyramid-neighbor-editor h4 { margin: 0; color: var(--green); }
 .pyramid-neighbor-grid {
   display: grid;

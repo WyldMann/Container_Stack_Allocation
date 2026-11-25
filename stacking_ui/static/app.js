@@ -88,6 +88,7 @@ const placementGroups = [
     "Loaders and reach stackers (RS) use open borders and reachable working space. Reach stackers can also serve 20 ft containers from the left or right when working space is available. " +
     "When the block’s RTG serves the placement, the ground-access checks are skipped. " +
     "Off skips the rule. Heuristic adjusts the score. Feasibility rejects placements that fail the rule.",
+  diagramTemplate: "equipment-reach-diagram",
   rowGraphs: ["destination", "occupied", "future"],
   optionRows: [
     ["feasibility.destination_access_mode", "heuristic.unreachable_destination_multiplier"],
@@ -299,7 +300,8 @@ function addPlacementOption(rows, path, row, control) {
 function showPlacementGroups(editor, rows, graphs) {
   const groups = el("div", undefined, "placement-groups");
   const weightAndDistance = el("div", undefined, "placement-weight-distance");
-  for (const {title, description, formulaText, options, optionRows, sideBySide, graph, rowGraphs, sections, neighborSwitches} of placementGroups) {
+  for (const {title, description, formulaText, options, optionRows, sideBySide, graph, rowGraphs,
+    sections, neighborSwitches, diagramTemplate} of placementGroups) {
     const sectionPaths = new Set(sections?.flatMap(section => section.paths));
     if (neighborSwitches) for (const path of stackingNeighborPaths) sectionPaths.add(path);
     const entries = Object.keys(options).filter(path => !sectionPaths.has(path)).flatMap(path => rows.get(path) ?? []);
@@ -307,6 +309,7 @@ function showPlacementGroups(editor, rows, graphs) {
     group.append(el("legend", title));
     if (description) group.append(el("p", description, "placement-help"));
     if (formulaText) group.append(el("p", formulaText, "cluster-formula"));
+    if (diagramTemplate) group.append($(diagramTemplate).content.cloneNode(true));
     if (optionRows) {
       for (const [index, paths] of optionRows.entries()) {
         const related = paths.flatMap(path => rows.get(path) ?? []);

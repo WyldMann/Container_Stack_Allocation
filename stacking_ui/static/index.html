@@ -94,5 +94,76 @@
     <div id="results"><div class="empty">Generate a preview to review the yard, inbound queue, and data issues.</div></div>
   </section>
 </main>
+<template id="equipment-reach-diagram">
+  <figure class="equipment-reach" aria-labelledby="equipment-reach-title">
+    <figcaption id="equipment-reach-title">Equipment reach</figcaption>
+    <div class="equipment-reach-grid">
+      <div class="equipment-reach-panel">
+        <h4>RTG · Assigned block</h4>
+        <svg viewBox="0 0 220 120" role="img" aria-label="The crane spans the yard rows and travels along its assigned block to reach eligible 20 ft and 40 ft stacks.">
+          <defs>
+            <g id="reach-yard-grid" class="reach-yard-grid">
+              <rect x="15" y="18" width="190" height="84" rx="3"/>
+              <path d="M53 18v84m38-84v84m38-84v84m38-84v84M15 46h190M15 74h190"/>
+            </g>
+            <rect id="reach-working-cell" class="reach-working-cell" width="36" height="26" rx="2"/>
+            <g id="reach-roof-20">
+              <rect class="reach-target" width="32" height="22" rx="2"/>
+              <path class="reach-roof-ribs" d="M5 4v14m5-14v14m6-14v14m6-14v14m5-14v14"/>
+            </g>
+            <g id="reach-roof-40">
+              <rect class="reach-target" width="70" height="22" rx="2"/>
+              <path class="reach-roof-ribs" d="M5 4v14m6-14v14m6-14v14m6-14v14m6-14v14m6-14v14m6-14v14m6-14v14m6-14v14m6-14v14m6-14v14"/>
+            </g>
+          </defs>
+          <rect class="reach-coverage" x="15" y="18" width="190" height="84" rx="3"/>
+          <use href="#reach-yard-grid"/>
+          <use href="#reach-roof-20" x="56" y="49"/>
+          <use href="#reach-roof-40" x="94" y="77"/>
+          <path class="reach-crane-lane" d="M15 11h190M15 109h190"/>
+          <rect class="reach-crane" x="179" y="11" width="14" height="98" rx="2"/>
+          <rect class="reach-crane-wheel" x="174" y="6" width="24" height="10" rx="2"/>
+          <rect class="reach-crane-wheel" x="174" y="104" width="24" height="10" rx="2"/>
+          <rect class="reach-crane-wheel" x="182" y="54" width="8" height="12" rx="1"/>
+        </svg>
+      </div>
+      <div class="equipment-reach-panel">
+        <h4>RS · 20 ft container</h4>
+        <svg viewBox="0 0 220 120" role="img" aria-label="A reach stacker can approach a 20 ft container from the adjacent row above or below, or the adjacent slot on the left or right.">
+          <use href="#reach-working-cell" x="92" y="19"/>
+          <use href="#reach-working-cell" x="54" y="47"/>
+          <use href="#reach-working-cell" x="130" y="47"/>
+          <use href="#reach-working-cell" x="92" y="75"/>
+          <use href="#reach-yard-grid"/>
+          <use href="#reach-roof-20" x="94" y="49"/>
+          <path class="reach-arrow" d="M110 27v17m-5-5 5 5 5-5M110 93V76m-5 5 5-5 5 5M64 60h25m-5-5 5 5-5 5M156 60h-25m5-5-5 5 5 5"/>
+        </svg>
+      </div>
+      <div class="equipment-reach-panel">
+        <h4>SL · 20 ft container</h4>
+        <svg viewBox="0 0 220 120" role="img" aria-label="A loader can approach a 20 ft container from the adjacent row above or below.">
+          <use href="#reach-working-cell" x="92" y="19"/>
+          <use href="#reach-working-cell" x="92" y="75"/>
+          <use href="#reach-yard-grid"/>
+          <use href="#reach-roof-20" x="94" y="49"/>
+          <path class="reach-arrow" d="M110 27v17m-5-5 5 5 5-5M110 93V76m-5 5 5-5 5 5"/>
+        </svg>
+      </div>
+      <div class="equipment-reach-panel">
+        <h4>RS and SL · 40 ft container</h4>
+        <svg viewBox="0 0 220 120" role="img" aria-label="A reach stacker or loader serving a 40 ft container needs two aligned working positions in the row above, or two in the row below.">
+          <use href="#reach-working-cell" x="92" y="19"/>
+          <use href="#reach-working-cell" x="130" y="19"/>
+          <use href="#reach-working-cell" x="92" y="75"/>
+          <use href="#reach-working-cell" x="130" y="75"/>
+          <use href="#reach-yard-grid"/>
+          <use href="#reach-roof-40" x="94" y="49"/>
+          <path class="reach-arrow" d="M110 27v17m-5-5 5 5 5-5M148 27v17m-5-5 5 5 5-5M110 93V76m-5 5 5-5 5 5M148 93V76m-5 5 5-5 5 5"/>
+        </svg>
+      </div>
+    </div>
+    <p class="placement-help">Arrows mark working positions on the yard grid. Ground equipment needs reachable working space or an open border beside the destination. For 40 ft, both aligned positions must be available on the same side.</p>
+  </figure>
+</template>
 </body>
 </html>
