@@ -86,11 +86,12 @@ class HeuristicConfigTests(unittest.TestCase):
             if field.name in (*FACTOR_SWITCHES, 'scan_order'):
                 continue
             values = ('true', '"1"', '[]', '-1')
-            if field.name.endswith('_radius'):
+            if field.name in ('size_cluster_radius', 'size_cluster_penalty_radius'):
                 values += ('1.5',)
             else:
                 values += ('nan', 'inf', '-inf')
                 if field.name not in (
+                    'size_cluster_reward_radius',
                     'size_cluster_bias', 'size_cluster_reward_bias', 'size_cluster_penalty_bias',
                     'unreachable_destination_multiplier',
                     'occupied_access_loss_weight', 'future_access_loss_weight',
@@ -132,9 +133,10 @@ class HeuristicConfigTests(unittest.TestCase):
         settings = self.load_text(
             '[heuristic]\nsize_cluster_reward_bias = 0\nsize_cluster_reward_prior = 0.5\n'
             'size_cluster_penalty_bias = 3\nsize_cluster_penalty_prior = 4\n'
-            'size_cluster_reward_radius = 2\nsize_cluster_penalty_radius = 5\n'
+            'size_cluster_reward_radius = 1.5\nsize_cluster_penalty_radius = 5\n'
             'hl_size_cluster_reward_distance = 0.25\nhl_size_cluster_penalty_distance = 2\n'
         )
+        self.assertEqual(settings.heuristic.size_cluster_reward_radius, 1.5)
         from stacking_ui.configuration import dump_toml
         self.assertEqual(self.load_text(dump_toml(settings.to_document())).heuristic, settings.heuristic)
 

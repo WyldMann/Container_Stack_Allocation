@@ -61,6 +61,21 @@ class SizeClusteringTests(unittest.TestCase):
         evidence = 2 ** (-1 / 1.5)
         self.assertAlmostEqual(multiplier, 2 ** (evidence / (evidence + 2)))
 
+    def test_fractional_reward_radius_includes_only_diagonal_stack_in_range(self):
+        self.occupy(1, 5, '40')
+        self.occupy(4, 3, '40')
+        candidate = self.container('40')
+        coordinate = ('A', 2, 3, 0)
+        evidence = 2 ** (-math.sqrt(2) / 0.5)
+        diagonal_reward = 2 ** (evidence / (evidence + 2))
+        for radius, expected in ((1.4, 1), (math.sqrt(2), diagonal_reward), (1.5, diagonal_reward)):
+            with self.subTest(radius=radius):
+                self.yard.model = HeuristicModel(HeuristicSettings(
+                    size_cluster_reward_radius=radius, hl_size_cluster_reward_distance=0.5,
+                    enable_size_cluster_penalty=False,
+                ))
+                self.assertAlmostEqual(self.cluster(candidate, coordinate), expected)
+
     def test_height_does_not_change_multiplier(self):
         self.occupy(2, 1, '20')
         container = self.container('20')

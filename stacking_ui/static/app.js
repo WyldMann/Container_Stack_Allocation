@@ -152,7 +152,7 @@ const placementGroups = [
     "heuristic.enable_size_cluster_penalty": ["Enable different-size penalty",
       "Penalize different-size neighbors. Off gives a neutral penalty of 1× and keeps these settings for later."],
     "heuristic.size_cluster_reward_radius": ["Reward search radius",
-      "Reward matching stacks within this many yard grid units. Zero disables only the reward."],
+      "Reward matching stacks within this many yard grid units. Accepts decimals. Zero disables only the reward."],
     "heuristic.hl_size_cluster_reward_distance": ["Reward distance for half influence",
       "A matching stack's evidence halves at this distance, measured in yard grid units."],
     "heuristic.size_cluster_reward_bias": ["Reward strength (bₛ)",

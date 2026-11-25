@@ -162,7 +162,7 @@ function createPlacementGraphs(read) {
         const {term} = neighbor;
         const on = flag("heuristic.enable_size_cluster_" + term, legacyOn);
         const radius = on ? number("size_cluster_" + term + "_radius",
-          () => number("size_cluster_radius", 3, 0, Number.MAX_VALUE, true), 0, Number.MAX_VALUE, true) : 0;
+          () => number("size_cluster_radius", 3, 0, Number.MAX_VALUE, true), 0, Number.MAX_VALUE, term === "penalty") : 0;
         return {...neighbor, on, radius,
           bias: radius ? number("size_cluster_" + term + "_bias", () => number("size_cluster_bias", 1, 0), 0) : 0,
           half: on ? number("hl_size_cluster_" + term + "_distance", () => number("hl_size_cluster_distance", 1.5)) : 1,
@@ -182,16 +182,17 @@ function createPlacementGraphs(read) {
         const evidence = 2 ** (-distance / half);
         return 2 ** (sign * bias * (evidence / (evidence + prior)));
       };
+      // Preview fractional cutoffs with separate curves on either side of the cutoff.
+      const outsideStart = radius => Number.isInteger(radius) ? Math.hypot(radius, 1) : radius;
       const lines = neighbors.flatMap(neighbor => {
         const {radius, bias, style} = neighbor;
-        if (radius === 0 || bias === 0) return [series([[1, 1], [end, 1]], style)];
+        if (radius < 1 || bias === 0) return [series([[1, 1], [end, 1]], style)];
         const inside = radius === 1 ? [[1, factor(1, neighbor)]] : sample(1, radius, distance => factor(distance, neighbor));
-        const outside = Math.hypot(radius, 1);
-        return [series(inside, style), ...(outside > radius && outside <= end ? [series([[outside, 1], [end, 1]], style)] : [])];
+        const outside = outsideStart(radius);
+        return [series(inside, style), ...(outside < end ? [series([[outside, 1], [end, 1]], style)] : [])];
       });
-      // Integer row and slot offsets make (radius, 1) the first attainable distance beyond the cutoff.
-      const firstOutside = Math.hypot(radius, 1);
-      if (firstOutside > radius && firstOutside <= end) lines.push(series([[firstOutside, 1], [end, 1]], "neutral"));
+      const firstOutside = Math.max(1, outsideStart(radius));
+      if (firstOutside < end) lines.push(series([[firstOutside, 1], [end, 1]], "neutral"));
       const markers = [];
       const comparison = [1, 2].map(distance => {
         const results = neighbors.map(neighbor => {

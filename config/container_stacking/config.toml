@@ -67,7 +67,8 @@ no_delta_container_mass_value = 0.1
 # Same-size reward = 2 ** (bias * S / (S + prior)).
 # S is the distance-weighted total of occupied same-size stacks.
 enable_size_cluster_reward = false
-# Search radius in closest-footprint grid units. Zero disables only the reward.
+# Search radius in closest-footprint grid units. Decimals are allowed.
+# Zero disables only the reward.
 size_cluster_reward_radius = 1
 # Distance at which a matching stack's evidence halves. Must be positive.
 hl_size_cluster_reward_distance = 0.5

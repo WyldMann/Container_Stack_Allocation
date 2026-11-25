@@ -120,7 +120,8 @@ the closest footprint cells in grid units. Stack height does not
 increase the evidence, 40 ft pairs count once, and the supporting footprint
 is excluded. Each prior must be positive; a larger prior makes its effect
 build more slowly. Each bias must be non-negative; zero disables that term.
-Each radius is a non-negative integer, and zero disables only its term.
+The reward radius accepts non-negative decimals. The penalty radius uses
+whole numbers. Zero disables the corresponding term.
 Each distance half-influence value must be positive.
 The green reward panel and brown penalty panel have separate controls and
 formula labels, with both effects shown in the shared graph below.

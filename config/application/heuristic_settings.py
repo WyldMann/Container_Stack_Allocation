@@ -16,7 +16,7 @@ class HeuristicSettings:
     hl_size_cluster_distance: float = 1.5
     size_cluster_prior: float = 2.0
     size_cluster_bias: float = 1.0
-    size_cluster_reward_radius: int | None = None
+    size_cluster_reward_radius: float | None = None
     hl_size_cluster_reward_distance: float | None = None
     size_cluster_reward_prior: float | None = None
     size_cluster_reward_bias: float | None = None
@@ -57,7 +57,12 @@ class HeuristicSettings:
         radius_names = ("size_cluster_radius", "size_cluster_reward_radius", "size_cluster_penalty_radius")
         for name in radius_names:
             radius = getattr(self, name)
-            if type(radius) is not int:
+            if name == "size_cluster_reward_radius":
+                if type(radius) not in (int, float):
+                    raise TypeError(f"{name} must be numeric.")
+                if type(radius) is float and not math.isfinite(radius):
+                    raise ValueError(f"{name} must be finite.")
+            elif type(radius) is not int:
                 raise TypeError(f"{name} must be an integer.")
             if radius < 0:
                 raise ValueError(f"{name} must be non-negative.")

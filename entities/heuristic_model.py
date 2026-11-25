@@ -76,16 +76,16 @@ class HeuristicModel:
         rows = block.getSlots()
         container_size = container.getContSize()
         candidate_slots = (coordinate[2] - 1, coordinate[2]) if container_size == '40' else (coordinate[2],)
-        radius = max(
+        scan_radius = math.floor(max(
             self.size_cluster_reward_radius if self.enable_size_cluster_reward else 0,
             self.size_cluster_penalty_radius if self.enable_size_cluster_penalty else 0,
-        )
+        ))
         same = other = 0.0
         seen: set[tuple[int,int]] = set()
 
-        for row_index in range(max(0, coordinate[1] - radius), min(len(rows), coordinate[1] + radius + 1)):
-            for slot_index in range(max(0, min(candidate_slots) - radius),
-                              min(len(rows[row_index]), max(candidate_slots) + radius + 1)):
+        for row_index in range(max(0, coordinate[1] - scan_radius), min(len(rows), coordinate[1] + scan_radius + 1)):
+            for slot_index in range(max(0, min(candidate_slots) - scan_radius),
+                                    min(len(rows[row_index]), max(candidate_slots) + scan_radius + 1)):
                 stack = rows[row_index][slot_index]
                 mode = stack.getMode()
                 if mode not in ('20', '40') or stack.occupancy() == 0:
