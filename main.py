@@ -29,7 +29,7 @@ def run_yard(input_settings, settings, *, separate_output=False):
         containers_input=inputs["existing_containers"],
         equipment_input=inputs["master_equipment"],
         equipment_locations_input=inputs["equipment_history"],
-        loader_access_policies=access_policies(inputs.get("block_accessibility", [])),
+        border_access_policies=access_policies(inputs.get("block_accessibility", [])),
         feasibility_settings=settings.feasibility,
         heuristic_settings=settings.heuristic,
     )

@@ -1,7 +1,7 @@
 """Compare complete candidate searches against the standalone access algorithm.
 
 Run from the repository root:
-    python -m tests.benchmark_loader_access --sizes 10 20 30 --repeats 3
+    python -m tests.benchmark_equipment_access --sizes 10 20 30 --repeats 3
 
 All stacks have a matching, positive-scoring parameter. Timings include context
 preparation and do not rely on filtering candidates with missing parameters.
@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 from entities.feasibility.placement_feasibility import PlacementFeasibility
 from entities.yard import Yard
-from tests.loader_access_reference import ReferencePlacementFeasibility
+from tests.equipment_access_reference import ReferencePlacementFeasibility
 
 
 class BenchmarkParameter:

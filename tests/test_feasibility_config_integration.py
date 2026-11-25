@@ -33,29 +33,29 @@ class FeasibilityConfigIntegrationTests(unittest.TestCase):
                 if (row_index, slot_index) != (1, 1):
                     self.fill(row_index, slot_index, "20", 3)
 
-    def test_defaults_preserve_loader_access_check(self):
+    def test_defaults_preserve_equipment_access_check(self):
         self.prepare_inaccessible_destination()
         result = PlacementFeasibility().evaluate(
             self.container, self.block, 1, 1
         )
         self.assertEqual(
             result.rejection_reason,
-            RejectionReason.LOADER_DESTINATION_INACCESSIBLE,
+            RejectionReason.DESTINATION_INACCESSIBLE,
         )
 
-    def test_disabling_loader_access_preserves_stacking_check(self):
+    def test_disabling_equipment_access_preserves_stacking_check(self):
         self.fill(0, 1, "20", 2)
-        evaluator = PlacementFeasibility(FeasibilitySettings(loader_access=False))
+        evaluator = PlacementFeasibility(FeasibilitySettings(equipment_access=False))
         result = evaluator.evaluate(self.container, self.block, 0, 1)
         self.assertEqual(result.rejection_reason, RejectionReason.UNSAFE_STACKING)
 
-    def test_disabling_stacking_preserves_loader_access_check(self):
+    def test_disabling_stacking_preserves_equipment_access_check(self):
         self.prepare_inaccessible_destination()
         evaluator = PlacementFeasibility(FeasibilitySettings(stacking_safety=False))
         result = evaluator.evaluate(self.container, self.block, 1, 1)
         self.assertEqual(
             result.rejection_reason,
-            RejectionReason.LOADER_DESTINATION_INACCESSIBLE,
+            RejectionReason.DESTINATION_INACCESSIBLE,
         )
 
     def test_disabling_both_allows_unsafe_height_candidate(self):
@@ -84,7 +84,7 @@ class FeasibilityConfigIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.toml"
             path.write_text(
-                "[feasibility]\nstacking_safety = true\nloader_access = false\n",
+                "[feasibility]\nstacking_safety = true\nequipment_access = false\n",
                 encoding="utf-8",
             )
             settings = load_feasibility_settings(path)

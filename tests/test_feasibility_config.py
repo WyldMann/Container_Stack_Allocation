@@ -26,27 +26,27 @@ class FeasibilityConfigurationTests(unittest.TestCase):
             """
 [feasibility]
 stacking_safety = false
-loader_access = true
-preserve_future_loader_access = false
-ignore_full_stacks_for_loader_access = true
+equipment_access = true
+preserve_future_access = false
+ignore_stacks_without_legal_next_tier = true
 """
         )
         self.assertFalse(settings.stacking_safety)
-        self.assertTrue(settings.loader_access)
-        self.assertFalse(settings.preserve_future_loader_access)
-        self.assertTrue(settings.ignore_full_stacks_for_loader_access)
+        self.assertTrue(settings.equipment_access)
+        self.assertFalse(settings.preserve_future_access)
+        self.assertTrue(settings.ignore_stacks_without_legal_next_tier)
 
     def test_omitted_option_uses_default(self):
         settings = self.load_text(
             """
 [feasibility]
-loader_access = false
+equipment_access = false
 """
         )
         self.assertTrue(settings.stacking_safety)
-        self.assertFalse(settings.loader_access)
-        self.assertTrue(settings.preserve_future_loader_access)
-        self.assertFalse(settings.ignore_full_stacks_for_loader_access)
+        self.assertFalse(settings.equipment_access)
+        self.assertTrue(settings.preserve_future_access)
+        self.assertFalse(settings.ignore_stacks_without_legal_next_tier)
 
     def test_stacking_safety_maxima_defaults_and_round_trips(self):
         self.assertEqual(self.load_text("").stacking_safety_maxima, 2)
@@ -76,12 +76,12 @@ loader_acess = false
 """
             )
 
-    def test_loader_mode_strength_is_validated_for_all_pairs(self):
+    def test_equipment_access_mode_strength_is_validated_for_all_pairs(self):
         modes = ("off", "heuristic", "feasibility")
         for current_rank, current in enumerate(modes):
             for future_rank, future in enumerate(modes):
                 with self.subTest(current=current, future=future):
-                    options = dict(loader_access_mode=current, preserve_future_loader_access_mode=future)
+                    options = dict(equipment_access_mode=current, preserve_future_access_mode=future)
                     if future_rank > current_rank:
                         with self.assertRaisesRegex(ValueError, "exceeds"):
                             FeasibilitySettings(**options)
@@ -89,10 +89,10 @@ loader_acess = false
                             parse_config({"feasibility": options})
                     else:
                         parsed = parse_config({"feasibility": options})
-                        self.assertEqual(parsed.feasibility.effective_loader_access_mode, current)
-                        self.assertEqual(parsed.feasibility.effective_future_loader_access_mode, future)
+                        self.assertEqual(parsed.feasibility.effective_equipment_access_mode, current)
+                        self.assertEqual(parsed.feasibility.effective_future_access_mode, future)
 
-    def test_loader_modes_roundtrip_and_legacy_settings_keep_effective_behavior(self):
+    def test_legacy_loader_settings_round_trip_as_equipment_access(self):
         for options, current, future in (
             ({"loader_access": False, "preserve_future_loader_access": True}, "off", "off"),
             ({"loader_access": True, "preserve_future_loader_access": False}, "feasibility", "off"),
@@ -100,12 +100,19 @@ loader_acess = false
         ):
             with self.subTest(options=options):
                 document = parse_config({"feasibility": options}).to_document()
-                self.assertEqual(document["feasibility"]["loader_access_mode"], current)
-                self.assertEqual(document["feasibility"]["preserve_future_loader_access_mode"], future)
+                self.assertEqual(document["feasibility"]["equipment_access_mode"], current)
+                self.assertEqual(document["feasibility"]["preserve_future_access_mode"], future)
                 self.assertEqual(parse_config(document).to_document(), document)
 
-    def test_invalid_or_conflicting_loader_mode_settings_are_rejected(self):
-        for key in ("loader_access", "preserve_future_loader_access"):
+    def test_legacy_and_current_names_for_the_same_option_conflict(self):
+        with self.assertRaisesRegex(ConfigurationError, "Set either"):
+            parse_config({"feasibility": {
+                "loader_destination_access_mode": "off",
+                "destination_access_mode": "heuristic",
+            }})
+
+    def test_invalid_or_conflicting_equipment_access_mode_settings_are_rejected(self):
+        for key in ("equipment_access", "preserve_future_access"):
             with self.subTest(key=key):
                 with self.assertRaisesRegex(ConfigurationError, "Set either"):
                     parse_config({"feasibility": {key: True, key + "_mode": "feasibility"}})
@@ -113,15 +120,24 @@ loader_acess = false
                     with self.assertRaisesRegex(ConfigurationError, key + "_mode"):
                         parse_config({"feasibility": {key + "_mode": value}})
 
-    def test_independent_loader_modes_round_trip(self):
+    def test_independent_legacy_modes_and_weights_round_trip(self):
         settings = parse_config({"feasibility": {
             "loader_destination_access_mode": "heuristic",
             "preserve_occupied_loader_access_mode": "off",
             "preserve_future_loader_access_mode": "feasibility",
+            "ignore_full_stacks_for_loader_access": True,
+        }, "heuristic": {
+            "loader_inaccessible_destination_multiplier": 0.5,
+            "loader_occupied_access_loss_weight": 0.75,
+            "loader_future_access_loss_weight": 0.25,
         }})
-        self.assertEqual(settings.feasibility.loader_access_modes, ("heuristic", "off", "feasibility"))
+        self.assertEqual(settings.feasibility.equipment_access_modes, ("heuristic", "off", "feasibility"))
+        self.assertTrue(settings.feasibility.ignore_stacks_without_legal_next_tier)
+        self.assertEqual(settings.heuristic.unreachable_destination_multiplier, 0.5)
+        self.assertEqual(settings.heuristic.occupied_access_loss_weight, 0.75)
+        self.assertEqual(settings.heuristic.future_access_loss_weight, 0.25)
         document = settings.to_document()
-        self.assertNotIn("loader_access_mode", document["feasibility"])
+        self.assertNotIn("equipment_access_mode", document["feasibility"])
         self.assertEqual(parse_config(document).to_document(), document)
 
     def test_stacking_safety_mode_round_trips_and_accepts_legacy_booleans(self):
@@ -143,8 +159,8 @@ loader_acess = false
 
     def test_non_boolean_options_are_rejected(self):
         for option in (
-            "stacking_safety", "loader_access", "preserve_future_loader_access",
-            "ignore_full_stacks_for_loader_access",
+            "stacking_safety", "equipment_access", "preserve_future_access",
+            "ignore_stacks_without_legal_next_tier",
         ):
             for value in ('"false"', "0", "1", "[]"):
                 with self.subTest(option=option, value=value):
@@ -174,15 +190,15 @@ loader_acess = false
 name = "Yard Management"
 
 [feasibility]
-loader_access = false
+equipment_access = false
 """
         )
-        self.assertFalse(settings.loader_access)
+        self.assertFalse(settings.equipment_access)
 
     def test_direct_settings_require_booleans(self):
         for option in (
-            "stacking_safety", "loader_access", "preserve_future_loader_access",
-            "ignore_full_stacks_for_loader_access",
+            "stacking_safety", "equipment_access", "preserve_future_access",
+            "ignore_stacks_without_legal_next_tier",
         ):
             with self.subTest(option=option):
                 with self.assertRaises(TypeError):
@@ -191,7 +207,7 @@ loader_access = false
     def test_settings_are_immutable(self):
         settings = FeasibilitySettings()
         with self.assertRaises(FrozenInstanceError):
-            settings.loader_access = False
+            settings.equipment_access = False
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ from math import isfinite
 from dataclasses import asdict
 
 from entities.container import DummyContainer
-from entities.feasibility.loader_access import LoaderBorderAccessPolicy
+from entities.feasibility.equipment_access import BlockBorderAccessPolicy
 
 
 def _parameter_view(parameter):
@@ -96,7 +96,7 @@ def yard_view(yard):
                 stacks.append(view)
         blocks.append({
             "id": block.getId(),
-            "loader_access": asdict(yard.loader_access_policies.get(block.getId(), LoaderBorderAccessPolicy())),
+            "border_access": asdict(yard.border_access_policies.get(block.getId(), BlockBorderAccessPolicy())),
             "code": block.getCode(), "x": block.getPosX(), "y": block.getPosY(),
             "rtg_code": rtg.getCode() if rtg is not None else None,
             "equipment_codes": block_equipment_codes(block),
@@ -109,4 +109,4 @@ def yard_view(yard):
             "stacks": stacks,
         })
     return {"blocks": blocks, "parameters": parameters,
-            "loader_codes": sorted(loader.getCode() for loader in yard.master_loaders)}
+            "ground_equipment_codes": sorted(loader.getCode() for loader in yard.master_loaders)}

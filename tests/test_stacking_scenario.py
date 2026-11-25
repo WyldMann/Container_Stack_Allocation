@@ -479,7 +479,7 @@ class ScenarioTests(unittest.TestCase):
         session = SimulationSession()
         preview = session.request({"op": "preview", "draft": self.payload})
         yard_map = preview["preview"]["branches"][0]["yard_map"]
-        self.assertEqual(yard_map["loader_codes"], ["SL1"])
+        self.assertEqual(yard_map["ground_equipment_codes"], ["SL1"])
         self.assertEqual([block["rtg_code"] for block in yard_map["blocks"]], ["RTG1", None])
         request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
         suggestion = session.request({"op": "suggest", **request})
@@ -544,7 +544,7 @@ class ScenarioTests(unittest.TestCase):
             self.rows["master_equipment"].append(dict(equipment_code=code, equipment_type=kind))
             self.rows["equipment_history"].append(self.rows["equipment_history"][0] | {"equipment_code": code})
         config = tomllib.loads(self.payload["config_toml"])
-        config["feasibility"]["loader_destination_access_mode"] = "off"
+        config["feasibility"]["destination_access_mode"] = "off"
         self.payload["config_toml"] = dump_toml(config)
         self.write_files()
         session = SimulationSession()
@@ -1199,7 +1199,7 @@ class ScenarioTests(unittest.TestCase):
         self.assertIn("row_no must be an integer", invalid["message"])
         self.assertEqual(invalid["sources"], [{"file": "equipment_history.csv", "line": 2}])
         equipment_warning, = [problem for problem in branch["issues"] if problem["dataset"] == "master_equipment"]
-        self.assertIn("Block A has no RTG and no registered loader", equipment_warning["message"])
+        self.assertIn("Block A has no RTG, and no loader or reach stacker is available", equipment_warning["message"])
         self.assertEqual(equipment_warning["severity"], "warning")
 
     def test_block_equipment_updates_when_a_placement_moves_a_loader(self):
@@ -1326,9 +1326,9 @@ class ScenarioTests(unittest.TestCase):
             prepare_scenario(self.payload)
 
     def test_toml_settings_roundtrip_and_validation(self):
-        document = {"feasibility": {"loader_access": False}, "heuristic": {"size_cluster_radius": 0}}
+        document = {"feasibility": {"equipment_access": False}, "heuristic": {"size_cluster_radius": 0}}
         self.assertEqual(tomllib.loads(dump_toml(document)), document)
-        self.assertFalse(parse_config(document).feasibility.loader_access)
+        self.assertFalse(parse_config(document).feasibility.equipment_access)
         with self.assertRaises(ConfigurationError):
             parse_config({"heuristic": {"hl_equipment_distance": 0}})
         with self.assertRaises(ConfigurationError):
@@ -1336,20 +1336,20 @@ class ScenarioTests(unittest.TestCase):
 
     def test_simulator_validates_loader_modes_and_round_trips_mixed_mode(self):
         self.payload["config_toml"] = (
-            '[feasibility]\nloader_access_mode = "heuristic"\n'
-            'preserve_future_loader_access_mode = "feasibility"\n'
+            '[feasibility]\nequipment_access_mode = "heuristic"\n'
+            'preserve_future_access_mode = "feasibility"\n'
         )
         with self.assertRaisesRegex(ConfigurationError, "exceeds"):
             prepare_scenario(self.payload)
         self.payload["config_toml"] = (
-            '[feasibility]\nloader_access_mode = "feasibility"\n'
-            'preserve_future_loader_access_mode = "heuristic"\n'
+            '[feasibility]\nequipment_access_mode = "feasibility"\n'
+            'preserve_future_access_mode = "heuristic"\n'
         )
         preview = self.preview()
         self.assertTrue(preview["ready"], preview)
         settings = parse_config(tomllib.loads(preview["config_toml"])).feasibility
-        self.assertEqual(settings.effective_loader_access_mode, "feasibility")
-        self.assertEqual(settings.effective_future_loader_access_mode, "heuristic")
+        self.assertEqual(settings.effective_equipment_access_mode, "feasibility")
+        self.assertEqual(settings.effective_future_access_mode, "heuristic")
 
     def test_worker_reads_current_project_tomls_on_each_request(self):
         with TemporaryDirectory() as directory:
@@ -1357,7 +1357,7 @@ class ScenarioTests(unittest.TestCase):
             original = {key: self.payload[key] for key in files}
             for key, path in files.items():
                 path.write_text(original[key], encoding="utf-8")
-            updated = "[feasibility]\nloader_access = false\n"
+            updated = "[feasibility]\nequipment_access = false\n"
 
             def requests():
                 yield b'{"op":"project_tomls"}\n'

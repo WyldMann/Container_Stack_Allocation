@@ -255,7 +255,7 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
             parameters_input=inputs["parameters"], yard_planning_input=inputs["yard_planning"],
             containers_input=existing_containers, equipment_input=inputs["master_equipment"],
             equipment_locations_input=inputs["equipment_history"],
-            loader_access_policies=access_policies(inputs.get("block_accessibility", [])),
+            border_access_policies=access_policies(inputs.get("block_accessibility", [])),
             feasibility_settings=settings.feasibility, heuristic_settings=settings.heuristic,
         )
     branch["yard"] = yard
@@ -339,7 +339,7 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
     unserved_blocks = [block for block in yard.blocks_by_id.values() if not yard.canServeBlock(block)]
     severity = "error" if yard.hasEquipment() and len(unserved_blocks) == len(yard.blocks_by_id) else "warning"
     for block in unserved_blocks:
-        message = f"Block {block.getCode()} has no RTG and no registered loader is available."
+        message = f"Block {block.getCode()} has no RTG, and no loader or reach stacker is available."
         if not yard.hasEquipment():
             message += " Placements will have no equipment."
         add("master_equipment", message,
@@ -377,7 +377,7 @@ def public_branch(branch):
     if entry["yard_map"] is not None:
         saved = branch.get("saved_block_access", {})
         for block in entry["yard_map"]["blocks"]:
-            block["saved_loader_access"] = saved.get(block["id"], block["loader_access"])
+            block["saved_border_access"] = saved.get(block["id"], block["border_access"])
     entry["ready"] = (yard is not None and branch["inbound_available"]
                       and not any(item["severity"] == "error" for item in branch["issues"]))
     entry["issue_counts"] = dict(Counter(item["severity"] for item in branch["issues"]))

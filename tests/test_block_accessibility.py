@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from entities.feasibility.loader_access import LoaderBorderAccessPolicy
+from entities.feasibility.equipment_access import BlockBorderAccessPolicy
 from repository.block_accessibility import access_policies, policies_csv, read_policies
 from stacking_ui.configuration import PROJECT_ROOT, dump_toml
 from stacking_ui.scenario import prepare_scenario, public_preview
@@ -30,7 +30,7 @@ class BlockAccessibilityTests(unittest.TestCase):
         return fixture
 
     def test_csv_round_trip_and_strict_values(self):
-        policies = {"10": LoaderBorderAccessPolicy(above=False, left=False)}
+        policies = {"10": BlockBorderAccessPolicy(above=False, left=False)}
         self.assertEqual(read_policies(policies_csv(policies)), policies)
         row = dict(block_id="10", above="FALSE", below="TRUE", left="TRUE", right="TRUE")
         for records in ([row, row], [row | {"above": "maybe"}], [row | {"block_id": ""}]):
@@ -45,7 +45,7 @@ class BlockAccessibilityTests(unittest.TestCase):
         branch, = scenario["branches"]
         block, = public_preview(scenario)["branches"][0]["yard_map"]["blocks"]
         self.assertEqual(block["id"], "10")
-        self.assertEqual(block["loader_access"], dict.fromkeys(("above", "below", "left", "right"), False))
+        self.assertEqual(block["border_access"], dict.fromkeys(("above", "below", "left", "right"), False))
         self.assertEqual(branch["yard"].findCoordsCandidates(SimpleNamespace(getContSize=lambda: "20"))[2], [])
 
     def test_legacy_missing_optional_upload_defaults_to_open(self):
@@ -59,7 +59,7 @@ class BlockAccessibilityTests(unittest.TestCase):
         del mapping["csv"]["block_accessibility"]
         fixture.payload["mapping_toml"] = dump_toml(mapping)
         branch, = public_preview(prepare_scenario(fixture.payload))["branches"]
-        self.assertTrue(all(branch["yard_map"]["blocks"][0]["loader_access"].values()))
+        self.assertTrue(all(branch["yard_map"]["blocks"][0]["border_access"].values()))
 
     def test_live_changes_affect_first_step_and_lock_after_start(self):
         fixture = self.fixture()
@@ -90,7 +90,7 @@ class BlockAccessibilityTests(unittest.TestCase):
                              policies=[dict(block_id="10", above=False, below=True, left=False, right=True)]))
         with TemporaryDirectory(dir=PROJECT_ROOT) as directory:
             path = Path(directory) / "block_accessibility.csv"
-            other = LoaderBorderAccessPolicy(right=False)
+            other = BlockBorderAccessPolicy(right=False)
             path.write_text(policies_csv({"999": other}), encoding="utf-8", newline="")
             with patch.object(session, "block_access_path", return_value=path):
                 saved = session.request({"op": "save_block_access", "id": response["simulation"]["id"],
@@ -127,9 +127,9 @@ class BlockAccessibilityTests(unittest.TestCase):
             self.assertFalse(policies["10"].above)
             repaired = session.request({"op": "repair_tier_gaps", **identity})
             blocks = {block["id"]: block for block in repaired["yard_map"]["blocks"]}
-            self.assertEqual(blocks["10"]["loader_access"], blocks["10"]["saved_loader_access"])
-            self.assertFalse(blocks["11"]["loader_access"]["left"])
-            self.assertTrue(blocks["11"]["saved_loader_access"]["left"])
+            self.assertEqual(blocks["10"]["border_access"], blocks["10"]["saved_border_access"])
+            self.assertFalse(blocks["11"]["border_access"]["left"])
+            self.assertTrue(blocks["11"]["saved_border_access"]["left"])
 
     def test_round_trip_on_empty_csv_does_not_add_a_default_row(self):
         session = SimulationSession()

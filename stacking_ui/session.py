@@ -14,7 +14,7 @@ from config.application.config_loader import ConfigurationError
 from config import DEFAULT_STACKING_INPUT_CONFIG_FILE
 from config.application.input_config import load_input_config
 from entities.container import DummyContainer
-from entities.feasibility.loader_access import LoaderBorderAccessPolicy
+from entities.feasibility.equipment_access import BlockBorderAccessPolicy
 from repository.block_accessibility import access_policies, policies_csv, read_policies
 
 from .comparison import compare_yard
@@ -69,7 +69,7 @@ class SimulationSession:
             for branch in self.yard_branches:
                 yard = branch["yard"]
                 branch["saved_block_access"] = {
-                    block_id: asdict(yard.loader_access_policies.get(block_id, LoaderBorderAccessPolicy()))
+                    block_id: asdict(yard.border_access_policies.get(block_id, BlockBorderAccessPolicy()))
                     for block_id in yard.blocks_by_id
                 }
             preview = preview_document(scenario)
@@ -118,7 +118,7 @@ class SimulationSession:
         policies = access_policies(records)
         if set(policies) - set(branch["yard"].blocks_by_id):
             raise SimulationError("Block accessibility refers to an unknown block in this branch.")
-        branch["yard"].loader_access_policies.update(policies)
+        branch["yard"].border_access_policies.update(policies)
         simulation.invalidate_suggestion(code)
         return {block_id: asdict(policy) for block_id, policy in policies.items()}
 
@@ -155,7 +155,7 @@ class SimulationSession:
         path = self.block_access_path()
         text = path.read_text(encoding="utf-8") if path.exists() else policies_csv({})
         policies = read_policies(text)
-        policy = branch["yard"].loader_access_policies.get(block_id, LoaderBorderAccessPolicy())
+        policy = branch["yard"].border_access_policies.get(block_id, BlockBorderAccessPolicy())
         if asdict(policy) == branch["saved_block_access"][block_id]:
             return {"name": path.name, "text": text}
         policies[block_id] = policy

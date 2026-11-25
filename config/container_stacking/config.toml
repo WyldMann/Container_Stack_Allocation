@@ -1,7 +1,7 @@
 # Placement settings for main.py.
 [feasibility]
-preserve_occupied_loader_access_mode = "heuristic"
-loader_destination_access_mode = "feasibility"
+preserve_occupied_access_mode = "heuristic"
+destination_access_mode = "feasibility"
 # Score height differences and reject placements beyond the maximum.
 stacking_safety_mode = "feasibility"
 # Full score up to this post-placement tier difference; then linear decay.
@@ -18,14 +18,15 @@ stacking_safety_neighbor_down = true
 stacking_safety_neighbor_left = false
 stacking_safety_neighbor_right = false
 
-# Loader modes: "feasibility" rejects, "heuristic" scores, and "off" skips.
-# Current access covers the destination and occupied stacks. RTGs are exempt.
-# Future access covers receiving options and must use the same or a weaker
-# mode (off < heuristic < feasibility). Omit it to inherit the current mode.
-loader_access_mode = "heuristic"
-preserve_future_loader_access_mode = "off"
-# Exclude fully occupied stacks from current access protection.
-ignore_full_stacks_for_loader_access = true
+# Equipment access modes are "feasibility" (reject), "heuristic" (score), and "off" (skip).
+# Loaders and reach stackers use ground access. RTG service bypasses these checks.
+# The shared mode supplies the destination and occupied-stack modes when omitted.
+# Future access inherits the occupied-stack mode when omitted.
+# If the occupied-stack mode is inherited, future access cannot use a stronger mode.
+equipment_access_mode = "heuristic"
+preserve_future_access_mode = "off"
+# Exclude occupied stacks with no legal next tier from access protection.
+ignore_stacks_without_legal_next_tier = true
 
 
 [heuristic]
@@ -33,8 +34,8 @@ ignore_full_stacks_for_loader_access = true
 scan_order = "slot_wise"
 # Score multiplier at stacking_safety_maxima. Range: 0 to 1.
 stacking_safety_limit_multiplier = 0.5
-loader_occupied_access_loss_weight = 0.5
-loader_future_access_loss_weight = 0.15
+occupied_access_loss_weight = 0.5
+future_access_loss_weight = 0.15
 # Disabled factors skip scoring and contribute a neutral multiplier of 1.
 enable_delta_container_mass = false
 enable_equipment_distance = false

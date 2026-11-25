@@ -1,4 +1,4 @@
-"""Standalone loader-access algorithm for equivalence checks.
+"""Standalone equipment access algorithm for equivalence checks.
 
 Keep the reference independent of production access helpers so optimizations
 cannot silently change both sides of a comparison.
@@ -16,8 +16,8 @@ Position = tuple[int, int]
 
 
 @dataclass(frozen=True)
-class LoaderBorderAccessPolicy:
-    """Borders providing loader entry and exterior working space."""
+class BlockBorderAccessPolicy:
+    """Borders providing entry and exterior working space for ground equipment."""
 
     above: bool = True
     below: bool = True
@@ -35,7 +35,7 @@ class ReceivingLocation:
 
 
 @dataclass(frozen=True)
-class LoaderAccessResult:
+class EquipmentAccessResult:
     isolated_locations: tuple[ReceivingLocation, ...] = ()
     destination_accessible: bool = True
     isolated_occupied_locations: tuple[ReceivingLocation, ...] = ()
@@ -49,7 +49,7 @@ class LoaderAccessResult:
         )
 
 
-class LoaderAccessRule:
+class EquipmentAccessRule:
     """Check destination access and new isolation without modifying a block.
 
     Assumes contiguous stacks and a proposal that has already passed
@@ -61,12 +61,12 @@ class LoaderAccessRule:
             self,
             block: Block,
             proposal: PlacementProposal,
-            policy: LoaderBorderAccessPolicy,
+            policy: BlockBorderAccessPolicy,
             *,
-            preserve_future_loader_access: bool = True,
+            preserve_future_access: bool = True,
             twenty_foot_side_access: bool = False,
             destination_side_access: bool | None = None,
-    ) -> LoaderAccessResult:
+    ) -> EquipmentAccessResult:
 
         self._validate_proposal(block, proposal)
         reachable_before = self._reachable_ground(block, policy)
@@ -79,7 +79,7 @@ class LoaderAccessRule:
         reachable_after = self._reachable_ground(block, policy, proposal)
         isolated = []
 
-        if preserve_future_loader_access:
+        if preserve_future_access:
             receiving_before = self._receiving_locations(block)
             receiving_after = self._receiving_locations(block, proposal)
             # Only protect destinations that retain capacity afterward.
@@ -112,7 +112,7 @@ class LoaderAccessRule:
                                                 twenty_foot_side_access=twenty_foot_side_access)):
                     isolated_occupied.append(location)
 
-        return LoaderAccessResult(
+        return EquipmentAccessResult(
             isolated_locations=tuple(
                 sorted(
                     isolated,
@@ -163,7 +163,7 @@ class LoaderAccessRule:
     def _reachable_ground(
             self,
             block: Block,
-            policy: LoaderBorderAccessPolicy,
+            policy: BlockBorderAccessPolicy,
             proposal: PlacementProposal | None = None,
     ) -> set[Position]:
         rows = block.getSlots()
@@ -249,7 +249,7 @@ class LoaderAccessRule:
             block: Block,
             location: ReceivingLocation,
             reachable: set[Position],
-            policy: LoaderBorderAccessPolicy,
+            policy: BlockBorderAccessPolicy,
             *, twenty_foot_side_access: bool = False,
     ) -> bool:
         row_count = len(block.getSlots())
@@ -287,20 +287,20 @@ class ReferencePlacementFeasibility(PlacementFeasibility):
 
     def __init__(self, settings=None):
         super().__init__(settings)
-        self.loader_access = LoaderAccessRule()
+        self.equipment_access = EquipmentAccessRule()
 
-    def prepare_loader_context(self, block, loader_policy=None, *, twenty_foot_side_access=False):
+    def prepare_access_context(self, block, border_policy=None, *, twenty_foot_side_access=False):
         return None
 
-    def _evaluate_loader_access(
+    def _evaluate_equipment_access(
         self, block, proposal, policy, context=None, *, check_future,
         twenty_foot_side_access=False, destination_side_access=None,
     ):
         if policy is None:
-            policy = LoaderBorderAccessPolicy()
-        return self.loader_access.evaluate(
+            policy = BlockBorderAccessPolicy()
+        return self.equipment_access.evaluate(
             block, proposal, policy,
-            preserve_future_loader_access=check_future,
+            preserve_future_access=check_future,
             twenty_foot_side_access=twenty_foot_side_access,
             destination_side_access=destination_side_access,
         )

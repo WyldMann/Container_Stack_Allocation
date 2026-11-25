@@ -4,8 +4,8 @@ Position = tuple[int, int]
 
 
 @dataclass(frozen=True)
-class LoaderBorderAccessPolicy:
-    """Borders providing loader entry and exterior working space."""
+class BlockBorderAccessPolicy:
+    """Borders providing entry and exterior working space for ground equipment."""
 
     above: bool = True
     below: bool = True
@@ -15,7 +15,7 @@ class LoaderBorderAccessPolicy:
 
 @dataclass(frozen=True)
 class ReceivingLocation:
-    """A loader service location, identified by its anchor and size."""
+    """An equipment service location, identified by its anchor and size."""
 
     row_index: int
     slot_index: int
@@ -23,7 +23,7 @@ class ReceivingLocation:
 
 
 @dataclass(frozen=True)
-class LoaderAccessResult:
+class EquipmentAccessResult:
     isolated_locations: tuple[ReceivingLocation, ...] = ()
     destination_accessible: bool = True
     isolated_occupied_locations: tuple[ReceivingLocation, ...] = ()

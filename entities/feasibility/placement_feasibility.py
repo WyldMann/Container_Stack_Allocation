@@ -6,8 +6,8 @@ from config import FeasibilitySettings
 from ..block import Block
 from ..container import Container
 from ..equipment import Loader
-from .loader_access import (
-    LoaderAccessContext, LoaderAccessResult, LoaderAccessRule, LoaderBorderAccessPolicy, ReceivingLocation,
+from .equipment_access import (
+    EquipmentAccessContext, EquipmentAccessResult, EquipmentAccessRule, BlockBorderAccessPolicy, ReceivingLocation,
 )
 from .placement_proposal import PlacementProposal
 from ..stack import Stack
@@ -25,16 +25,16 @@ class RejectionReason(Enum):
     PARTNER_TIER_MISMATCH = "partner_tier_mismatch"
     ANOMALOUS_STACK = "anomalous_stack"
     UNSAFE_STACKING = "unsafe_stacking"
-    LOADER_DESTINATION_INACCESSIBLE = "loader_destination_inaccessible"
-    LOADER_OCCUPIED_ACCESS_BLOCKED = "loader_occupied_access_blocked"
-    LOADER_ACCESS_BLOCKED = "loader_access_blocked"
+    DESTINATION_INACCESSIBLE = "destination_inaccessible"
+    OCCUPIED_ACCESS_BLOCKED = "occupied_access_blocked"
+    FUTURE_ACCESS_BLOCKED = "future_access_blocked"
 
 
 @dataclass(frozen=True)
 class FeasibilityResult:
     coordinates: Coordinates | None = None
     rejection_reason: RejectionReason | None = None
-    loader_access: LoaderAccessResult | None = None
+    equipment_access: EquipmentAccessResult | None = None
 
     def __post_init__(self) -> None:
         # Exactly one outcome must be supplied.
@@ -51,26 +51,26 @@ class PlacementFeasibility:
 
     def __init__(self, settings: FeasibilitySettings | None = None) -> None:
         self.settings = settings if settings is not None else FeasibilitySettings()
-        self.loader_access = LoaderAccessRule(
+        self.equipment_access = EquipmentAccessRule(
             allow_overcapacity=self.settings.stack_capacity_mode != "feasibility",
         )
 
-    def prepare_loader_context(
+    def prepare_access_context(
         self,
         block: Block,
-        loader_policy: LoaderBorderAccessPolicy | None = None,
+        border_policy: BlockBorderAccessPolicy | None = None,
         *, twenty_foot_side_access: bool = False,
-    ) -> LoaderAccessContext | None:
+    ) -> EquipmentAccessContext | None:
         """Prepare one block's access data for a read-only candidate search."""
-        if all(mode == "off" for mode in self.settings.loader_access_modes) or block.getRTG() is not None:
+        if all(mode == "off" for mode in self.settings.equipment_access_modes) or block.getRTG() is not None:
             return None
-        if loader_policy is None:
-            loader_policy = LoaderBorderAccessPolicy()
+        if border_policy is None:
+            border_policy = BlockBorderAccessPolicy()
         twenty_foot_side_access = twenty_foot_side_access or any(
             loader.twenty_foot_side_access for loader in block.getLoaders()
         )
-        return self.loader_access.prepare_context(
-            block, loader_policy, twenty_foot_side_access=twenty_foot_side_access,
+        return self.equipment_access.prepare_context(
+            block, border_policy, twenty_foot_side_access=twenty_foot_side_access,
         )
 
     def evaluate(
@@ -80,9 +80,9 @@ class PlacementFeasibility:
             row_index: int,
             slot_index: int,
             *,
-            loader_policy: LoaderBorderAccessPolicy | None = None,
-            loader_context: LoaderAccessContext | None = None,
-            include_loader_heuristics: bool = True,
+            border_policy: BlockBorderAccessPolicy | None = None,
+            access_context: EquipmentAccessContext | None = None,
+            include_access_heuristics: bool = True,
             loader_selected: bool = False,
             loader: Loader | None = None,
             twenty_foot_side_access: bool = False,
@@ -91,15 +91,15 @@ class PlacementFeasibility:
         if isinstance(proposal, RejectionReason):
             return FeasibilityResult(rejection_reason=proposal)
 
-        destination_mode, occupied_mode, future_mode = self.settings.loader_access_modes
-        active_modes = ("feasibility", "heuristic") if include_loader_heuristics else ("feasibility",)
+        destination_mode, occupied_mode, future_mode = self.settings.equipment_access_modes
+        active_modes = ("feasibility", "heuristic") if include_access_heuristics else ("feasibility",)
         access = None
         # The block's RTG serves by default unless a loader was explicitly selected.
         if (loader_selected or loader is not None or block.getRTG() is None) and any(
             mode in active_modes for mode in (destination_mode, occupied_mode, future_mode)
         ):
-            access = self._evaluate_loader_access(
-                block, proposal, loader_policy, loader_context,
+            access = self._evaluate_equipment_access(
+                block, proposal, border_policy, access_context,
                 check_future=future_mode in active_modes,
                 twenty_foot_side_access=(twenty_foot_side_access
                                         or any(item.twenty_foot_side_access for item in block.getLoaders())
@@ -107,11 +107,11 @@ class PlacementFeasibility:
                 destination_side_access=None if loader is None else loader.twenty_foot_side_access,
             )
         if access is not None:
-            reason = self._loader_rejection(access, destination_mode, occupied_mode, future_mode)
+            reason = self._access_rejection(access, destination_mode, occupied_mode, future_mode)
             if reason is not None:
-                return FeasibilityResult(rejection_reason=reason, loader_access=access)
+                return FeasibilityResult(rejection_reason=reason, equipment_access=access)
 
-        return FeasibilityResult(coordinates=proposal.coordinates, loader_access=access)
+        return FeasibilityResult(coordinates=proposal.coordinates, equipment_access=access)
 
     def _next_placement(
         self, block: Block, row_index: int, slot_index: int, container_size: str,
@@ -147,26 +147,26 @@ class PlacementFeasibility:
             return RejectionReason.UNSAFE_STACKING
         return proposal
 
-    def _evaluate_loader_access(
+    def _evaluate_equipment_access(
         self,
         block: Block,
         proposal: PlacementProposal,
-        policy: LoaderBorderAccessPolicy | None,
-        context: LoaderAccessContext | None = None,
+        policy: BlockBorderAccessPolicy | None,
+        context: EquipmentAccessContext | None = None,
         *,
         check_future: bool,
         twenty_foot_side_access: bool = False,
         destination_side_access: bool | None = None,
-    ) -> LoaderAccessResult:
+    ) -> EquipmentAccessResult:
         if policy is None:
-            policy = LoaderBorderAccessPolicy()
-        access = self.loader_access.evaluate(
+            policy = BlockBorderAccessPolicy()
+        access = self.equipment_access.evaluate(
             block, proposal, policy, context=context,
-            preserve_future_loader_access=check_future,
+            preserve_future_access=check_future,
             twenty_foot_side_access=twenty_foot_side_access,
             destination_side_access=destination_side_access,
         )
-        ignore_infeasible = self.settings.ignore_full_stacks_for_loader_access
+        ignore_infeasible = self.settings.ignore_stacks_without_legal_next_tier
         locations_to_check = set(access.isolated_locations)
         if ignore_infeasible:
             locations_to_check.update(access.isolated_occupied_locations)
@@ -200,15 +200,15 @@ class PlacementFeasibility:
         )
 
     @staticmethod
-    def _loader_rejection(
-        result: LoaderAccessResult, destination_mode: str, occupied_mode: str, future_mode: str,
+    def _access_rejection(
+        result: EquipmentAccessResult, destination_mode: str, occupied_mode: str, future_mode: str,
     ) -> RejectionReason | None:
         if destination_mode == "feasibility" and not result.destination_accessible:
-            return RejectionReason.LOADER_DESTINATION_INACCESSIBLE
+            return RejectionReason.DESTINATION_INACCESSIBLE
         if occupied_mode == "feasibility" and result.isolated_occupied_locations:
-            return RejectionReason.LOADER_OCCUPIED_ACCESS_BLOCKED
+            return RejectionReason.OCCUPIED_ACCESS_BLOCKED
         if future_mode == "feasibility" and result.isolated_locations:
-            return RejectionReason.LOADER_ACCESS_BLOCKED
+            return RejectionReason.FUTURE_ACCESS_BLOCKED
         return None
 
     @staticmethod

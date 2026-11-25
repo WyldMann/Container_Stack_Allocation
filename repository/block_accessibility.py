@@ -1,10 +1,10 @@
-"""Validate and serialize per-block loader border policies."""
+"""Validate and serialize block border access policies."""
 
 import csv
 from dataclasses import asdict
 from io import StringIO
 
-from entities.feasibility.loader_access import LoaderBorderAccessPolicy
+from entities.feasibility.equipment_access import BlockBorderAccessPolicy
 from utils import strGeneralize
 
 SIDES = ("above", "below", "left", "right")
@@ -28,7 +28,7 @@ def access_policies(records):
                 values[side] = value.strip().lower() == "true"
             else:
                 raise ValueError(f"Block {block_id}: {side.upper()} must be TRUE or FALSE.")
-        policies[block_id] = LoaderBorderAccessPolicy(**values)
+        policies[block_id] = BlockBorderAccessPolicy(**values)
     return policies
 
 

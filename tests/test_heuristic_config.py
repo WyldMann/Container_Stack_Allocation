@@ -37,10 +37,10 @@ class HeuristicConfigTests(unittest.TestCase):
 
     def test_both_sections_are_loaded_with_partial_defaults(self):
         result = self.load_text(
-            '[feasibility]\nloader_access = false\n'
+            '[feasibility]\nequipment_access = false\n'
             '[heuristic]\nw_delta_container_mass = 20\nsize_cluster_radius = 0\n'
         )
-        self.assertEqual(result.feasibility, FeasibilitySettings(loader_access=False))
+        self.assertEqual(result.feasibility, FeasibilitySettings(equipment_access=False))
         self.assertEqual(result.heuristic.w_delta_container_mass, 20)
         self.assertEqual(result.heuristic.size_cluster_radius, 0)
         self.assertEqual(result.heuristic.hl_delta_container_mass, 5000)
@@ -92,8 +92,8 @@ class HeuristicConfigTests(unittest.TestCase):
                 values += ('nan', 'inf', '-inf')
                 if field.name not in (
                     'size_cluster_bias', 'size_cluster_reward_bias', 'size_cluster_penalty_bias',
-                    'loader_inaccessible_destination_multiplier',
-                    'loader_occupied_access_loss_weight', 'loader_future_access_loss_weight',
+                    'unreachable_destination_multiplier',
+                    'occupied_access_loss_weight', 'future_access_loss_weight',
                     'unsafe_stacking_multiplier', 'overcapacity_tier_multiplier',
                     'stacking_safety_limit_multiplier',
                     'no_delta_container_mass_value', 'heavier_container_fallback_score',
@@ -140,14 +140,14 @@ class HeuristicConfigTests(unittest.TestCase):
 
     def test_loader_weights_allow_zero_and_limit_destination_multiplier(self):
         for name in (
-            'loader_inaccessible_destination_multiplier', 'loader_occupied_access_loss_weight',
-            'loader_future_access_loss_weight',
+            'unreachable_destination_multiplier', 'occupied_access_loss_weight',
+            'future_access_loss_weight',
         ):
             with self.subTest(name=name):
                 settings = self.load_text(f'[heuristic]\n{name} = 0\n').heuristic
                 self.assertEqual(getattr(settings, name), 0)
         with self.assertRaisesRegex(ConfigurationError, 'between 0 and 1'):
-            self.load_text('[heuristic]\nloader_inaccessible_destination_multiplier = 1.1\n')
+            self.load_text('[heuristic]\nunreachable_destination_multiplier = 1.1\n')
 
     def test_unsafe_stacking_multiplier_enforces_inclusive_bounds(self):
         for value in (0, 0.25, 1):
@@ -210,12 +210,12 @@ class HeuristicConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'config.toml'
             path.write_text(
-                '[feasibility]\nloader_access = false\n'
+                '[feasibility]\nequipment_access = false\n'
                 '[heuristic]\nw_delta_container_mass = 20\n', encoding='utf-8',
             )
             self.assertEqual(
                 load_feasibility_settings(path),
-                FeasibilitySettings(loader_access=False),
+                FeasibilitySettings(equipment_access=False),
             )
 
     def test_heuristic_only_loader_uses_defaults(self):

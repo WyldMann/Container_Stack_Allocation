@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 
 from ...block import Block
-from .models import LoaderBorderAccessPolicy, Position, ReceivingLocation
+from .models import BlockBorderAccessPolicy, Position, ReceivingLocation
 
 
 @dataclass(frozen=True)
-class LoaderAccessContext:
+class EquipmentAccessContext:
     """Immutable access data for one read-only candidate search.
 
     The block reference establishes ownership; it does not freeze the block.
@@ -15,7 +15,7 @@ class LoaderAccessContext:
     """
 
     block: Block
-    policy: LoaderBorderAccessPolicy
+    policy: BlockBorderAccessPolicy
     row_lengths: tuple[int, ...]
     ground: frozenset[Position]
     reachable_ground: frozenset[Position]

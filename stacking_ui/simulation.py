@@ -152,12 +152,12 @@ def _inbound_container(branch, row):
 
 def _calculation(yard, search, result):
     settings = yard.feasibility.settings
-    prioritize_current_access = settings.prioritize_current_loader_access
-    destination_mode = settings.effective_destination_loader_access_mode
-    occupied_mode = settings.effective_occupied_loader_access_mode
+    prioritize_current_access = settings.prioritize_current_access
+    destination_mode = settings.effective_destination_access_mode
+    occupied_mode = settings.effective_occupied_access_mode
     score_destination = destination_mode == "heuristic"
-    prioritize_destination = settings.prioritize_loader_destination
-    future_mode = settings.effective_future_loader_access_mode
+    prioritize_destination = settings.prioritize_destination_access
+    future_mode = settings.effective_future_access_mode
     candidates = result.sorted_candidate_evaluations if result is not None else []
     winner = candidates[0] if candidates else None
     winning_key = winner.ranking_key(prioritize_current_access, prioritize_destination) if winner else None
@@ -165,7 +165,7 @@ def _calculation(yard, search, result):
     qualified = []
     for coordinates in search["candidate_coordinates"]:
         rank, candidate = ranked_by_location[coordinates]
-        access = candidate.loader_access
+        access = candidate.equipment_access
         qualified.append({
             **_location(yard, coordinates),
             "selected": candidate is winner,
@@ -179,14 +179,14 @@ def _calculation(yard, search, result):
             "mass_multiplier": _number(yard.model.deltaContainerMass(candidate.delta_container_mass)),
             "distance_multiplier": _number(yard.model.equipmentDistance(candidate.distance)),
             "cluster_multiplier": _number(candidate.size_cluster_multiplier),
-            "loader_destination_accessible": access.destination_accessible if access and destination_mode != "off" else None,
+            "destination_accessible": access.destination_accessible if access and destination_mode != "off" else None,
             "isolated_occupied_locations": len(access.isolated_occupied_locations) if access and occupied_mode != "off" else None,
             "isolated_future_locations": (
                 len(access.isolated_locations) if access and future_mode != "off" else None
             ),
-            "loader_access_multiplier": candidate.loader_access_multiplier,
-            "loader_destination_multiplier": candidate.loader_destination_multiplier,
-            "future_loader_access_multiplier": candidate.future_loader_access_multiplier,
+            "occupied_access_multiplier": candidate.occupied_access_multiplier,
+            "destination_access_multiplier": candidate.destination_access_multiplier,
+            "future_access_multiplier": candidate.future_access_multiplier,
             "stacking_safety_multiplier": candidate.stacking_safety_multiplier,
             "capacity_multiplier": candidate.capacity_multiplier,
             "overcapacity_tiers": candidate.overcapacity_tiers,
@@ -203,16 +203,16 @@ def _calculation(yard, search, result):
         "candidate_count": len(qualified),
         "winning_score_ties": sum(candidate.ranking_key(prioritize_current_access, prioritize_destination) == winning_key
                                   for candidate in candidates),
-        "prioritize_current_loader_access": prioritize_current_access,
-        "prioritize_loader_destination": prioritize_destination,
+        "prioritize_current_access": prioritize_current_access,
+        "prioritize_destination_access": prioritize_destination,
         "enabled_multipliers": [
             name for name, enabled in (
                 ("mass_multiplier", yard.model.enable_delta_container_mass),
                 ("distance_multiplier", yard.model.enable_equipment_distance and yard.hasEquipment()),
                 ("cluster_multiplier", yard.model.enable_size_cluster),
-                ("loader_destination_multiplier", score_destination),
-                ("loader_access_multiplier", occupied_mode == "heuristic"),
-                ("future_loader_access_multiplier", future_mode == "heuristic"),
+                ("destination_access_multiplier", score_destination),
+                ("occupied_access_multiplier", occupied_mode == "heuristic"),
+                ("future_access_multiplier", future_mode == "heuristic"),
                 ("stacking_safety_multiplier", settings.effective_stacking_safety_mode == "heuristic"),
                 ("capacity_multiplier", settings.stack_capacity_mode == "heuristic"),
             )

@@ -3,7 +3,7 @@ from config import HeuristicSettings
 
 from .block import Block
 from .container import Container
-from .feasibility.loader_access import LoaderAccessResult
+from .feasibility.equipment_access import EquipmentAccessResult
 from .stack import Stack
 
 class HeuristicModel:
@@ -139,24 +139,24 @@ class HeuristicModel:
         else:
             return self.w_equipment_distance * self.decayFormula(self.lambda_equipment_distance,equipment_distance)
 
-    def loader_access_multipliers(
-        self, access: LoaderAccessResult | None, *, score_destination: bool,
+    def occupied_access_multipliers(
+        self, access: EquipmentAccessResult | None, *, score_destination: bool,
         score_current: bool, score_future: bool,
     ) -> tuple[float, float, float]:
         if access is None:
             return 1.0, 1.0, 1.0
-        destination = self.settings.loader_inaccessible_destination_multiplier if (
+        destination = self.settings.unreachable_destination_multiplier if (
             score_destination and not access.destination_accessible
         ) else 1.0
         current = 1.0
         if score_current:
-            occupied_loss = self.settings.loader_occupied_access_loss_weight * len(access.isolated_occupied_locations)
+            occupied_loss = self.settings.occupied_access_loss_weight * len(access.isolated_occupied_locations)
             current = 1.0 / (1 + occupied_loss)
         future = 1.0
         if score_future:
             # Receiving options are distinct by anchor and size. An occupied stack
             # with room left can lose both existing service and future capacity.
-            future_loss = self.settings.loader_future_access_loss_weight * len(access.isolated_locations)
+            future_loss = self.settings.future_access_loss_weight * len(access.isolated_locations)
             future = 1.0 / (1 + future_loss)
         return destination, current, future
 

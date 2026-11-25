@@ -39,8 +39,8 @@ function createPlacementGraphs(read) {
     return invalid(key);
   }
 
-  const legacyLoader = () => mode("loader_access_mode", () => flag("feasibility.loader_access", true) ? "feasibility" : "off");
-  const occupiedMode = () => mode("preserve_occupied_loader_access_mode", legacyLoader);
+  const sharedAccess = () => mode("equipment_access_mode", () => flag("feasibility.equipment_access", true) ? "feasibility" : "off");
+  const occupiedMode = () => mode("preserve_occupied_access_mode", sharedAccess);
   const fallback = () => number("min_value", 0.001);
   const series = (points, style = "", dots = false) => ({points, style, dots});
   const neutral = (start, end, note = "Scoring off · 1× at every value.") =>
@@ -113,18 +113,18 @@ function createPlacementGraphs(read) {
         note: (scored ? "Full score through " + label(soft) + " tiers · Linear decline to " + score(floor) + " at " + label(hard) + " tiers. " : "No pyramid score penalty. ") +
           (cutoff ? "Above " + label(hard) + " tiers: rejected." : "Above " + label(hard) + " tiers: keep " + score(floor) + ".")};
     }},
-    destination: {title: "Destination access", axis: "Loader reachability", calculate() {
-      return binary(mode("loader_destination_access_mode", legacyLoader), ["Reachable", "Unreachable"],
-        () => number("loader_inaccessible_destination_multiplier", 0.25, 0, 1));
+    destination: {title: "Destination access", axis: "Equipment reachability", calculate() {
+      return binary(mode("destination_access_mode", sharedAccess), ["Reachable", "Unreachable"],
+        () => number("unreachable_destination_multiplier", 0.25, 0, 1));
     }},
     occupied: {title: "Occupied-stack access", axis: "Occupied stacks losing access", calculate() {
       const current = occupiedMode();
-      return access(current, current === "heuristic" ? number("loader_occupied_access_loss_weight", 1, 0) : 0);
+      return access(current, current === "heuristic" ? number("occupied_access_loss_weight", 1, 0) : 0);
     }},
     future: {title: "Future receiving access", axis: "Receiving options losing access", calculate() {
-      const current = mode("preserve_future_loader_access_mode",
-        () => flag("feasibility.preserve_future_loader_access", true) ? occupiedMode() : "off");
-      return access(current, current === "heuristic" ? number("loader_future_access_loss_weight", 1, 0) : 0);
+      const current = mode("preserve_future_access_mode",
+        () => flag("feasibility.preserve_future_access", true) ? occupiedMode() : "off");
+      return access(current, current === "heuristic" ? number("future_access_loss_weight", 1, 0) : 0);
     }},
     weight: {axis: "Supporting − incoming weight (CSV units)", calculate() {
       const on = flag("heuristic.enable_delta_container_mass", true);

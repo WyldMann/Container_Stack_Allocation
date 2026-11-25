@@ -151,7 +151,7 @@ def build(runtime, destination, *, branch_code=None, data_dir=None):
         archive.writestr("README.txt", f"Extract all files and open {ENTRY_PAGE} in Chrome or Microsoft Edge.\n"
                          "The package includes a copy of the CSVs and TOMLs from build time.\n"
                          "When using bundled CSVs, choose a yard branch from the dropdown.\n"
-                         "Set the four loader access switches around each block before starting its branch.\n"
+                         "Set the four border access switches around each block before starting its branch.\n"
                          "Each block's Save block access settings button enables only for changed borders and saves that block in this browser.\n"
                          "Download bundled CSVs (ZIP) includes the saved block_accessibility.csv and all branches.\n"
                          "Use Replace selected CSVs or Load from TOML to use newer data.\n"

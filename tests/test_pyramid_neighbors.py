@@ -67,7 +67,7 @@ class PyramidNeighborTests(unittest.TestCase):
                     for enabled in product((False, True), repeat=4):
                         with self.subTest(size=size, support=(support_side, row, slot), enabled=enabled):
                             options = {"stacking_safety_neighbor_" + side: flag for side, flag in zip(DIRECTIONS, enabled)}
-                            settings = FeasibilitySettings(loader_access=False, **options)
+                            settings = FeasibilitySettings(equipment_access=False, **options)
                             result = PlacementFeasibility(settings).evaluate(
                                 SimpleNamespace(getContSize=lambda: size), block, 1, 3,
                             )
@@ -98,7 +98,7 @@ class PyramidNeighborTests(unittest.TestCase):
                                 slot_count="6", max_tier="5", pos_x="0", pos_y="0",
                             )],
                             feasibility_settings=FeasibilitySettings(
-                                loader_access=False, stacking_safety_mode=mode,
+                                equipment_access=False, stacking_safety_mode=mode,
                                 stacking_safety_neighbor_right=right_enabled,
                             ),
                             heuristic_settings=HeuristicSettings(

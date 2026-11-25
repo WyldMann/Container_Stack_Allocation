@@ -111,9 +111,29 @@ test("scan order switch writes the selected mode into the preview TOML", async t
   assert.equal(await previewToml(), 'heuristic = { scan_order = "row_wise", enable_equipment_distance = false }\n');
 });
 
+test("equipment access controls can edit a TOML with legacy loader keys", async t => {
+  const page = await openPreview(t, 1);
+  await page.waitForFunction(() => !document.getElementById("generate-preview").disabled);
+  const group = page.getByRole("group", {name: "Equipment access", exact: true});
+  await group.getByText(/When the block’s RTG serves the placement/).waitFor();
+  const text = '[feasibility]\nloader_destination_access_mode = "heuristic"\n' +
+    '[heuristic]\nloader_inaccessible_destination_multiplier = 0.6\n';
+  await page.locator("#load-config").setInputFiles({
+    name: "legacy-access.toml", mimeType: "application/toml", buffer: Buffer.from(text)
+  });
+  await feedback(page, "Loaded legacy-access.toml.").waitFor();
+
+  const modes = group.getByRole("radiogroup", {name: "Check destination reachability"});
+  const weight = group.getByRole("textbox", {name: "Unreachable destination multiplier"});
+  assert.equal(await modes.getByRole("radio", {name: "Heuristic"}).isChecked(), true);
+  assert.equal(await weight.inputValue(), "0.6");
+  await weight.fill("0.7");
+  assert.equal(await page.evaluate(() => buildDraft().config_toml), text.replace("0.6", "0.7"));
+});
+
 test("block access switches show locks once the first inbound row is processed", async t => {
   const page = await openPreview(t, 2);
-  const switches = page.getByRole("switch", {name: /loader access/});
+  const switches = page.getByRole("switch", {name: /border access/});
   const locks = switches.locator(".yard-access-lock:visible");
   const above = switches.filter({hasText: "Above"}).first();
   await above.waitFor();
@@ -458,7 +478,7 @@ test("manual equipment refreshes as approaches change and allows a placement wit
   assert.equal(await equipment.inputValue(), "RS1");
   const block = page.locator(".yard-block").filter({has: page.getByRole("heading", {name: "Block B", exact: true})});
   for (const side of ["Below", "Left"]) {
-    await block.getByRole("switch", {name: new RegExp(side + ".*loader access", "i")}).click();
+    await block.getByRole("switch", {name: new RegExp(side + ".*border access", "i")}).click();
   }
   await picker.getByText("Manual override will place this container without equipment.", {exact: true}).waitFor();
   assert.equal(await equipment.isEnabled(), true);

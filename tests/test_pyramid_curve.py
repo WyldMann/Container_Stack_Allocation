@@ -37,13 +37,13 @@ class PyramidCurveTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ConfigurationError):
                 parse_config({"heuristic": {"stacking_safety_limit_multiplier": invalid}})
         with self.assertRaises(ConfigurationError):
-            parse_config({"feasibility": {"loader_access_mode": "combined"}})
+            parse_config({"feasibility": {"equipment_access_mode": "combined"}})
 
     def yard(self, size, mode):
         return Yard(
             yard_blocks_input=[dict(branch_id="B", block_id="A", block_code="A", row_count="3",
                                     slot_count="4", max_tier="6", pos_x="0", pos_y="0")],
-            feasibility_settings=FeasibilitySettings(loader_access=False, stacking_safety_mode=mode,
+            feasibility_settings=FeasibilitySettings(equipment_access=False, stacking_safety_mode=mode,
                                                      stacking_safety_penalty_start=1, stacking_safety_maxima=4),
             heuristic_settings=HeuristicSettings(enable_delta_container_mass=False, enable_equipment_distance=False,
                                                  enable_size_cluster=False, stacking_safety_limit_multiplier=0.25),

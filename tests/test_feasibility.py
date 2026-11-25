@@ -16,7 +16,7 @@ class FeasibilityTests(unittest.TestCase):
             branch_id='B', block_id='A', block_code='A', slot_count='4',
             row_count='3', max_tier='5', pos_x='0', pos_y='0',
         )
-        # These tests isolate size, pairing, and stacking safety from loader access.
+        # These tests isolate size, pairing, and stacking safety from equipment access.
         self.block.setRTG(RTG('RTG-1', ('A', 0, 0)))
 
     def fill(self, row_index, slot_index, container_size, count):
@@ -85,7 +85,7 @@ class FeasibilityTests(unittest.TestCase):
 
     def test_optional_rules_cannot_enable_placement_below_floating_contents(self):
         self.feasibility = PlacementFeasibility(FeasibilitySettings(
-            stacking_safety=False, loader_access=False,
+            stacking_safety=False, equipment_access=False,
         ))
         self.block.getStack(0, 1).addContainer(
             SimpleNamespace(getContSize=lambda: '20'), 2,

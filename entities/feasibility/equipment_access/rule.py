@@ -3,17 +3,17 @@ from collections.abc import Iterator, Set
 
 from ...block import Block
 from ..placement_proposal import PlacementProposal
-from .context import LoaderAccessContext
+from .context import EquipmentAccessContext
 from .models import (
-    LoaderAccessResult,
-    LoaderBorderAccessPolicy,
+    EquipmentAccessResult,
+    BlockBorderAccessPolicy,
     Position,
     ReceivingLocation,
 )
 
 
-class LoaderAccessRule:
-    """Check destination access and new isolation without modifying a block.
+class EquipmentAccessRule:
+    """Check ground equipment access and new isolation without modifying a block.
 
     Assumes contiguous stacks and a proposal that has already passed
     basic placement checks. Movement uses a single-cell grid model;
@@ -24,9 +24,9 @@ class LoaderAccessRule:
         self.allow_overcapacity = allow_overcapacity
 
     def prepare_context(
-        self, block: Block, policy: LoaderBorderAccessPolicy,
+        self, block: Block, policy: BlockBorderAccessPolicy,
         *, twenty_foot_side_access: bool = False,
-    ) -> LoaderAccessContext:
+    ) -> EquipmentAccessContext:
         """Prepare baseline data; reuse only while the block remains unchanged."""
         rows = block.getSlots()
         row_lengths = tuple(len(slots) for slots in rows)
@@ -48,7 +48,7 @@ class LoaderAccessRule:
             if self._can_serve(block, location, reachable, policy,
                                twenty_foot_side_access=twenty_foot_side_access)
         )
-        return LoaderAccessContext(
+        return EquipmentAccessContext(
             block, policy, row_lengths, ground, reachable, receiving, accessible,
             accessible_occupied, self.allow_overcapacity, twenty_foot_side_access,
         )
@@ -57,13 +57,13 @@ class LoaderAccessRule:
         self,
         block: Block,
         proposal: PlacementProposal,
-        policy: LoaderBorderAccessPolicy,
+        policy: BlockBorderAccessPolicy,
         *,
-        context: LoaderAccessContext | None = None,
-        preserve_future_loader_access: bool = True,
+        context: EquipmentAccessContext | None = None,
+        preserve_future_access: bool = True,
         twenty_foot_side_access: bool = False,
         destination_side_access: bool | None = None,
-    ) -> LoaderAccessResult:
+    ) -> EquipmentAccessResult:
         """Preserve fleet access, optionally restricting service to the selected loader.
 
         RS availability enables side access for occupied and future locations.
@@ -77,7 +77,7 @@ class LoaderAccessRule:
         elif (context.block is not block or context.policy != policy
               or context.allow_overcapacity != self.allow_overcapacity
               or context.twenty_foot_side_access != twenty_foot_side_access):
-            raise ValueError("Loader access context belongs to a different block, policy, or capability profile.")
+            raise ValueError("Equipment access context belongs to a different block, policy, or capability profile.")
 
         destination = ReceivingLocation(proposal.row_index, proposal.slot_index, proposal.container_size)
         destination_accessible = self._can_serve(
@@ -92,12 +92,12 @@ class LoaderAccessRule:
         # Identical ground means identical access for every surviving destination,
         # even if filling the top tier changes receiving-location eligibility.
         if not blocked:
-            return LoaderAccessResult(destination_accessible=destination_accessible)
+            return EquipmentAccessResult(destination_accessible=destination_accessible)
 
         reachable_after = self._reachable_after(context, blocked)
         occupied = context.accessible_occupied_locations
         receiving = frozenset()
-        if preserve_future_loader_access:
+        if preserve_future_access:
             removed, _ = self._receiving_changes(block, proposal, context)
             receiving = context.accessible_locations - removed
         isolated = sorted(
@@ -106,7 +106,7 @@ class LoaderAccessRule:
                                     twenty_foot_side_access=twenty_foot_side_access)),
             key=lambda location: (location.row_index, location.slot_index, location.container_size),
         )
-        return LoaderAccessResult(
+        return EquipmentAccessResult(
             isolated_locations=tuple(location for location in isolated if location in receiving),
             destination_accessible=destination_accessible,
             isolated_occupied_locations=tuple(location for location in isolated if location in occupied),
@@ -160,7 +160,7 @@ class LoaderAccessRule:
     def _search_ground(
         row_lengths: tuple[int, ...],
         ground: frozenset[Position],
-        policy: LoaderBorderAccessPolicy,
+        policy: BlockBorderAccessPolicy,
         blocked: frozenset[Position] = frozenset(),
     ) -> frozenset[Position]:
         reachable: set[Position] = set()
@@ -192,14 +192,14 @@ class LoaderAccessRule:
         return frozenset(reachable)
 
     def _reachable_after(
-        self, context: LoaderAccessContext, blocked: frozenset[Position],
+        self, context: EquipmentAccessContext, blocked: frozenset[Position],
     ) -> frozenset[Position]:
         return self._search_ground(
             context.row_lengths, context.ground, context.policy, blocked,
         )
 
     def _reachable_ground(
-        self, block: Block, policy: LoaderBorderAccessPolicy,
+        self, block: Block, policy: BlockBorderAccessPolicy,
         proposal: PlacementProposal | None = None,
     ) -> set[Position]:
         """Calculate standalone reachability, also used by diagnostic callers."""
@@ -252,7 +252,7 @@ class LoaderAccessRule:
         }
 
     def _receiving_changes(
-        self, block: Block, proposal: PlacementProposal, context: LoaderAccessContext,
+        self, block: Block, proposal: PlacementProposal, context: EquipmentAccessContext,
     ) -> tuple[frozenset[ReceivingLocation], frozenset[ReceivingLocation]]:
         """Return removed/added destinations, inspecting only affected anchors."""
         slots = {slot_index for _, _, slot_index in proposal.footprint}
@@ -272,7 +272,7 @@ class LoaderAccessRule:
     @staticmethod
     def _can_serve(
         block: Block, location: ReceivingLocation,
-        reachable: Set[Position], policy: LoaderBorderAccessPolicy,
+        reachable: Set[Position], policy: BlockBorderAccessPolicy,
         *, twenty_foot_side_access: bool = False,
     ) -> bool:
         row_count = len(block.getSlots())

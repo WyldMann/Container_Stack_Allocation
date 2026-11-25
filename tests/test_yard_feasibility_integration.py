@@ -139,13 +139,13 @@ class UnplannedStackSelectionTests(unittest.TestCase):
         self.add_parameter(2, 2)
         self.yard.getStack('A', 0, 1).makeVoid()
         access = {}
-        expected = self.yard.findCoordsCandidates(self.container, loader_access_results=access)
+        expected = self.yard.findCoordsCandidates(self.container, equipment_access_results=access)
         traced_access = {}
         rejections = {}
         evaluator = self.yard.feasibility
         with patch.object(evaluator, 'evaluate', wraps=evaluator.evaluate) as evaluate:
             actual = self.yard.findCoordsCandidates(
-                self.container, rejection_counts=rejections, loader_access_results=traced_access,
+                self.container, rejection_counts=rejections, equipment_access_results=traced_access,
             )
 
         self.assertEqual(actual, expected)
@@ -187,7 +187,7 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                 with self.subTest(size=size, mode=mode):
                     yard, incoming, record = self.make_yard(
                         size, floating=False,
-                        settings=FeasibilitySettings(stacking_safety_mode=mode, loader_access=False),
+                        settings=FeasibilitySettings(stacking_safety_mode=mode, equipment_access=False),
                         heuristic=HeuristicSettings(
                             enable_delta_container_mass=False, enable_equipment_distance=False,
                             enable_size_cluster=False, unsafe_stacking_multiplier=0.2,
@@ -228,7 +228,7 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                             size, floating=False,
                             settings=FeasibilitySettings(
                                 stacking_safety_mode=mode, stacking_safety_maxima=maxima,
-                                loader_access=False,
+                                equipment_access=False,
                             ),
                             heuristic=HeuristicSettings(
                                 enable_delta_container_mass=False, enable_equipment_distance=False,
@@ -253,7 +253,7 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                             yard.addContainerByCoords(incoming, coordinate)
                             self.assertIs(yard.getStack(*coordinate[:3]).getContainer(2), incoming)
 
-    def test_stack_capacity_modes_with_loader_access_and_paired_placement(self):
+    def test_stack_capacity_modes_with_equipment_access_and_paired_placement(self):
         for size, anchor in (('20', 0), ('40', 1)):
             for mode in ('feasibility', 'heuristic', 'off'):
                 with self.subTest(size=size, mode=mode):
@@ -271,7 +271,7 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                     stack = yard.getStack('A', 0, anchor)
                     coordinates = ('A', 0, anchor, 1)
                     result = yard.assignContainer(incoming)
-                    context = yard.feasibility.prepare_loader_context(yard.getBlockByID('A'))
+                    context = yard.feasibility.prepare_access_context(yard.getBlockByID('A'))
                     self.assertEqual(any(location.slot_index == anchor and location.container_size == size
                                          for location in context.receiving_locations), mode != 'feasibility')
                     self.assertEqual(stack.occupancy(), 1)
@@ -382,7 +382,7 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                 self.assertEqual(yard.bad_data.getIncompleteInboundContainers(), [])
 
     def test_direct_placement_rejects_unrepaired_anomalies_with_optional_rules_disabled(self):
-        settings = FeasibilitySettings(stacking_safety=False, loader_access=False)
+        settings = FeasibilitySettings(stacking_safety=False, equipment_access=False)
         for container_size in ('20', '40'):
             with self.subTest(container_size=container_size):
                 yard, incoming, record = self.make_yard(container_size, floating=False, settings=settings)
@@ -416,7 +416,7 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                 self.assertEqual(self.snapshot(yard), before)
 
     def test_assignment_above_repaired_tiers_preserves_dummies(self):
-        settings = FeasibilitySettings(stacking_safety=False, loader_access_mode='feasibility')
+        settings = FeasibilitySettings(stacking_safety=False, equipment_access_mode='feasibility')
         for size, slot_count in (('20', 1), ('40', 2)):
             with self.subTest(size=size):
                 yard, incoming, _ = self.make_yard(size, slots=slot_count, tiers=4, settings=settings)
@@ -429,7 +429,7 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                     self.assertEqual(stack.getDummyTiers(), [0, 1])
                     self.assertEqual(stack.getMode(), size)
                     self.assertEqual(stack.occupancy(), 3)
-                context = yard.feasibility.prepare_loader_context(block)
+                context = yard.feasibility.prepare_access_context(block)
                 self.assertIn((0, slot_count - 1, size), {
                     (location.row_index, location.slot_index, location.container_size)
                     for location in context.accessible_occupied_locations
@@ -526,7 +526,7 @@ class AnomalousStackSelectionTests(unittest.TestCase):
                         registered_containers=yard.containers,
                         master_loaders=yard.master_loaders,
                         feasibility=yard.feasibility,
-                        loader_policies=yard.loader_access_policies,
+                        border_policies=yard.border_access_policies,
                     )
                     self.assertEqual(validated.proposal.coordinates, candidate.coordinates)
                 self.assertEqual(self.snapshot(yard), before)

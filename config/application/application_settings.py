@@ -19,15 +19,15 @@ class ApplicationSettings:
                 **{"stacking_safety_neighbor_" + direction: getattr(settings, "stacking_safety_neighbor_" + direction)
                    for direction in ("up", "down", "left", "right")},
                 "stack_capacity_mode": settings.stack_capacity_mode,
-                **({"loader_access_mode": settings.effective_loader_access_mode}
-                   if settings.loader_destination_access_mode is None
-                   or settings.preserve_occupied_loader_access_mode is None else {}),
-                **({"loader_destination_access_mode": settings.loader_destination_access_mode}
-                   if settings.loader_destination_access_mode is not None else {}),
-                **({"preserve_occupied_loader_access_mode": settings.preserve_occupied_loader_access_mode}
-                   if settings.preserve_occupied_loader_access_mode is not None else {}),
-                "preserve_future_loader_access_mode": settings.effective_future_loader_access_mode,
-                "ignore_full_stacks_for_loader_access": settings.ignore_full_stacks_for_loader_access,
+                **({"equipment_access_mode": settings.effective_equipment_access_mode}
+                   if settings.destination_access_mode is None
+                   or settings.preserve_occupied_access_mode is None else {}),
+                **({"destination_access_mode": settings.destination_access_mode}
+                   if settings.destination_access_mode is not None else {}),
+                **({"preserve_occupied_access_mode": settings.preserve_occupied_access_mode}
+                   if settings.preserve_occupied_access_mode is not None else {}),
+                "preserve_future_access_mode": settings.effective_future_access_mode,
+                "ignore_stacks_without_legal_next_tier": settings.ignore_stacks_without_legal_next_tier,
             },
             "heuristic": {name: value for name, value in asdict(self.heuristic).items() if value is not None},
         }

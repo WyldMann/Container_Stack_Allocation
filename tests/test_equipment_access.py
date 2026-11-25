@@ -2,21 +2,21 @@ import unittest
 from types import SimpleNamespace
 
 from entities.block import Block
-from entities.feasibility.loader_access import (
-    LoaderBorderAccessPolicy, LoaderAccessRule, ReceivingLocation,
+from entities.feasibility.equipment_access import (
+    BlockBorderAccessPolicy, EquipmentAccessRule, ReceivingLocation,
 )
 from entities.feasibility.placement_proposal import PlacementProposal
 
 
-class LoaderAccessTests(unittest.TestCase):
+class EquipmentAccessTests(unittest.TestCase):
     def setUp(self):
         self.block = Block(
             branch_id='B', block_id='A', block_code='A',
             slot_count='4', row_count='5', max_tier='3',
             pos_x='0', pos_y='0',
         )
-        self.rule = LoaderAccessRule()
-        self.policy = LoaderBorderAccessPolicy()
+        self.rule = EquipmentAccessRule()
+        self.policy = BlockBorderAccessPolicy()
         # Full stacks form obstacles without receiving capacity.
         for row_index in range(5):
             for slot_index in range(4):
@@ -81,7 +81,7 @@ class LoaderAccessTests(unittest.TestCase):
             with self.subTest(side=side):
                 self.assertTrue(self.can_serve(2, slot, twenty_foot_side_access=True))
                 self.assertFalse(self.can_serve(
-                    2, slot, policy=LoaderBorderAccessPolicy(**{side: False}), twenty_foot_side_access=True,
+                    2, slot, policy=BlockBorderAccessPolicy(**{side: False}), twenty_foot_side_access=True,
                 ))
 
     def test_rs_cannot_serve_from_disconnected_side_ground(self):
@@ -222,7 +222,7 @@ class LoaderAccessTests(unittest.TestCase):
         self.assertTrue(self.can_serve(0, 1))
         self.assertTrue(self.can_serve(4, 1, '40'))
         self.assertFalse(self.can_serve(
-            0, 1, policy=LoaderBorderAccessPolicy(above=False),
+            0, 1, policy=BlockBorderAccessPolicy(above=False),
         ))
 
     def test_closed_entry_border_does_not_seed_reachability(self):
@@ -231,7 +231,7 @@ class LoaderAccessTests(unittest.TestCase):
         self.set_stack(3, 1, count=1)
         self.assertTrue(self.can_serve(3, 1))
         self.assertFalse(self.can_serve(
-            3, 1, policy=LoaderBorderAccessPolicy(left=False),
+            3, 1, policy=BlockBorderAccessPolicy(left=False),
         ))
 
     def test_unreachable_empty_area_does_not_provide_service(self):

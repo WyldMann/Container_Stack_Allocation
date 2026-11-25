@@ -23,8 +23,12 @@ input files at once. The folder must contain all nine CSVs named in **Input
 configuration**. A missing or ambiguous file leaves the previous selection
 intact. The bundled TOML already names the standard CSV files.
 
-**Currently loader accessible** checks whether the loader can reach the
-destination before placement. **Preserve access to occupied stacks** and
+**Equipment access** checks whether equipment can reach a proposed placement
+and whether placing the container would cut off access to occupied stacks or
+future receiving locations. Loaders and reach stackers use ground access.
+When the block's RTG serves the placement, the ground-access checks are
+skipped. **Check destination reachability** checks access before placement.
+**Preserve access to occupied stacks** and
 **Preserve access to future receiving locations** check which locations would
 lose access after placement. Each rule has its own mode and enables its weight
 in **Heuristic** mode. The default unreachable destination multiplier is 0.25.
@@ -35,19 +39,19 @@ with no legal next tier for their container size before placement. The check
 uses the hard placement rules, including enforced tier capacity, pyramid
 support, and 40-foot pairing. Future receiving access also uses these rules to
 determine which receiving locations have room. The toggle uses the existing
-`ignore_full_stacks_for_loader_access` setting in TOML.
+`ignore_stacks_without_legal_next_tier` setting in TOML.
 
-Each block has **Above**, **Below**, **Left**, and **Right** access switches around
-its grid. Set them before starting that branch's simulation. Green **Open** and
-red **Closed** states control loader entry; Above and Below also provide exterior
+Each block has **Above**, **Below**, **Left**, and **Right** border access switches
+around its grid. Set them before starting that branch's simulation. Open borders
+allow loaders and reach stackers to enter. Above and Below also provide exterior
 working space. Reach stackers (`EQUIPMENT_TYPE = RS`) can serve 20 ft containers
 from reachable ground on any of the four sides, including exterior working space
 at an open Left or Right border. Other loaders retain Above/Below service, and
 40 ft containers still need two aligned working positions Above or Below.
-Equipment selection checks the selected loader's capability; access preservation
+Equipment selection checks the selected unit's capability. Access preservation
 includes RS approaches whenever an RS is registered in the yard.
 The switches lock after the first inbound row is processed.
-Unlisted blocks default to all four borders open, and RTG service remains exempt.
+Unlisted blocks default to all four borders open.
 
 Each block's **Save block access settings** button is grey until at least one border differs
 from its saved setting. Returning all switches to their saved values disables
@@ -239,14 +243,15 @@ installed Codex runtime when available. Each editor shows its loaded file and of
    the **Block**, **Row**, **Slot**, and **Tier** dropdowns. **Auto-select open tier** starts on and picks the lowest
    unoccupied tier across the footprint. Turn it off to select a tier directly.
    **Use selected stack** fills in the stack, its lowest open tier, and the preferred
-   reachable equipment. It prefers the block's RTG, then the closest loader in the
-   block, then a loader from the nearest block. You can choose another reachable option.
+   reachable equipment. It prefers the block's RTG, then the closest loader or
+   reach stacker in the block, then one from the nearest block. You can choose
+   another reachable option.
    A 40 ft container uses a complete slot pair. The simulator asks for
    confirmation before replacing an occupant in the selected footprint.
    The picker also warns if either stack in the footprint contains a different container size.
-   Choose **Equipment** for the selected stack. The block's RTG and loaders that can
-   reach the footprint appear under **Can reach this stack**. Other loaders appear
-   as disabled options under **Cannot reach this stack**.
+   Choose **Equipment** for the selected stack. The block's RTG and any loaders or
+   reach stackers that can reach the footprint appear under **Can reach this stack**.
+   Ground equipment that cannot reach it appears disabled under **Cannot reach this stack**.
    The simulator selects a sole option automatically and updates the chosen equipment's
    location when the placement is committed. If no equipment can reach the stack,
    **Place using manual input** can still assign the container without equipment.

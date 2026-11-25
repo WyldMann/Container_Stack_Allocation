@@ -311,7 +311,7 @@ class PlacementAtomicityTests(unittest.TestCase):
             registered_containers=yard.containers,
             master_loaders=yard.master_loaders,
             feasibility=yard.feasibility,
-            loader_policies=yard.loader_access_policies,
+            border_policies=yard.border_access_policies,
         )
         self.assertEqual(validated.proposal.coordinates, ("B", 0, 1, 0))
         self.assertIs(validated.equipment, equipment)

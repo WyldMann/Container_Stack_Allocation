@@ -29,9 +29,9 @@ class HeuristicSettings:
     enable_size_cluster: bool = True
     enable_size_cluster_reward: bool | None = None
     enable_size_cluster_penalty: bool | None = None
-    loader_inaccessible_destination_multiplier: float = 0.25
-    loader_occupied_access_loss_weight: float = 1.0
-    loader_future_access_loss_weight: float = 1.0
+    unreachable_destination_multiplier: float = 0.25
+    occupied_access_loss_weight: float = 1.0
+    future_access_loss_weight: float = 1.0
     unsafe_stacking_multiplier: float = 0.25
     stacking_safety_limit_multiplier: float | None = None
     overcapacity_tier_multiplier: float = 0.01
@@ -88,7 +88,7 @@ class HeuristicSettings:
             if not finite:
                 raise ValueError(f"{name} must be finite.")
             if name in (
-                "loader_inaccessible_destination_multiplier", "unsafe_stacking_multiplier",
+                "unreachable_destination_multiplier", "unsafe_stacking_multiplier",
                 "stacking_safety_limit_multiplier",
                 "overcapacity_tier_multiplier",
             ):
@@ -96,8 +96,8 @@ class HeuristicSettings:
                     raise ValueError(f"{name} must be between 0 and 1.")
             elif name in (
                 "size_cluster_bias", "size_cluster_reward_bias", "size_cluster_penalty_bias",
-                "loader_occupied_access_loss_weight",
-                "loader_future_access_loss_weight", "no_delta_container_mass_value",
+                "occupied_access_loss_weight",
+                "future_access_loss_weight", "no_delta_container_mass_value",
                 "heavier_container_fallback_score",
             ):
                 if value < 0:

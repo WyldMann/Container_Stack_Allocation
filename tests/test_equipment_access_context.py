@@ -8,12 +8,12 @@ from unittest.mock import Mock, patch
 from config import FeasibilitySettings
 from entities.block import Block
 from entities.equipment import RTG
-from entities.feasibility.loader_access import LoaderAccessRule, LoaderBorderAccessPolicy
+from entities.feasibility.equipment_access import EquipmentAccessRule, BlockBorderAccessPolicy
 from entities.feasibility.placement_feasibility import PlacementFeasibility
 from entities.feasibility.placement_proposal import PlacementProposal
 from entities.yard import Yard
-from tests.loader_access_reference import (
-    LoaderAccessRule as ReferenceAccessRule,
+from tests.equipment_access_reference import (
+    EquipmentAccessRule as ReferenceAccessRule,
     ReferencePlacementFeasibility,
 )
 
@@ -44,10 +44,10 @@ def result_signature(result):
     )
 
 
-class LoaderAccessContextTests(unittest.TestCase):
+class EquipmentAccessContextTests(unittest.TestCase):
     def setUp(self):
-        self.rule = LoaderAccessRule()
-        self.policy = LoaderBorderAccessPolicy()
+        self.rule = EquipmentAccessRule()
+        self.policy = BlockBorderAccessPolicy()
         self.block = Block(**block_input())
 
     def test_snapshot_is_immutable_and_does_not_mutate_block(self):
@@ -58,7 +58,7 @@ class LoaderAccessContextTests(unittest.TestCase):
         ]
         context = self.rule.prepare_context(self.block, self.policy)
         with self.assertRaises(FrozenInstanceError):
-            context.policy = LoaderBorderAccessPolicy(False, False, False, False)
+            context.policy = BlockBorderAccessPolicy(False, False, False, False)
         for values in (context.ground, context.reachable_ground,
                        context.receiving_locations, context.accessible_locations):
             self.assertIsInstance(values, frozenset)
@@ -77,7 +77,7 @@ class LoaderAccessContextTests(unittest.TestCase):
         proposal = PlacementProposal('A', 0, 0, 0, '20')
         for block, policy in (
             (Block(**block_input()), self.policy),
-            (self.block, LoaderBorderAccessPolicy(above=False)),
+            (self.block, BlockBorderAccessPolicy(above=False)),
         ):
             with self.subTest(block=block, policy=policy), self.assertRaises(ValueError):
                 self.rule.evaluate(block, proposal, policy, context=context)
@@ -135,19 +135,19 @@ class LoaderAccessContextTests(unittest.TestCase):
                 self.assertNotIn((1, 1, '40'), locations(context.receiving_locations))
                 self.assertIn((1, 3, '40'), locations(context.receiving_locations))
 
-    def test_future_loader_access_does_not_protect_an_unusable_destination(self):
+    def test_future_equipment_access_does_not_protect_an_unusable_destination(self):
         fill(self.block, 0, 0)
         container = SimpleNamespace(getContSize=lambda: '20')
         self.block.getStack(1, 0).addContainer(container, 2)
         for mode in ('feasibility', 'heuristic'):
             with self.subTest(mode=mode):
                 feasibility = PlacementFeasibility(FeasibilitySettings(
-                    loader_access_mode=mode, preserve_future_loader_access_mode=mode,
+                    equipment_access_mode=mode, preserve_future_access_mode=mode,
                 ))
                 result = feasibility.evaluate(container, self.block, 2, 1)
 
                 self.assertEqual(result.coordinates, ('A', 2, 1, 0))
-                self.assertEqual(result.loader_access.isolated_locations, ())
+                self.assertEqual(result.equipment_access.isolated_locations, ())
 
     def test_ground_placement_runs_one_search_and_no_whole_block_receiving_scan(self):
         context = self.rule.prepare_context(self.block, self.policy)
@@ -191,7 +191,7 @@ class LoaderAccessContextTests(unittest.TestCase):
                         slot_index += 1
 
                 for borders in itertools.product((False, True), repeat=4):
-                    policy = LoaderBorderAccessPolicy(*borders)
+                    policy = BlockBorderAccessPolicy(*borders)
                     context = self.rule.prepare_context(block, policy, **capabilities)
                     for row_index in range(row_count):
                         for slot_index in range(slot_count):
@@ -222,7 +222,7 @@ class LoaderAccessContextTests(unittest.TestCase):
         self.assertGreater(comparisons, 1000)
 
 
-class LoaderAccessContextIntegrationTests(unittest.TestCase):
+class EquipmentAccessContextIntegrationTests(unittest.TestCase):
     def make_yard(self, settings=None):
         yard = Yard([block_input(block_id='A'), block_input(block_id='B')],
                     feasibility_settings=settings)
@@ -238,7 +238,7 @@ class LoaderAccessContextIntegrationTests(unittest.TestCase):
     def test_context_prepared_once_per_block_and_refreshed_after_changes(self):
         yard = self.make_yard()
         container = SimpleNamespace(getContSize=lambda: '20')
-        rule = yard.feasibility.loader_access
+        rule = yard.feasibility.equipment_access
         contexts = []
         prepare = rule.prepare_context
 
@@ -252,7 +252,7 @@ class LoaderAccessContextIntegrationTests(unittest.TestCase):
             self.assertEqual(prepare_spy.call_count, 2)
             # A real storage mutation and policy change between searches.
             fill(yard.getBlockByID('A'), 0, 0)
-            yard.loader_access_policies['B'] = LoaderBorderAccessPolicy(False, False, False, False)
+            yard.border_access_policies['B'] = BlockBorderAccessPolicy(False, False, False, False)
             second = yard.findCoordsCandidates(container)
             self.assertEqual(prepare_spy.call_count, 4)
         self.assertNotEqual(first, second)
@@ -265,12 +265,12 @@ class LoaderAccessContextIntegrationTests(unittest.TestCase):
 
     def test_preparation_skipped_for_disabled_access_and_rtg_blocks(self):
         for enabled in (False, True):
-            yard = self.make_yard(FeasibilitySettings(loader_access=enabled))
+            yard = self.make_yard(FeasibilitySettings(equipment_access=enabled))
             for block in yard.blocks_by_id.values():
                 block.setRTG(RTG('R-' + block.getId(), (block.getId(), 0, 0)))
             if not enabled:
                 yard.getBlockByID('A').rtg = None
-            rule = yard.feasibility.loader_access
+            rule = yard.feasibility.equipment_access
             with patch.object(rule, 'prepare_context', wraps=rule.prepare_context) as prepare:
                 yard.findCoordsCandidates(SimpleNamespace(getContSize=lambda: '20'))
             prepare.assert_not_called()
@@ -280,7 +280,7 @@ class LoaderAccessContextIntegrationTests(unittest.TestCase):
         fill(yard.getBlockByID('A'), 1, 0, '40')
         fill(yard.getBlockByID('A'), 1, 1, '40')
         yard.getStack('B', 1, 2).makeVoid()
-        yard.loader_access_policies['B'] = LoaderBorderAccessPolicy(above=False)
+        yard.border_access_policies['B'] = BlockBorderAccessPolicy(above=False)
         optimized = yard.feasibility
         reference = ReferencePlacementFeasibility(optimized.settings)
         for container_size in ('20', '40'):
@@ -290,18 +290,18 @@ class LoaderAccessContextIntegrationTests(unittest.TestCase):
             yard.feasibility = reference
             self.assertEqual(actual, yard.findCoordsCandidates(container))
             for block in yard.blocks_by_id.values():
-                policy = yard.loader_access_policies.get(block.getId())
-                context = optimized.prepare_loader_context(block, policy)
+                policy = yard.border_access_policies.get(block.getId())
+                context = optimized.prepare_access_context(block, policy)
                 for row_index, stacks in enumerate(block.getSlots()):
                     for slot_index in range(len(stacks)):
-                        expected = reference.evaluate(container, block, row_index, slot_index, loader_policy=policy)
+                        expected = reference.evaluate(container, block, row_index, slot_index, border_policy=policy)
                         actual = optimized.evaluate(container, block, row_index, slot_index,
-                                                    loader_policy=policy, loader_context=context)
+                                                    border_policy=policy, access_context=context)
                         self.assertEqual(actual.coordinates, expected.coordinates)
                         self.assertEqual(actual.rejection_reason, expected.rejection_reason)
                         self.assertEqual(
-                            result_signature(actual.loader_access) if actual.loader_access else None,
-                            result_signature(expected.loader_access) if expected.loader_access else None,
+                            result_signature(actual.equipment_access) if actual.equipment_access else None,
+                            result_signature(expected.equipment_access) if expected.equipment_access else None,
                         )
 
 
