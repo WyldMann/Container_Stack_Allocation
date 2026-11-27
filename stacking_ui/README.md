@@ -59,11 +59,11 @@ includes left and right approaches when side access is enabled and an RS is regi
 The switches lock after the first inbound row is processed.
 Unlisted blocks default to all four borders open.
 
-The **Start stacking from** section in **Block settings** has a switch labeled
-**Prefer this row or slot**. It starts off for each block. Choose **Row** or
-**Slot** and set the start number while scoring is off. The grey fields remain editable. An empty
-half-score distance uses two rows or slots. Turn the switch on to apply that
-block’s preference immediately.
+The **Enable** switch under **Start stacking from** in **Block settings** starts
+off for each block. Choose **Row** or **Slot** and set the start number while
+scoring is off. The grey fields remain editable. An empty half-score distance
+uses two rows or slots. Turn the switch on to apply that block’s preference
+immediately.
 **Save block settings** keeps the switch state and the preference. Block settings
 lock after the branch processes its first inbound row.
 

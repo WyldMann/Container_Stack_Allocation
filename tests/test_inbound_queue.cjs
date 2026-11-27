@@ -134,7 +134,7 @@ test("block settings grey the editable preference fields when scoring is off", a
   const a = page.getByRole("dialog", {name: "Block A settings"});
   const b = page.getByRole("dialog", {name: "Block B settings"});
   const stackingStart = dialog => dialog.getByRole("group", {name: "Start stacking from"})
-    .getByRole("switch", {name: "Prefer this row or slot"});
+    .getByRole("switch", {name: "Enable"});
   const optionsBackground = dialog => dialog.locator(".yard-stacking-start-options")
     .evaluate(options => getComputedStyle(options).backgroundColor);
   const start = a.getByRole("spinbutton", {name: "Start number"});

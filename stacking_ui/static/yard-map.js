@@ -143,7 +143,7 @@ function blockStackingStartEditor(block, onChange) {
   const track = el("span", undefined, "toml-switch-track");
   track.setAttribute("aria-hidden", "true");
   toggle.append(enabled, track);
-  const enabledLabel = el("label", "Prefer this row or slot", "yard-stacking-start-toggle");
+  const enabledLabel = el("label", "Enable", "yard-stacking-start-toggle");
   enabledLabel.append(toggle);
   fields.append(enabledLabel);
   const mode = el("select");
