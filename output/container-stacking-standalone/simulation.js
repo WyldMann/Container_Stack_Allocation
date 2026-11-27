@@ -415,7 +415,15 @@ async function simulationView(run, branches, id, onStart, stackEdits) {
       });
       await loadSuggestion({yardEdited: true});
     },
-    onSave: block => globalThis.saveStackingBlockAccess({id, branch: branch.branch_code, block_id: block.id}),
+    onStackingStart: globalThis.updateStackingBlockStart ? async (block, preference) => {
+      const result = await globalThis.updateStackingBlockStart({id, branch: branch.branch_code, block_id: block.id, preference});
+      if (!finished() && (result.effective.enabled || block.stacking_start.effective.enabled)) {
+        await loadSuggestion({yardEdited: true});
+      }
+      return result;
+    } : null,
+    onSave: globalThis.saveStackingBlockSettings ? block =>
+      globalThis.saveStackingBlockSettings({id, branch: branch.branch_code, block_id: block.id}) : null,
     onSelectionChange: () => {
       if (!busy) picker.refreshSelectedStack();
     }
@@ -654,7 +662,7 @@ async function simulationView(run, branches, id, onStart, stackEdits) {
   }
 
   async function addContainer(fields) {
-    if (map.accessBusy()) throw new Error("Wait for the yard access change to finish.");
+    if (map.accessBusy()) throw new Error("Wait for the block settings change to finish.");
     const row = await globalThis.addStackingQueueRow({id, branch: branch.branch_code, ...fields});
     queue.appendCard(row);
     clearComparison();
@@ -914,6 +922,7 @@ const multiplierLabels = {
   occupied_access_multiplier: "Occupied access preservation multiplier",
   future_access_multiplier: "Future access preservation multiplier",
   stacking_safety_multiplier: "Pyramid stacking multiplier",
+  stacking_start_multiplier: "Start location multiplier",
   capacity_multiplier: "Stack capacity multiplier"
 };
 
@@ -930,10 +939,13 @@ function equipmentAccessValues(candidate) {
 }
 
 function heuristicRows(candidate, multipliers = Object.keys(multiplierLabels)) {
+  const start = candidate.stacking_start;
   return [
     ...(!hasEquipmentAccessDetails(candidate) ? [] :
       equipmentAccessValues(candidate).map((value, i) => [equipmentAccessLabels[i], value])),
     ...(candidate.overcapacity_tiers ? [["Tiers above capacity", candidate.overcapacity_tiers]] : []),
+    ...(start && multipliers.includes("stacking_start_multiplier") ? [["Start stacking from", stackingStartLabel(start) +
+      (start.half_distance == null ? "" : " · Half score at " + traceNumber(start.half_distance))]] : []),
     ...multipliers.map(key => [multiplierLabels[key], traceNumber(candidate[key])]),
     ["Heuristic score", traceNumber(candidate.score)]
   ];

@@ -99,28 +99,29 @@
   }
 
   globalThis.stackingStandalone = true;
-  const accessStorageKey = "container-stacking:block-access:" + STACKING_BUNDLE_ID;
-  let restoredAccess;
-  function restoreAccess() {
-    return restoredAccess ??= (async () => {
+  const blockSettingsStorageKey = "container-stacking:block-access:" + STACKING_BUNDLE_ID;
+  let restoredBlockSettings;
+  function restoreBlockSettings() {
+    return restoredBlockSettings ??= (async () => {
       let text;
-      try { text = localStorage.getItem(accessStorageKey); } catch { return; }
-      if (text) await request({op: "restore_block_access", text});
+      try { text = localStorage.getItem(blockSettingsStorageKey); } catch { return; }
+      if (text) await request({op: "restore_block_settings", text});
     })();
   }
   globalThis.generateStackingPreview = async draft => {
-    await restoreAccess();
+    await restoreBlockSettings();
     return request({op: "preview", draft});
   };
   globalThis.updateStackingBlockAccess = access => request({...access, op: "update_block_access"});
-  globalThis.saveStackingBlockAccess = async access => {
-    const saved = await request({...access, op: "save_block_access"});
-    try { localStorage.setItem(accessStorageKey, saved.text); }
-    catch { throw new Error("Could not remember block access in this browser. Allow local storage and save again."); }
+  globalThis.updateStackingBlockStart = preference => request({...preference, op: "update_block_stacking_start"});
+  globalThis.saveStackingBlockSettings = async settings => {
+    const saved = await request({...settings, op: "save_block_settings"});
+    try { localStorage.setItem(blockSettingsStorageKey, saved.text); }
+    catch { throw new Error("Could not remember block settings in this browser. Allow local storage and save again."); }
     return saved;
   };
   globalThis.downloadStackingBundledCsvs = async () => {
-    await restoreAccess();
+    await restoreBlockSettings();
     const archive = await request({op: "bundled_csvs"});
     const bytes = Uint8Array.fromBase64?.(archive.base64) ??
       Uint8Array.from(atob(archive.base64), char => char.charCodeAt(0));

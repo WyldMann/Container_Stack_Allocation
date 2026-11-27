@@ -4,7 +4,7 @@ const $ = id => document.getElementById(id);
 const descriptions = {
   terminal_branches: ["Terminal branches", "Branch codes, IDs, and display names."],
   yard_blocks: ["Yard blocks", "Dimensions, tier limits, and block positions."],
-  block_accessibility: ["Block border access", "Set which borders allow ground equipment to enter or work from outside the block. All borders are open by default."],
+  block_accessibility: ["Block settings", "Set border access and choose where to start stacking in each block. Unlisted blocks have open borders and no preference."],
   existing_containers: ["Current containers", "The current yard snapshot."],
   inbound_containers: ["Inbound containers", "CSV rows set the initial queue order."],
   removed_slots: ["Removed slots", "Locations unavailable for stacking."],
@@ -20,6 +20,10 @@ const tomlEditors = {
 };
 const tomlDocuments = {};
 const scanOrderPath = "heuristic.scan_order";
+const stackingStartAxisPath = "heuristic.stacking_start_axis";
+const stackingStartPositionPath = "heuristic.stacking_start_position";
+const stackingStartHalfDistancePath = "heuristic.hl_stacking_start_distance";
+const reachStackerSideAccessPath = "feasibility.reach_stacker_20ft_side_access";
 const ruleModes = ["off", "heuristic", "feasibility"];
 const accessModeKeys = ["destination_access_mode", "preserve_occupied_access_mode", "preserve_future_access_mode"];
 const ruleModeKeys = ["stacking_safety_mode", "stack_capacity_mode", ...accessModeKeys];
@@ -85,10 +89,10 @@ const placementGroups = [
   }},
   {title: "Equipment access", description:
     "Check whether equipment can reach the proposed placement and whether placing the container would cut off access to occupied stacks or future receiving locations. " +
-    "Loaders and reach stackers (RS) use open borders and reachable working space. Reach stackers can also serve 20 ft containers from the left or right when working space is available. " +
+    "Loaders and reach stackers (RS) use open borders and reachable working space. " +
     "When the block’s RTG serves the placement, the ground-access checks are skipped. " +
     "Off skips the rule. Reduce score lowers the placement score when the rule is not met. Reject prevents placements that fail the rule.",
-  diagramTemplate: "equipment-reach-diagram",
+  diagram: equipmentReachDiagram,
   rowGraphs: ["destination", "occupied", "future"],
   optionRows: [
     ["feasibility.destination_access_mode", "heuristic.unreachable_destination_multiplier"],
@@ -97,6 +101,8 @@ const placementGroups = [
     ["feasibility.preserve_future_access_mode", "heuristic.future_access_loss_weight"]
   ],
   options: {
+    [reachStackerSideAccessPath]: ["Allow reach stackers to access 20 ft containers from the side",
+      "Allow left and right approaches when reachable working space is available. Turn off to require an approach from above or below."],
     "feasibility.destination_access_mode": ["Unreachable destinations",
       "Check whether equipment can reach the destination before placement."],
     "feasibility.preserve_occupied_access_mode": ["Loss of access to occupied stacks",
@@ -301,7 +307,7 @@ function showPlacementGroups(editor, rows, graphs) {
   const groups = el("div", undefined, "placement-groups");
   const weightAndDistance = el("div", undefined, "placement-weight-distance");
   for (const {title, description, formulaText, options, optionRows, sideBySide, graph, rowGraphs,
-    sections, neighborSwitches, diagramTemplate} of placementGroups) {
+    sections, neighborSwitches, diagram} of placementGroups) {
     const sectionPaths = new Set(sections?.flatMap(section => section.paths));
     if (neighborSwitches) for (const path of stackingNeighborPaths) sectionPaths.add(path);
     const entries = Object.keys(options).filter(path => !sectionPaths.has(path)).flatMap(path => rows.get(path) ?? []);
@@ -309,7 +315,7 @@ function showPlacementGroups(editor, rows, graphs) {
     group.append(el("legend", title));
     if (description) group.append(el("p", description, "placement-help"));
     if (formulaText) group.append(el("p", formulaText, "cluster-formula"));
-    if (diagramTemplate) group.append($(diagramTemplate).content.cloneNode(true));
+    if (diagram) group.append(diagram(rows));
     if (optionRows) {
       for (const [index, paths] of optionRows.entries()) {
         const related = paths.flatMap(path => rows.get(path) ?? []);
@@ -346,6 +352,26 @@ function showPlacementGroups(editor, rows, graphs) {
     }
   }
   editor.replaceChildren(groups);
+}
+
+function equipmentReachDiagram(rows) {
+  const [option] = rows.get(reachStackerSideAccessPath);
+  const input = option.querySelector("input");
+  const diagram = $("equipment-reach-diagram").content.cloneNode(true);
+  const reachStacker = diagram.querySelector("[data-reach-stacker-20ft]");
+  const sideApproaches = reachStacker.querySelectorAll("[data-side-approach]");
+  function update() {
+    for (const approach of sideApproaches) {
+      approach.setAttribute("display", input.checked ? "inline" : "none");
+    }
+    reachStacker.setAttribute("aria-label", "A reach stacker can approach a 20 ft container " +
+      (input.checked ? "from the adjacent row above or below, or the adjacent slot on the left or right."
+        : "from the adjacent row above or below."));
+  }
+  input.addEventListener("input", update);
+  update();
+  diagram.prepend(option);
+  return diagram;
 }
 
 function pyramidNeighborSwitches(rows) {
@@ -407,26 +433,28 @@ function setPlacementInactive(option, inactive) {
   for (const input of option.querySelectorAll("input, textarea")) input.disabled = busy || inactive;
 }
 
-function addScanOrder(rows, fields, {start, end, value = "", prefix = "", suffix = ""}) {
+function addCandidateChoice(rows, path, value, choices) {
   const input = el("textarea");
   input.value = value;
-  const initial = value ? value.match(/^("{1,3}|'{1,3})(row_wise|slot_wise)\1$/)?.[2] : "slot_wise";
+  const initial = value.match(/^("{1,3}|'{1,3})([a-z_]+)\1$/)?.[2];
+  const key = path.split(".")[1];
   const row = el("div", undefined, "toml-setting");
   const label = el("span");
-  label.id = "scan-order-label";
+  label.id = key.replaceAll("_", "-") + "-label";
   const group = el("div", undefined, "toml-segments");
   group.setAttribute("role", "radiogroup");
   group.setAttribute("aria-labelledby", label.id);
-  if (!initial) group.setAttribute("aria-invalid", "true");
-  for (const [mode, title] of [["row_wise", "Row-wise"], ["slot_wise", "Slot-wise"]]) {
+  if (!choices.some(([mode]) => mode === initial)) group.setAttribute("aria-invalid", "true");
+  for (const [mode, title] of choices) {
     const choice = el("input");
     choice.type = "radio";
-    choice.name = "scan_order";
+    choice.name = key;
     choice.value = mode;
     choice.checked = mode === initial;
     choice.addEventListener("change", () => {
-      input.value = mode === initial ? value : prefix + JSON.stringify(mode) + suffix;
+      input.value = mode === initial ? value : JSON.stringify(mode);
       group.removeAttribute("aria-invalid");
+      updatePlacementDependencies(rows);
       updateTomlSave("config");
       changed();
     });
@@ -435,8 +463,26 @@ function addScanOrder(rows, fields, {start, end, value = "", prefix = "", suffix
     group.append(option);
   }
   row.append(label, group);
-  addPlacementOption(rows, scanOrderPath, row, group);
-  fields.push({start, end, input});
+  addPlacementOption(rows, path, row, group).classList.add("placement-option-wide");
+  return input;
+}
+
+function addCandidateSelection(rows, fields, source, {start, prefix, suffix, qualified}) {
+  const scanDefault = '"slot_wise"';
+  const input = addCandidateChoice(rows, scanOrderPath, source?.value ?? scanDefault,
+    [["row_wise", "Row-wise"], ["slot_wise", "Slot-wise"]]);
+  if (source) {
+    fields.push({...source, input});
+  } else {
+    const key = qualified ? scanOrderPath : "scan_order";
+    fields.push({start, end: start, input,
+      format: value => value === scanDefault ? "" : prefix + key + " = " + value + suffix});
+  }
+}
+
+function stackingStartLabel(preference) {
+  if (preference.axis === "off") return "Off";
+  return (preference.axis === "row" ? "Row " : "Slot ") + preference.position;
 }
 
 function updatePlacementDependencies(rows) {
@@ -793,27 +839,44 @@ function syncPyramidThresholds(rows) {
   if (BigInt(soft.dataset.currentValue) > maximum) soft.commitPyramidValue(String(maximum));
 }
 
+function addPlacementSwitch(rows, path, checked) {
+  const input = el("input");
+  input.type = "checkbox";
+  input.checked = checked;
+  input.setAttribute("role", "switch");
+  input.addEventListener("input", () => {
+    input.removeAttribute("aria-invalid");
+    updateTomlSave("config");
+    changed();
+  });
+  const row = el("label", undefined, "toml-setting");
+  const toggle = el("span", undefined, "toml-switch");
+  const track = el("span", undefined, "toml-switch-track");
+  track.setAttribute("aria-hidden", "true");
+  toggle.append(input, track);
+  row.append(el("span"), toggle);
+  addPlacementOption(rows, path, row, input);
+  return input;
+}
+
+function addReachStackerSideAccess(rows, fields, source, {start, prefix, suffix, qualified}) {
+  const input = addPlacementSwitch(rows, reachStackerSideAccessPath, source?.value !== "false");
+  if (source) {
+    if (!["true", "false"].includes(source.value)) input.setAttribute("aria-invalid", "true");
+    fields.push({...source, input, format: value => input.hasAttribute("aria-invalid") ? source.value : value});
+    return;
+  }
+  const key = qualified ? reachStackerSideAccessPath : reachStackerSideAccessPath.split(".")[1];
+  fields.push({start, end: start, input, format: value => value === "true" ? "" : prefix + key + " = false" + suffix});
+}
+
 function addMissingStackingNeighbors(rows, fields, source, offset) {
   const separator = offset && source[offset - 1] !== "\n" ? "\n" : "";
   for (const [direction, enabled] of Object.entries(stackingNeighborDefaults)) {
     const key = "stacking_safety_neighbor_" + direction;
     const path = "feasibility." + key;
     if (rows.has(path)) continue;
-    const input = el("input");
-    input.type = "checkbox";
-    input.checked = enabled;
-    input.setAttribute("role", "switch");
-    input.addEventListener("input", () => {
-      updateTomlSave("config");
-      changed();
-    });
-    const row = el("label", undefined, "toml-setting");
-    const toggle = el("span", undefined, "toml-switch");
-    const track = el("span", undefined, "toml-switch-track");
-    track.setAttribute("aria-hidden", "true");
-    toggle.append(input, track);
-    row.append(el("span"), toggle);
-    addPlacementOption(rows, path, row, input);
+    const input = addPlacementSwitch(rows, path, enabled);
     const prefix = separator + (offset ? key : path) + " = ";
     fields.push({start: offset, end: offset, input,
       format: value => value === String(enabled) ? "" : prefix + value + "\n"});
@@ -848,6 +911,8 @@ function showToml(kind, text, loadedFrom) {
   let feasibilityStart = 0;
   let heuristicStart = 0;
   let scanOrderSource;
+  const inlineInsertions = new Map();
+  let sideAccessSource;
   let inlineFeasibility = false;
   let inlineHeuristic = false;
   let sharedAccessMode = "feasibility";
@@ -930,6 +995,11 @@ function showToml(kind, text, loadedFrom) {
           offset = statementStart = lineEnd + 1;
           continue;
         }
+        if (knownOption && optionPath === reachStackerSideAccessPath) {
+          sideAccessSource = {start, end: start + value.length, value};
+          offset = statementStart = lineEnd + 1;
+          continue;
+        }
         if (knownOption && ["feasibility.stacking_safety_maxima", "feasibility.stacking_safety_penalty_start"].includes(optionPath)) {
           addStackingSafetyMaxima(placementRows, fields, start, start + value.length, value, "",
             key === "stacking_safety_maxima" ? previousMaxima : previousPenaltyStart, key);
@@ -1000,12 +1070,14 @@ function showToml(kind, text, loadedFrom) {
         fields.push({start, end: start + value.length, input});
       } else if (kind === "config" && parts.length === 1 && (root === "heuristic" || root === "feasibility")) {
         const literal = source.slice(start, boundary).trimEnd();
-        if (root === "heuristic" && literal.startsWith("{") && literal.endsWith("}")) {
-          scanOrderSource = {start: start + 1, end: start + 1, prefix: "scan_order = ",
-            suffix: literal.slice(1, -1).trim() ? ", " : ""};
+        if (literal.startsWith("{") && literal.endsWith("}")) {
+          const body = literal.slice(1, -1);
+          inlineInsertions.set(root, {start: start + 1 + body.length - body.trimStart().length,
+            prefix: "", suffix: body.trim() ? ", " : "", qualified: false});
         }
         readInlinePlacementOptions(inlinePlacement, root, literal, start, (path, range) => {
           if (path === scanOrderPath) scanOrderSource = range;
+          if (path === reachStackerSideAccessPath) sideAccessSource = range;
         });
       }
     } else if (visible && kind !== "config") {
@@ -1021,10 +1093,13 @@ function showToml(kind, text, loadedFrom) {
     for (const comment of comments) editor.append(el("p", comment, "toml-comment"));
   }
   if (kind === "config") {
+    const feasibilitySeparator = feasibilityStart && source[feasibilityStart - 1] !== "\n" ? "\n" : "";
+    addReachStackerSideAccess(placementRows, fields, sideAccessSource, inlineInsertions.get("feasibility") ?? {
+      start: feasibilityStart, prefix: feasibilitySeparator, suffix: "\n", qualified: !feasibilityStart
+    });
     if (!inlineFeasibility) {
-      const separator = feasibilityStart && source[feasibilityStart - 1] !== "\n" ? "\n" : "";
       for (const key of ruleModeKeys.filter(key => !seenModes.has(key))) {
-        const prefix = separator + (feasibilityStart ? key : "feasibility." + key) + " = ";
+        const prefix = feasibilitySeparator + (feasibilityStart ? key : "feasibility." + key) + " = ";
         const fallback = accessModeKeys.includes(key) ? sharedAccessMode : "feasibility";
         const control = ruleModeSwitch(ruleControls, placementRows, key, prefix, null, fallback);
         fields.push({start: feasibilityStart, end: feasibilityStart, input: control.input});
@@ -1033,9 +1108,8 @@ function showToml(kind, text, loadedFrom) {
       addMissingStackingNeighbors(placementRows, fields, source, feasibilityStart);
     }
     const separator = heuristicStart && source[heuristicStart - 1] !== "\n" ? "\n" : "";
-    const key = heuristicStart ? "scan_order" : scanOrderPath;
-    addScanOrder(placementRows, fields, scanOrderSource ?? {
-      start: heuristicStart, end: heuristicStart, prefix: separator + key + " = ", suffix: "\n"
+    addCandidateSelection(placementRows, fields, scanOrderSource, inlineInsertions.get("heuristic") ?? {
+      start: heuristicStart, prefix: separator, suffix: "\n", qualified: !heuristicStart
     });
     if (!inlineHeuristic) addMissingHeuristicScores(placementRows, fields, source, heuristicStart, legacyFallbackScore, inlinePlacement);
     fields.sort((a, b) => a.start - b.start || a.end - b.end);
@@ -1065,9 +1139,9 @@ async function refreshProjectTomls(replace = false) {
   projectTomlsLive = true;
   let refreshed = false;
   for (const [kind, key] of Object.entries(tomlEditors)) {
-    const {source, fields, usesProject} = tomlDocuments[kind];
-    const unedited = usesProject && fields.every(({start, end, input, format}) =>
-      !input || tomlFieldValue(input, format) === source.slice(start, end));
+    const document = tomlDocuments[kind];
+    const {source, usesProject} = document;
+    const unedited = usesProject && editedToml(document, true) === source;
     if (replace || (unedited && (!wasLive || source !== fresh[key].replace(/\r\n?/g, "\n")))) {
       showToml(kind, fresh[key]);
       refreshed = true;
@@ -1669,6 +1743,10 @@ async function previewOverview(branches, simulation, sharedIssues) {
   const selectedView = el("div");
   const runs = new Map();
   async function showBranch(branch) {
+    if (simulation?.branches.includes(branch.branch_code) && !runs.has(branch)) {
+      runs.set(branch, {branch: structuredClone(branch), processed: 0, placed: 0, invalid: 0, last: null, traces: []});
+    }
+    const run = runs.get(branch);
     const gapPanel = el("div");
     function renderGaps() {
       const canRepair = simulation && !runs.get(branch)?.processed &&
@@ -1699,13 +1777,8 @@ async function previewOverview(branches, simulation, sharedIssues) {
     renderGaps();
     const branchIssues = issueOverview([...sharedIssues, ...branch.issues]);
     const diagnostics = branchIssues ? [gapPanel, branchIssues] : [gapPanel];
-    if (simulation?.branches.includes(branch.branch_code)) {
-      if (!runs.has(branch)) {
-        runs.set(branch, {branch: structuredClone(branch), processed: 0, placed: 0, invalid: 0, last: null, traces: []});
-      }
-      selectedView.replaceChildren(...diagnostics, await simulationView(
-        runs.get(branch), branches, simulation.id, renderGaps, stackEdits
-      ));
+    if (run) {
+      selectedView.replaceChildren(...diagnostics, await simulationView(run, branches, simulation.id, renderGaps, stackEdits));
       return;
     }
     const map = createYardMap(branch, branches, {
@@ -1715,7 +1788,10 @@ async function previewOverview(branches, simulation, sharedIssues) {
         id: simulation.id, branch: branch.branch_code,
         policies: [{block_id: block.id, ...block.border_access, [side]: value}]
       }),
-      onSave: block => globalThis.saveStackingBlockAccess({id: simulation.id, branch: branch.branch_code, block_id: block.id})
+      onStackingStart: simulation && globalThis.updateStackingBlockStart ? (block, preference) =>
+        globalThis.updateStackingBlockStart({id: simulation.id, branch: branch.branch_code, block_id: block.id, preference}) : null,
+      onSave: simulation && globalThis.saveStackingBlockSettings ? block =>
+        globalThis.saveStackingBlockSettings({id: simulation.id, branch: branch.branch_code, block_id: block.id}) : null
     });
     selectedView.replaceChildren(...diagnostics, inboundQueue(branch).panel, ...(map ? [map.element] : []));
     if (map && branch.queue.length && branch.inbound_available !== false) {

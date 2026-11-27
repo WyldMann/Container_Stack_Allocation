@@ -1,6 +1,6 @@
 "use strict";
 
-function createPlacementGraphs(read) {
+function createPlacementGraphs(read, keys) {
   const format = new Intl.NumberFormat("en", {maximumSignificantDigits: 4});
   const label = value => value !== 0 && (Math.abs(value) < 0.001 || Math.abs(value) >= 1e5)
     ? value.toExponential(2) : format.format(value);
@@ -125,6 +125,19 @@ function createPlacementGraphs(read) {
       const current = mode("preserve_future_access_mode",
         () => flag("feasibility.preserve_future_access", true) ? occupiedMode() : "off");
       return access(current, current === "heuristic" ? number("future_access_loss_weight", 1, 0) : 0);
+    }},
+    stackingStart: {title: "Start location", axis: "Distance from the preferred row or slot", calculate() {
+      const setting = read("heuristic.stacking_start_axis");
+      const axis = setting?.match(/^("{1,3}|'{1,3})(off|row|slot)\1$/)?.[2] ?? (setting === undefined ? "off" : null);
+      if (!axis) invalid("stacking_start_axis");
+      if (axis === "off") return {start: 0, end: 8, ticks: [0, 2, 4, 6, 8], ...neutral(0, 8)};
+      const position = number("stacking_start_position", 1, 1, Number.MAX_VALUE, true);
+      const half = number("hl_stacking_start_distance", 2);
+      const end = rangeEnd(half, 8);
+      return {start: 0, end, ticks: [0, end / 4, end / 2, end * 0.75, end],
+        lines: [decay(1, half, end)], markers: [[half, 0.5, "Half score " + score(0.5)]],
+        note: (axis === "row" ? "Row " : "Slot ") + label(position) + " " + score(1) + " · " +
+          label(half) + " " + axis + (half === 1 ? "" : "s") + " away " + score(0.5)};
     }},
     weight: {axis: "Supporting − incoming weight (CSV units)", calculate() {
       const on = flag("heuristic.enable_delta_container_mass", true);
@@ -323,5 +336,5 @@ function createPlacementGraphs(read) {
     return {element, update, disconnect: () => resize.disconnect()};
   }
 
-  return Object.fromEntries(Object.entries(models).map(([key, model]) => [key, create(model)]));
+  return Object.fromEntries((keys ?? Object.keys(models)).map(key => [key, create(models[key])]));
 }
