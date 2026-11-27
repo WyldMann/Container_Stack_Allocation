@@ -95,7 +95,60 @@ main:has(.stacking-review .yard-view) > :not(.stacking-review) {
 }
 .yard-block-heading { height: 94px; }
 .yard-block-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.yard-block-save { font-size: 11px; line-height: 1.2; padding: 3px 8px; flex: none; }
+.yard-block-settings-trigger { font-size: 11px; line-height: 1.2; padding: 3px 8px; flex: none; }
+.yard-block-settings {
+  box-sizing: border-box;
+  width: min(620px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--yard-line);
+  border-radius: 12px;
+  color: var(--yard-navy);
+}
+.yard-block-settings::backdrop { background: rgb(19 43 59 / 40%); }
+.yard-block-settings h4 { font-size: 18px; margin-bottom: 12px; }
+.yard-settings-borders, .yard-stacking-start-fields {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0 0 10px;
+  padding: 8px;
+  border: 1px solid var(--yard-line);
+  border-radius: 8px;
+}
+.yard-settings-borders { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.yard-settings-borders .yard-access-switch { position: static; min-width: 0; }
+.yard-stacking-start-fields label { display: grid; gap: 4px; min-width: 0; }
+.yard-stacking-start-fields .yard-stacking-start-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.yard-stacking-start-toggle .toml-switch { flex: none; }
+.yard-stacking-start-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+.yard-stacking-start-options.is-scoring-off {
+  background: #e7ebee;
+  border-color: #aeb8c0;
+  color: #465562;
+}
+.yard-stacking-start-options input, .yard-stacking-start-options select { width: 100%; min-width: 0; }
+.yard-stacking-start-options.is-scoring-off :is(input, select) {
+  background: #f3f5f6;
+  border-color: #87949e;
+  color: inherit;
+}
+.yard-settings-feedback { margin: 8px 0; }
+.yard-settings-feedback:empty { display: none; }
+.yard-block-settings .actions { justify-content: flex-end; margin-top: 14px; }
 .yard-block-save:disabled {
   background: #edf0f2; color: #77838d; border-color: #d5dde2; opacity: 1; cursor: default;
 }

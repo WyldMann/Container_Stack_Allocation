@@ -16,7 +16,7 @@ from repository.branch_repository import BranchDirectory
 from utils import parse_optional_finite_float, strGeneralize
 
 from .scenario import inbound_queue_row
-from .yard_view import block_equipment_codes, stack_view
+from .yard_view import block_equipment_codes, stack_view, stacking_start_view
 
 
 CONTAINER_EXPORT_COLUMNS = {
@@ -162,10 +162,14 @@ def _calculation(yard, search, result):
     winner = candidates[0] if candidates else None
     winning_key = winner.ranking_key(prioritize_current_access, prioritize_destination) if winner else None
     ranked_by_location = {candidate.coordinates: (rank, candidate) for rank, candidate in enumerate(candidates, 1)}
+    stacking_starts = {}
     qualified = []
     for coordinates in search["candidate_coordinates"]:
         rank, candidate = ranked_by_location[coordinates]
         access = candidate.equipment_access
+        block_id = coordinates[0]
+        if block_id not in stacking_starts:
+            stacking_starts[block_id] = stacking_start_view(yard, yard.getBlockByID(block_id))["effective"]
         qualified.append({
             **_location(yard, coordinates),
             "selected": candidate is winner,
@@ -190,6 +194,8 @@ def _calculation(yard, search, result):
             "stacking_safety_multiplier": candidate.stacking_safety_multiplier,
             "capacity_multiplier": candidate.capacity_multiplier,
             "overcapacity_tiers": candidate.overcapacity_tiers,
+            "stacking_start_multiplier": candidate.stacking_start_multiplier,
+            "stacking_start": stacking_starts[block_id],
             "score": _number(candidate.evaluation_score),
         })
     return {
@@ -215,6 +221,7 @@ def _calculation(yard, search, result):
                 ("future_access_multiplier", future_mode == "heuristic"),
                 ("stacking_safety_multiplier", settings.effective_stacking_safety_mode == "heuristic"),
                 ("capacity_multiplier", settings.stack_capacity_mode == "heuristic"),
+                ("stacking_start_multiplier", any(start["axis"] != "off" for start in stacking_starts.values())),
             )
             if enabled
         ],

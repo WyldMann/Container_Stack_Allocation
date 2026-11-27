@@ -21,7 +21,7 @@ from config.application.config_loader import parse_config
 
 FACTOR_SWITCHES = (
     'enable_delta_container_mass', 'enable_equipment_distance', 'enable_size_cluster',
-    'enable_size_cluster_reward', 'enable_size_cluster_penalty',
+    'enable_size_cluster_reward', 'enable_size_cluster_penalty', 'enable_block_stacking_start',
 )
 
 
@@ -81,9 +81,26 @@ class HeuristicConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex(ConfigurationError, 'scan_order'):
                     self.load_text(f'[heuristic]\nscan_order = {value}\n')
 
+    def test_stacking_start_config_round_trips_and_validates_axis(self):
+        self.assertEqual(self.load_text('').heuristic.stacking_start_axis, 'off')
+        for axis in ('off', 'row', 'slot'):
+            with self.subTest(axis=axis):
+                settings = self.load_text(
+                    f'heuristic = {{ stacking_start_axis = "{axis}", stacking_start_position = 3, '
+                    'hl_stacking_start_distance = 1.5 }\n'
+                )
+                self.assertEqual(settings.heuristic.stacking_start_axis, axis)
+                self.assertEqual(settings.heuristic.stacking_start_position, 3)
+                self.assertEqual(settings.heuristic.hl_stacking_start_distance, 1.5)
+                self.assertEqual(parse_config(settings.to_document()).heuristic, settings.heuristic)
+        for literal in ('"tier"', 'true', '1', '[]'):
+            with self.subTest(literal=literal):
+                with self.assertRaisesRegex(ConfigurationError, 'stacking_start_axis'):
+                    self.load_text(f'[heuristic]\nstacking_start_axis = {literal}\n')
+
     def test_invalid_numeric_values_are_rejected(self):
         for field in fields(HeuristicSettings):
-            if field.name in (*FACTOR_SWITCHES, 'scan_order'):
+            if field.name in (*FACTOR_SWITCHES, 'scan_order', 'stacking_start_axis'):
                 continue
             values = ('true', '"1"', '[]', '-1')
             if field.name in ('size_cluster_radius', 'size_cluster_penalty_radius'):
@@ -100,6 +117,8 @@ class HeuristicConfigTests(unittest.TestCase):
                     'no_delta_container_mass_value', 'heavier_container_fallback_score',
                 ):
                     values += ('0',)
+                if field.name == 'stacking_start_position':
+                    values += ('1.5',)
             for value in values:
                 with self.subTest(field=field.name, value=value):
                     with self.assertRaises(ConfigurationError):

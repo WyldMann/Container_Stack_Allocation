@@ -81,7 +81,8 @@ async function openSetup(python, pageUrl) {
     await page.exposeBinding("addStackingDummy", ({frame}, placement) => request(frame, {...placement, op: "add_stack_dummy"}));
     await page.exposeBinding("removeStackingTop", ({frame}, removal) => request(frame, {...removal, op: "remove_stack_top"}));
     await page.exposeBinding("updateStackingBlockAccess", ({frame}, access) => request(frame, {...access, op: "update_block_access"}));
-    await page.exposeBinding("saveStackingBlockAccess", ({frame}, access) => request(frame, {...access, op: "save_block_access"}));
+    await page.exposeBinding("updateStackingBlockStart", ({frame}, preference) => request(frame, {...preference, op: "update_block_stacking_start"}));
+    await page.exposeBinding("saveStackingBlockSettings", ({frame}, settings) => request(frame, {...settings, op: "save_block_settings"}));
     await page.exposeBinding("compareStackingYard", ({frame}, comparison) => request(frame, {...comparison, op: "compare_yard"}));
     await page.goto(pageUrl);
     await closed;

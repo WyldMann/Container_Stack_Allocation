@@ -45,6 +45,10 @@ above = "ABOVE"
 below = "BELOW"
 left = "LEFT"
 right = "RIGHT"
+stacking_start_axis = "STACKING_START_AXIS"
+stacking_start_position = "STACKING_START_POSITION"
+stacking_start_half_distance = "STACKING_START_HALF_DISTANCE"
+stacking_start_enabled = "STACKING_START_ENABLED"
 
 
 [csv.parameters.filter_columns]

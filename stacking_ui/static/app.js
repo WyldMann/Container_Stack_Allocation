@@ -4,7 +4,7 @@ const $ = id => document.getElementById(id);
 const descriptions = {
   terminal_branches: ["Terminal branches", "Branch codes, IDs, and display names."],
   yard_blocks: ["Yard blocks", "Dimensions, tier limits, and block positions."],
-  block_accessibility: ["Block border access", "Set which borders allow ground equipment to enter or work from outside the block. All borders are open by default."],
+  block_accessibility: ["Block settings", "Set border access and choose where to start stacking in each block. Unlisted blocks have open borders and no preference."],
   existing_containers: ["Current containers", "The current yard snapshot."],
   inbound_containers: ["Inbound containers", "CSV rows set the initial queue order."],
   removed_slots: ["Removed slots", "Locations unavailable for stacking."],
@@ -20,6 +20,9 @@ const tomlEditors = {
 };
 const tomlDocuments = {};
 const scanOrderPath = "heuristic.scan_order";
+const stackingStartAxisPath = "heuristic.stacking_start_axis";
+const stackingStartPositionPath = "heuristic.stacking_start_position";
+const stackingStartHalfDistancePath = "heuristic.hl_stacking_start_distance";
 const reachStackerSideAccessPath = "feasibility.reach_stacker_20ft_side_access";
 const ruleModes = ["off", "heuristic", "feasibility"];
 const accessModeKeys = ["destination_access_mode", "preserve_occupied_access_mode", "preserve_future_access_mode"];
@@ -475,6 +478,11 @@ function addCandidateSelection(rows, fields, source, {start, prefix, suffix, qua
     fields.push({start, end: start, input,
       format: value => value === scanDefault ? "" : prefix + key + " = " + value + suffix});
   }
+}
+
+function stackingStartLabel(preference) {
+  if (preference.axis === "off") return "Off";
+  return (preference.axis === "row" ? "Row " : "Slot ") + preference.position;
 }
 
 function updatePlacementDependencies(rows) {
@@ -1735,6 +1743,10 @@ async function previewOverview(branches, simulation, sharedIssues) {
   const selectedView = el("div");
   const runs = new Map();
   async function showBranch(branch) {
+    if (simulation?.branches.includes(branch.branch_code) && !runs.has(branch)) {
+      runs.set(branch, {branch: structuredClone(branch), processed: 0, placed: 0, invalid: 0, last: null, traces: []});
+    }
+    const run = runs.get(branch);
     const gapPanel = el("div");
     function renderGaps() {
       const canRepair = simulation && !runs.get(branch)?.processed &&
@@ -1765,13 +1777,8 @@ async function previewOverview(branches, simulation, sharedIssues) {
     renderGaps();
     const branchIssues = issueOverview([...sharedIssues, ...branch.issues]);
     const diagnostics = branchIssues ? [gapPanel, branchIssues] : [gapPanel];
-    if (simulation?.branches.includes(branch.branch_code)) {
-      if (!runs.has(branch)) {
-        runs.set(branch, {branch: structuredClone(branch), processed: 0, placed: 0, invalid: 0, last: null, traces: []});
-      }
-      selectedView.replaceChildren(...diagnostics, await simulationView(
-        runs.get(branch), branches, simulation.id, renderGaps, stackEdits
-      ));
+    if (run) {
+      selectedView.replaceChildren(...diagnostics, await simulationView(run, branches, simulation.id, renderGaps, stackEdits));
       return;
     }
     const map = createYardMap(branch, branches, {
@@ -1781,7 +1788,10 @@ async function previewOverview(branches, simulation, sharedIssues) {
         id: simulation.id, branch: branch.branch_code,
         policies: [{block_id: block.id, ...block.border_access, [side]: value}]
       }),
-      onSave: block => globalThis.saveStackingBlockAccess({id: simulation.id, branch: branch.branch_code, block_id: block.id})
+      onStackingStart: simulation && globalThis.updateStackingBlockStart ? (block, preference) =>
+        globalThis.updateStackingBlockStart({id: simulation.id, branch: branch.branch_code, block_id: block.id, preference}) : null,
+      onSave: simulation && globalThis.saveStackingBlockSettings ? block =>
+        globalThis.saveStackingBlockSettings({id: simulation.id, branch: branch.branch_code, block_id: block.id}) : null
     });
     selectedView.replaceChildren(...diagnostics, inboundQueue(branch).panel, ...(map ? [map.element] : []));
     if (map && branch.queue.length && branch.inbound_available !== false) {

@@ -7,6 +7,7 @@ No placements, output CSV writes, or changes to project configuration occur.
 
 from collections import Counter, defaultdict, deque
 import csv
+from dataclasses import asdict
 from pathlib import Path
 import tempfile
 import warnings
@@ -19,7 +20,7 @@ from entities import Container, Yard
 from entities.bad_yard_data import BadYardData, PlacementRejected
 from repository import CSVLoader, InputError, load_yard_inputs
 from repository.repository import Repository
-from repository.block_accessibility import access_policies
+from repository.block_accessibility import block_settings, stacking_start_overrides
 from utils import parse_optional_finite_float, strGeneralize
 
 from .configuration import configuration, draft_files, dump_toml, portable_input
@@ -250,13 +251,15 @@ def _build_branch(branch, inputs, settings, profiles, source_records):
 
     with warnings.catch_warnings(record=True) as recorded:
         warnings.simplefilter("always")
+        blocks = block_settings(inputs.get("block_accessibility", []))
         yard = Yard(
             yard_blocks_input=inputs["yard_blocks"], removed_slots_input=inputs["removed_slots"],
             parameters_input=inputs["parameters"], yard_planning_input=inputs["yard_planning"],
             containers_input=existing_containers, equipment_input=inputs["master_equipment"],
             equipment_locations_input=inputs["equipment_history"],
-            border_access_policies=access_policies(inputs.get("block_accessibility", [])),
+            border_access_policies={block_id: block.border_access for block_id, block in blocks.items()},
             feasibility_settings=settings.feasibility, heuristic_settings=settings.heuristic,
+            stacking_start_by_block=stacking_start_overrides(blocks, settings.stacking_start_by_block.get(code)),
         )
     branch["yard"] = yard
     for warning in recorded:
@@ -371,13 +374,19 @@ def tier_gap_view(yard):
 
 def public_branch(branch):
     entry = {key: value for key, value in branch.items()
-             if key not in ("yard", "inputs", "container_profile", "saved_block_access", "yard_conflicts")}
+             if key not in ("yard", "inputs", "container_profile", "saved_block_settings", "yard_conflicts")}
     yard = branch["yard"]
     entry["yard_map"] = yard_view(yard) if yard is not None else None
     if entry["yard_map"] is not None:
-        saved = branch.get("saved_block_access", {})
+        saved = branch.get("saved_block_settings", {})
         for block in entry["yard_map"]["blocks"]:
-            block["saved_border_access"] = saved.get(block["id"], block["border_access"])
+            settings = saved.get(block["id"])
+            block["saved_border_access"] = block["border_access"]
+            block["saved_stacking_start"] = block["stacking_start"]["override"]
+            if settings is not None:
+                block["saved_border_access"] = asdict(settings.border_access)
+                override = settings.stacking_start
+                block["saved_stacking_start"] = asdict(override) if override is not None else None
     entry["ready"] = (yard is not None and branch["inbound_available"]
                       and not any(item["severity"] == "error" for item in branch["issues"]))
     entry["issue_counts"] = dict(Counter(item["severity"] for item in branch["issues"]))

@@ -133,6 +133,103 @@ function layoutYardBlocks(blocks) {
   return layouts[0];
 }
 
+function blockStackingStartEditor(block, onChange) {
+  const fields = el("fieldset", undefined, "yard-stacking-start-fields");
+  fields.append(el("legend", "Start stacking from"));
+  const enabled = el("input");
+  enabled.type = "checkbox";
+  enabled.setAttribute("role", "switch");
+  const toggle = el("span", undefined, "toml-switch");
+  const track = el("span", undefined, "toml-switch-track");
+  track.setAttribute("aria-hidden", "true");
+  toggle.append(enabled, track);
+  const enabledLabel = el("label", "Prefer this row or slot", "yard-stacking-start-toggle");
+  enabledLabel.append(toggle);
+  fields.append(enabledLabel);
+  const mode = el("select");
+  for (const [value, label] of [["row", "Row"], ["slot", "Slot"]]) {
+    const option = el("option", label);
+    option.value = value;
+    mode.append(option);
+  }
+  const position = el("input");
+  position.type = "number";
+  position.min = "1";
+  position.step = "1";
+  position.required = true;
+  const half = el("input");
+  half.type = "number";
+  half.min = "0";
+  half.step = "any";
+  const options = el("div", undefined, "yard-stacking-start-options");
+  for (const [label, input] of [["Preference", mode], ["Start number", position], ["Distance for half score", half]]) {
+    const field = el("label", label);
+    field.append(input);
+    options.append(field);
+  }
+  fields.append(options);
+  const effectiveLabel = el("p", undefined, "yard-caption");
+  effectiveLabel.setAttribute("aria-live", "polite");
+  const feedback = el("p", undefined, "yard-settings-feedback not-ready");
+  feedback.setAttribute("role", "status");
+  const graph = createPlacementGraphs(path => {
+    const {override, effective, error, half_distance_if_blank} = block.stacking_start;
+    const {axis, position, half_distance} = error ? effective : override ?? effective;
+    if (path === stackingStartAxisPath) return JSON.stringify(axis);
+    if (path === stackingStartPositionPath) return String(position);
+    if (path === stackingStartHalfDistancePath) return String(half_distance ?? half_distance_if_blank);
+  }, ["stackingStart"]).stackingStart;
+
+  function updateLimits() {
+    position.max = String(mode.value === "row" ? block.rows : block.slots);
+  }
+
+  function sync() {
+    const {override, effective, error, half_distance_if_blank} = block.stacking_start;
+    enabled.checked = override?.enabled === true;
+    mode.value = override?.axis === "slot" ? "slot" : "row";
+    position.value = override?.position ?? 1;
+    half.value = override?.half_distance ?? "";
+    half.placeholder = String(half_distance_if_blank);
+    options.classList.toggle("is-scoring-off", !effective.enabled);
+    effectiveLabel.textContent = effective.enabled ? "Active preference · " + stackingStartLabel(effective) :
+      "Scoring is off for this block.";
+    feedback.textContent = error ?? "";
+    updateLimits();
+    graph.update();
+  }
+
+  async function commit() {
+    if (!position.checkValidity()) {
+      enabled.checked = block.stacking_start.override?.enabled === true;
+      feedback.textContent = "Choose a whole number from 1 to " + position.max + ".";
+      return;
+    }
+    if (!half.checkValidity() || (half.value && !(half.valueAsNumber > 0))) {
+      enabled.checked = block.stacking_start.override?.enabled === true;
+      feedback.textContent = "Enter a positive half-score distance or leave it blank to use 2.";
+      return;
+    }
+    const preference = {axis: mode.value, position: position.valueAsNumber,
+      half_distance: half.value ? half.valueAsNumber : null, enabled: enabled.checked};
+    await onChange(preference, sync, text => {
+      enabled.checked = block.stacking_start.override?.enabled === true;
+      feedback.textContent = text;
+    });
+  }
+
+  enabled.addEventListener("change", commit);
+  mode.addEventListener("change", () => {
+    updateLimits();
+    if (!position.checkValidity()) position.value = "1";
+    commit();
+  });
+  position.addEventListener("change", commit);
+  half.addEventListener("change", commit);
+  sync();
+  return {fields, effectiveLabel, feedback, graph};
+}
+
 function createYardMap(branch, branches = [branch], accessOptions = {}) {
   if (!branch.yard_map?.blocks?.length) return null;
 
@@ -158,33 +255,25 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
   header.append(el("h3", "Yard map"));
   const body = el("div", undefined, "yard-view-layout");
   root.append(header, body);
-  const accessButtons = [];
-  const accessSaves = [];
-  const accessSides = ["above", "below", "left", "right"];
+  const borderControls = new Map();
+  const accessSides = [["above", "Above"], ["below", "Below"], ["left", "Left"], ["right", "Right"]];
   const accessStatus = el("p", undefined, "yard-caption yard-access-status");
   accessStatus.setAttribute("role", "status");
   accessStatus.hidden = true;
   header.append(accessStatus);
   let accessEditable = Boolean(accessOptions.editable);
   let accessPending = false;
-  function accessChanged(block) {
-    return accessSides.some(side => block.border_access[side] !== block.saved_border_access[side]);
+  let activeSettings;
+  function settingsChanged(block) {
+    const start = block.stacking_start?.override;
+    const savedStart = block.saved_stacking_start;
+    return accessSides.some(([side]) => block.border_access[side] !== block.saved_border_access[side]) ||
+      start?.axis !== savedStart?.axis || start?.position !== savedStart?.position ||
+      start?.half_distance !== savedStart?.half_distance || start?.enabled !== savedStart?.enabled;
   }
   function syncAccessControls() {
-    accessButtons.forEach(control => {
-      control.disabled = !accessEditable || accessPending;
-      control.dataset.accessLocked = String(!accessEditable);
-      if (accessEditable) control.removeAttribute("aria-description");
-      else control.setAttribute("aria-description", "Block access is locked.");
-    });
-    for (const {block, save} of accessSaves) {
-      const dirty = accessChanged(block);
-      const locked = !dirty || typeof accessOptions.onSave !== "function";
-      save.disabled = accessPending || locked;
-      save.dataset.accessLocked = String(locked);
-      save.title = dirty ? "Save block access settings for block " + block.code +
-        (globalThis.stackingStandalone ? " to bundled data in this browser." : " to the project CSV.") : "No access changes to save.";
-    }
+    for (const controls of borderControls.values()) controls.forEach(control => control.setLocked());
+    activeSettings?.sync();
   }
   function accessMessage(text, error = false) {
     accessStatus.textContent = text;
@@ -192,17 +281,127 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     accessStatus.classList.toggle("not-ready", error);
   }
   function showAccessChanges() {
-    const codes = accessSaves.filter(({block}) => accessChanged(block)).map(({block}) => block.code)
+    const codes = branch.yard_map.blocks.filter(settingsChanged).map(block => block.code)
       .sort((first, second) => first.localeCompare(second, "en", {numeric: true}));
     const names = new Intl.ListFormat("en", {style: "long", type: "conjunction"}).format(codes);
     accessMessage(codes.length ? (codes.length === 1 ? "Block " : "Blocks ") + names +
-      (codes.length === 1 ? " has" : " have") + " unsaved access changes." : "");
+      (codes.length === 1 ? " has" : " have") + " unsaved settings." : "");
   }
   function button(label, className) {
     const control = el("button", undefined, className);
     control.type = "button";
     control.setAttribute("aria-label", label);
     return control;
+  }
+
+  async function changeBlockSettings(change, report = accessMessage) {
+    if (accessPending || busy) return;
+    accessPending = true;
+    syncAccessControls();
+    try {
+      await action(async () => {
+        await change();
+        showAccessChanges();
+      }, report);
+    } finally {
+      accessPending = false;
+      syncAccessControls();
+    }
+  }
+
+  function borderSwitch(block, side, label, positioned = false) {
+    const toggle = button("Block " + block.code + " " + side + " border access",
+      "yard-access-switch" + (positioned ? " yard-access-" + side : ""));
+    toggle.setAttribute("role", "switch");
+    const direction = el("span", label, "yard-access-direction");
+    const lock = el("span", undefined, "yard-access-lock");
+    lock.setAttribute("aria-hidden", "true");
+    direction.append(lock);
+    function paint() {
+      const open = block.border_access[side];
+      toggle.setAttribute("aria-checked", String(open));
+      toggle.replaceChildren(direction, el("strong", open ? "Open" : "Closed"));
+      const use = side === "above" || side === "below" ? "ground equipment entry and exterior working space" :
+        "ground equipment entry and, when 20 ft side access is enabled, exterior reach stacker working space";
+      toggle.title = label + " border is " + (open ? "open" : "closed") + " for " + use + ".";
+    }
+    function setLocked() {
+      toggle.disabled = !accessEditable || accessPending;
+      toggle.dataset.accessLocked = String(!accessEditable);
+      if (accessEditable) toggle.removeAttribute("aria-description");
+      else toggle.setAttribute("aria-description", "Block access is locked.");
+    }
+    toggle.addEventListener("click", () => {
+      if (!accessEditable) return;
+      return changeBlockSettings(async () => {
+        const next = !block.border_access[side];
+        await accessOptions.onChange(block, side, next);
+        block.border_access[side] = next;
+        borderControls.get(block.id).forEach(control => control.paint());
+        activeSettings?.paintBorders();
+      }, activeSettings?.report);
+    });
+    paint();
+    return {toggle, paint, setLocked};
+  }
+
+  function openBlockSettings(block) {
+    const title = "Block " + block.code + " settings";
+    const dialog = el("dialog", undefined, "yard-block-settings");
+    dialog.setAttribute("aria-label", title);
+    const lock = el("p", "Block settings are locked for this run. Generate a fresh preview to edit them.", "yard-caption");
+    const borders = el("fieldset", undefined, "yard-settings-borders");
+    borders.append(el("legend", "Border access"));
+    const switches = accessSides.map(([side, label]) => borderSwitch(block, side, label));
+    borders.append(...switches.map(control => control.toggle));
+    const status = el("p", undefined, "yard-settings-feedback");
+    status.setAttribute("role", "status");
+    const close = button("Close", "secondary");
+    close.textContent = "Close";
+    const save = button("Save block settings", "yard-block-save");
+    save.textContent = "Save block settings";
+    const actions = el("div", undefined, "actions");
+    actions.append(close, save);
+    const report = (text, error = false) => {
+      status.textContent = text;
+      status.classList.toggle("not-ready", error);
+    };
+    const start = block.stacking_start && blockStackingStartEditor(block, (preference, sync, reportError) => {
+      if (!accessEditable || !accessOptions.onStackingStart) return;
+      return changeBlockSettings(async () => {
+        block.stacking_start = await accessOptions.onStackingStart(block, preference);
+        sync();
+      }, reportError);
+    });
+    dialog.append(el("h4", title), lock, borders);
+    if (start) dialog.append(start.fields, start.effectiveLabel, start.feedback, start.graph.element);
+    dialog.append(status, actions);
+    activeSettings = {report, paintBorders: () => switches.forEach(control => control.paint()), sync() {
+      lock.hidden = accessEditable;
+      switches.forEach(control => control.setLocked());
+      if (start) start.fields.disabled = !accessEditable || accessPending || !accessOptions.onStackingStart;
+      const canSave = accessOptions.onSave && settingsChanged(block);
+      save.disabled = accessPending || !canSave;
+      save.dataset.accessLocked = String(!canSave);
+      save.title = canSave ? (globalThis.stackingStandalone ? "Save to bundled data in this browser." : "Save to the project CSV.") :
+        "No block settings changes to save.";
+    }};
+    close.addEventListener("click", () => dialog.close());
+    dialog.addEventListener("cancel", event => { if (accessPending) event.preventDefault(); });
+    dialog.addEventListener("close", () => {
+      start?.graph.disconnect();
+      dialog.remove();
+      activeSettings = undefined;
+    });
+    save.addEventListener("click", () => changeBlockSettings(async () => {
+      await accessOptions.onSave(block);
+      block.saved_border_access = {...block.border_access};
+      block.saved_stacking_start = block.stacking_start?.override ?? null;
+      report("Saved settings for block " + block.code + ".");
+    }, report));
+    root.append(dialog);
+    activeSettings.sync();
+    dialog.showModal();
   }
 
   function paint(mark, ids) {
@@ -628,26 +827,13 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     const equipment = el("p", undefined, "yard-caption");
     block.border_access ??= {above: true, below: true, left: true, right: true};
     block.saved_border_access ??= {...block.border_access};
+    if (!Object.hasOwn(block, "saved_stacking_start")) block.saved_stacking_start = block.stacking_start?.override ?? null;
     const titleRow = el("div", undefined, "yard-block-title");
-    const save = button("Save block access settings for block " + block.code, "yard-block-save");
-    save.textContent = "Save block access settings";
-    save.disabled = true;
-    accessSaves.push({block, save});
-    save.addEventListener("click", async () => {
-      if (accessPending || busy || !accessChanged(block) || typeof accessOptions.onSave !== "function") return;
-      accessPending = true;
-      syncAccessControls();
-      try {
-        await action(async () => {
-          await accessOptions.onSave(block);
-          block.saved_border_access = {...block.border_access};
-          syncAccessControls();
-          showAccessChanges();
-        }, accessMessage);
-      } catch (error) { accessMessage(error.message, true); }
-      finally { accessPending = false; syncAccessControls(); }
-    });
-    titleRow.append(el("h4", "Block " + block.code), save);
+    const settings = button("Block " + block.code + " settings", "yard-block-settings-trigger");
+    settings.textContent = "Block settings";
+    settings.setAttribute("aria-haspopup", "dialog");
+    settings.addEventListener("click", () => { if (!busy && !accessPending) openBlockSettings(block); });
+    titleRow.append(el("h4", "Block " + block.code), settings);
     heading.append(titleRow, equipment, summary, occupancy, compliance);
     const grid = el("table", undefined, "yard-grid");
     grid.style.setProperty("--yard-slot-count", block.slots);
@@ -684,42 +870,9 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
     grid.append(head, rows);
     const accessFrame = el("div", undefined, "yard-access-frame");
     accessFrame.append(grid);
-    for (const [side, label] of [["above", "Above"], ["below", "Below"], ["left", "Left"], ["right", "Right"]]) {
-      const toggle = button("Block " + block.code + " " + side + " border access", "yard-access-switch yard-access-" + side);
-      toggle.setAttribute("role", "switch");
-      const direction = el("span", label, "yard-access-direction");
-      const lock = el("span", undefined, "yard-access-lock");
-      lock.setAttribute("aria-hidden", "true");
-      direction.append(lock);
-      function paintAccess() {
-        const open = block.border_access[side];
-        toggle.setAttribute("aria-checked", String(open));
-        toggle.replaceChildren(direction, el("strong", open ? "Open" : "Closed"));
-        const use = side === "above" || side === "below"
-          ? "ground equipment entry and exterior working space"
-          : "ground equipment entry and, when 20 ft side access is enabled, exterior reach stacker working space";
-        toggle.title = label + " border is " + (open ? "open" : "closed") + " for " + use + ".";
-      }
-      toggle.addEventListener("click", async () => {
-        if (!accessEditable || accessPending || busy) return;
-        const next = !block.border_access[side];
-        accessPending = true;
-        syncAccessControls();
-        try {
-          await action(async () => {
-            await accessOptions.onChange(block, side, next);
-            block.border_access[side] = next;
-            paintAccess();
-            syncAccessControls();
-            showAccessChanges();
-          }, accessMessage);
-        } catch (error) { accessMessage(error.message, true); }
-        finally { accessPending = false; syncAccessControls(); }
-      });
-      accessButtons.push(toggle);
-      paintAccess();
-      accessFrame.append(toggle);
-    }
+    const controls = accessSides.map(([side, label]) => borderSwitch(block, side, label, true));
+    borderControls.set(block.id, controls);
+    accessFrame.append(...controls.map(control => control.toggle));
     panel.append(heading, accessFrame);
     stage.append(panel);
     views.push(view);

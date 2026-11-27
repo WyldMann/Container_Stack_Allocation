@@ -1,6 +1,37 @@
 import math
 from dataclasses import dataclass, fields
 
+BLOCK_STACKING_START_HALF_DISTANCE = 2.0
+
+
+@dataclass(frozen=True)
+class StackingStartPreference:
+    axis: str
+    position: int | None = None
+    half_distance: float | None = None
+    enabled: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.enabled) is not bool:
+            raise TypeError("Stacking start enabled must be a boolean.")
+        if self.axis not in ("off", "row", "slot"):
+            raise ValueError("Stacking start must use 'off', 'row', or 'slot'.")
+        if self.axis == "off":
+            if self.enabled:
+                raise ValueError("Choose a row or slot before enabling stacking start.")
+            if self.position is not None or self.half_distance is not None:
+                raise ValueError("A stacking start set to off cannot have a position or half-score distance.")
+            return
+        if type(self.position) is not int or self.position < 1:
+            raise ValueError("Stacking start position must be a positive integer.")
+        if self.half_distance is not None:
+            if (type(self.half_distance) not in (int, float) or self.half_distance <= 0
+                    or not math.isfinite(self.half_distance)):
+                raise ValueError("Stacking start half-score distance must be a positive finite number.")
+
+
+STACKING_START_OFF = StackingStartPreference("off")
+
 
 @dataclass(frozen=True)
 class HeuristicSettings:
@@ -38,6 +69,11 @@ class HeuristicSettings:
     heavier_container_fallback_score: float | None = None
     equipment_outside_block_fallback_score: float | None = None
     scan_order: str = "slot_wise"
+    # Accept legacy yard-wide settings. Each block now controls its own scoring.
+    enable_block_stacking_start: bool = False
+    stacking_start_axis: str = "off"
+    stacking_start_position: int = 1
+    hl_stacking_start_distance: float = 2.0
 
     def __post_init__(self) -> None:
         if self.stacking_safety_limit_multiplier is None:
@@ -74,6 +110,12 @@ class HeuristicSettings:
                 if value not in ("row_wise", "slot_wise"):
                     raise ValueError("scan_order must be 'row_wise' or 'slot_wise'.")
                 continue
+            if name == "stacking_start_axis":
+                if value not in ("off", "row", "slot"):
+                    raise ValueError("stacking_start_axis must be 'off', 'row', or 'slot'.")
+                continue
+            if name == "stacking_start_position" and type(value) is not int:
+                raise TypeError("stacking_start_position must be an integer.")
             if value is None and name in (
                 "heavier_container_fallback_score", "equipment_outside_block_fallback_score",
             ):

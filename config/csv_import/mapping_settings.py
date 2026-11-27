@@ -32,8 +32,13 @@ CONTAINER_SCHEMA = CSVSchema(
     ),
 )
 
+BLOCK_ACCESSIBILITY_SCHEMA = CSVSchema(
+    required=("block_id", "above", "below", "left", "right"),
+    optional=("stacking_start_axis", "stacking_start_position", "stacking_start_half_distance", "stacking_start_enabled"),
+)
+
 SCHEMAS = {
-    "block_accessibility": CSVSchema(required=("block_id", "above", "below", "left", "right")),
+    "block_accessibility": BLOCK_ACCESSIBILITY_SCHEMA,
     "terminal_branches": CSVSchema(required=(
         "branch_id", "terminal_id", "branch_code", "branch_name",
     )),

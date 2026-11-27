@@ -3,6 +3,7 @@ import warnings
 from contextlib import contextmanager
 
 from config import FeasibilitySettings, HeuristicSettings
+from config.application.heuristic_settings import STACKING_START_OFF, StackingStartPreference
 
 from .assign_result import AssignResult, CandidateEvaluation
 from .heuristic_model import HeuristicModel
@@ -39,7 +40,8 @@ class Yard:
                  equipment_locations_input:dict[str,tuple[str,str,int,int]] | None = None,
                  border_access_policies: dict[str, BlockBorderAccessPolicy] | None = None,
                  feasibility_settings: FeasibilitySettings | None = None,
-                 heuristic_settings: HeuristicSettings | None = None) -> None:
+                 heuristic_settings: HeuristicSettings | None = None,
+                 stacking_start_by_block: dict[str, StackingStartPreference] | None = None) -> None:
 
         if removed_slots_input is None: removed_slots_input = []
         if parameters_input is None: parameters_input = []
@@ -50,6 +52,7 @@ class Yard:
 
         self.feasibility = PlacementFeasibility(settings=feasibility_settings)
         self.model = HeuristicModel(settings=heuristic_settings)
+        self.stacking_start_by_block = dict(stacking_start_by_block or {})
         self.border_access_policies = (
             dict(border_access_policies) if border_access_policies is not None else {}
         )
@@ -872,6 +875,22 @@ class Yard:
         return (delta_container_mass, equipment, distance, multiplier,
                 self.model.evaluate(delta_container_mass, distance, multiplier))
 
+    @staticmethod
+    def stackingStartError(block: Block, start: StackingStartPreference | None) -> str | None:
+        if start is None or start.axis == "off":
+            return None
+        grid = block.getSlots()
+        limit = len(grid) if start.axis == "row" else len(grid[0])
+        if start.position > limit:
+            return f"Block {block.getCode()} has {limit} {start.axis}{'' if limit == 1 else 's'}. Choose a start from 1 to {limit}."
+        return None
+
+    def stackingStartForBlock(self, block: Block) -> StackingStartPreference:
+        override = self.stacking_start_by_block.get(block.getId())
+        if override is not None and override.enabled and self.stackingStartError(block, override) is None:
+            return override
+        return STACKING_START_OFF
+
     def bestCoordCandidate(
         self, container, candidate_coordinates: list[tuple[str, int, int, int]], *,
         equipment_access_results: dict[tuple[str, int, int, int], EquipmentAccessResult] | None = None,
@@ -883,6 +902,8 @@ class Yard:
         score_future = settings.effective_future_access_mode == "heuristic"
         score_stacking_safety = settings.effective_stacking_safety_mode in ("heuristic", "combined")
         score_capacity = settings.stack_capacity_mode == "heuristic"
+        stacking_starts = {block_id: self.stackingStartForBlock(block)
+                           for block_id, block in self.blocks_by_id.items()}
         prioritize_current_access = settings.prioritize_current_access
         candidates = []
         access_contexts = {}
@@ -926,21 +947,26 @@ class Yard:
                 )
             overcapacity_tiers = 0
             capacity_multiplier = 1.0
-            if score_capacity:
+            stacking_start_multiplier = 1.0
+            start = stacking_starts[block_id]
+            if score_capacity or start.axis != "off":
                 proposal = PlacementProposal(block_id, row, slot, tier, container.getContSize())
-                overcapacity_tiers = max(0, tier + 1 - min(
-                    block.getStack(r, s).getMaxTier() for _, r, s in proposal.footprint
-                ))
-                capacity_multiplier = self.model.settings.overcapacity_tier_multiplier ** overcapacity_tiers
+                stacking_start_multiplier = self.model.stackingStartMultiplier(proposal, start)
+                if score_capacity:
+                    overcapacity_tiers = max(0, tier + 1 - min(
+                        block.getStack(r, s).getMaxTier() for _, r, s in proposal.footprint
+                    ))
+                    capacity_multiplier = self.model.settings.overcapacity_tier_multiplier ** overcapacity_tiers
             candidates.append(CandidateEvaluation(
                 coordinate, self.getStack(block_id, row, slot).getParameters(),
                 mass, equipment, distance, cluster,
-                score * destination * current * future * stacking_safety * capacity_multiplier,
+                score * destination * current * future * stacking_safety * capacity_multiplier * stacking_start_multiplier,
                 equipment_access=access, occupied_access_multiplier=current,
                 destination_access_multiplier=destination,
                 future_access_multiplier=future,
                 stacking_safety_multiplier=stacking_safety,
                 capacity_multiplier=capacity_multiplier, overcapacity_tiers=overcapacity_tiers,
+                stacking_start_multiplier=stacking_start_multiplier,
             ))
         return sorted(
             candidates,

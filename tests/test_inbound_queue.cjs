@@ -57,7 +57,9 @@ async function openPreview(t, count, viewport = {width: 1200, height: 900}, fixt
   page.on("pageerror", error => pageErrors.push(error.message));
   t.after(() => assert.deepEqual(pageErrors, []));
 
-  await page.exposeFunction("generateStackingPreview", () => worker.request({op: "preview", draft}));
+  await page.exposeFunction("generateStackingPreview", input => worker.request({op: "preview", draft: {
+    ...draft, config_toml: input.config_toml
+  }}));
   for (const [method, op] of [
     ["suggestStackingAssignment", "suggest"],
     ["getStackingManualEquipment", "manual_equipment"],
@@ -66,12 +68,20 @@ async function openPreview(t, count, viewport = {width: 1200, height: 900}, fixt
     ["reorderStackingQueue", "reorder_queue"],
     ["deleteStackingQueueRow", "delete_queue_row"],
     ["updateStackingBlockAccess", "update_block_access"],
+    ["updateStackingBlockStart", "update_block_stacking_start"],
     ["addStackingDummy", "add_stack_dummy"],
     ["removeStackingTop", "remove_stack_top"]
   ]) {
     await page.exposeFunction(method, request => worker.request({...request, op}));
   }
+  if (fixture.onSaveBlockSettings) await page.exposeFunction("saveStackingBlockSettings", fixture.onSaveBlockSettings);
   await page.goto(pathToFileURL(path.join(root, "stacking_ui", "static", "index.html")).href);
+  if (fixture.configToml) {
+    await page.locator("#load-config").setInputFiles({
+      name: "block-preferences.toml", mimeType: "application/toml", buffer: Buffer.from(fixture.configToml)
+    });
+    await page.getByText("Loaded block-preferences.toml.", {exact: true}).waitFor();
+  }
   await page.getByRole("button", {name: "Generate preview", exact: true}).click();
   return page;
 }
@@ -109,6 +119,86 @@ test("scan order switch writes the selected mode into the preview TOML", async t
   assert.equal(await slotWise.isChecked(), true);
   await switchGroup.getByText("Row-wise", {exact: true}).click();
   assert.equal(await previewToml(), 'heuristic = { scan_order = "row_wise", enable_equipment_distance = false }\n');
+});
+
+test("block settings grey the editable preference fields when scoring is off", async t => {
+  const saved = [];
+  const page = await openPreview(t, 2, {width: 980, height: 850}, {
+    equipmentChoices: "open",
+    onSaveBlockSettings: request => { saved.push(request); },
+    configToml: '[heuristic]\nstacking_start_axis = "row"\nenable_equipment_distance = false\n' +
+      'enable_delta_container_mass = false\nenable_size_cluster = false\n' +
+      '[stacking_start_by_block."JKT74"."11"]\naxis = "slot"\nposition = 3\n' +
+      '[stacking_start_by_block."OTHER"]\n"10" = {axis = "off"}\n'
+  });
+  const a = page.getByRole("dialog", {name: "Block A settings"});
+  const b = page.getByRole("dialog", {name: "Block B settings"});
+  const stackingStart = dialog => dialog.getByRole("group", {name: "Start stacking from"})
+    .getByRole("switch", {name: "Prefer this row or slot"});
+  const optionsBackground = dialog => dialog.locator(".yard-stacking-start-options")
+    .evaluate(options => getComputedStyle(options).backgroundColor);
+  const start = a.getByRole("spinbutton", {name: "Start number"});
+  const half = a.getByRole("spinbutton", {name: "Distance for half score"});
+  await button(page, "Block B settings").click();
+  await b.getByText("Scoring is off for this block.", {exact: true}).waitFor();
+  assert.equal(await stackingStart(b).isChecked(), false);
+  const offBackground = await optionsBackground(b);
+  assert.equal(await b.getByRole("combobox", {name: "Preference"}).isEnabled(), true);
+  assert.equal(await b.getByRole("switch", {name: "Block B above border access"}).isEnabled(), true);
+  assert.equal(await b.getByRole("combobox", {name: "Preference"}).inputValue(), "slot");
+  assert.equal(await b.getByRole("spinbutton", {name: "Start number"}).inputValue(), "3");
+  await button(b, "Close").click();
+  await button(page, "Block A settings").click();
+  const save = button(a, "Save block settings");
+  assert.equal(await save.isDisabled(), true);
+  assert.equal(await start.isEnabled(), true);
+  assert.equal(await stackingStart(a).isChecked(), false);
+  assert.equal(await a.getByRole("combobox", {name: "Preference"}).inputValue(), "row");
+  await start.fill("3");
+  await start.press("Tab");
+  await a.getByText("Choose a whole number from 1 to 2.", {exact: true}).waitFor();
+  await start.fill("2");
+  await start.press("Tab");
+  await a.getByText("Row 2 1× · 2 rows away 0.5×", {exact: true}).waitFor();
+  await half.fill("1.5");
+  await half.press("Tab");
+  await a.getByText("Row 2 1× · 1.5 rows away 0.5×", {exact: true}).waitFor();
+  await a.getByRole("switch", {name: "Block A above border access"}).click();
+  await page.waitForFunction(() => !document.querySelector("dialog[open] .yard-block-save").disabled);
+  assert.equal(await a.getByRole("switch", {name: "Block A above border access"}).isChecked(), false);
+  await save.click();
+  await a.getByText("Saved settings for block A.", {exact: true}).waitFor();
+  assert.equal(await save.isDisabled(), true);
+  assert.deepEqual(saved.map(({branch, block_id}) => [branch, block_id]), [["JKT74", "10"]]);
+  await stackingStart(a).click();
+  await a.getByText("Active preference · Row 2", {exact: true}).waitFor();
+  assert.notEqual(await optionsBackground(a), offBackground);
+  await button(a, "Close").click();
+  await button(page, "Block B settings").click();
+  assert.equal(await stackingStart(b).isChecked(), false);
+  await stackingStart(b).click();
+  await b.getByText("Active preference · Slot 3", {exact: true}).waitFor();
+  await button(b, "Close").click();
+  await button(page, "Block A settings").click();
+  assert.equal(await stackingStart(a).isChecked(), true);
+  await stackingStart(a).click();
+  await a.getByText("Scoring is off for this block.", {exact: true}).waitFor();
+  assert.equal(await optionsBackground(a), offBackground);
+  assert.equal(await start.inputValue(), "2");
+  assert.equal(await half.inputValue(), "1.5");
+  assert.equal(await save.isDisabled(), true);
+  const toml = await page.evaluate(() => buildDraft().config_toml);
+  assert.doesNotMatch(toml, /half_distance = 1.5/);
+  assert.match(toml, /\[stacking_start_by_block\."OTHER"\]\n"10" = \{axis = "off"\}/);
+
+  await button(a, "Close").click();
+  assert.equal(await page.getByRole("switch", {name: "Block A above border access"}).isChecked(), false);
+  await button(page, "Place container").click();
+  await page.getByText(/1 of 2 processed/).waitFor();
+  await button(page, "Block A settings").click();
+  await a.getByText(/Block settings are locked/).waitFor();
+  assert.equal(await stackingStart(a).isDisabled(), true);
+  assert.equal(await a.getByRole("combobox", {name: "Preference"}).isDisabled(), true);
 });
 
 test("equipment access controls can edit a TOML with legacy loader keys", async t => {

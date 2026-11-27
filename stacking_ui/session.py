@@ -11,17 +11,18 @@ from tempfile import NamedTemporaryFile
 from zipfile import ZipFile, ZIP_DEFLATED
 
 from config.application.config_loader import ConfigurationError
+from config.application.heuristic_settings import StackingStartPreference
 from config import DEFAULT_STACKING_INPUT_CONFIG_FILE
 from config.application.input_config import load_input_config
 from entities.container import DummyContainer
 from entities.feasibility.equipment_access import BlockBorderAccessPolicy
-from repository.block_accessibility import access_policies, policies_csv, read_policies
+from repository.block_accessibility import BlockSettings, access_policies, block_settings_csv, read_block_settings
 
 from .comparison import compare_yard
 from .configuration import PROJECT_ROOT, read_project_tomls, save_project_toml, validate_project_toml
 from .scenario import prepare_scenario, public_branch, public_preview, tier_gap_view
 from .simulation import Simulation, SimulationError, export_yard_csv, save_yard_csv
-from .yard_view import stack_view
+from .yard_view import stack_view, stacking_start_view
 
 
 def prepare_draft(draft):
@@ -32,6 +33,13 @@ def prepare_draft(draft):
 
 def preview_document(scenario):
     return {"version": 1, "kind": "stacking-preview", **public_preview(scenario)}
+
+
+def current_block_settings(yard, block_id):
+    return BlockSettings(
+        yard.border_access_policies.get(block_id, BlockBorderAccessPolicy()),
+        yard.stacking_start_by_block.get(block_id),
+    )
 
 
 class SimulationSession:
@@ -55,10 +63,12 @@ class SimulationSession:
             return save_yard_csv(self.yard_branches)
         if operation == "update_block_access":
             return self.update_block_access(request)
-        if operation == "save_block_access":
-            return self.save_block_access(request)
-        if operation == "restore_block_access":
-            return self.write_block_access(read_policies(request.get("text", "")))
+        if operation == "update_block_stacking_start":
+            return self.update_block_stacking_start(request)
+        if operation in ("save_block_settings", "save_block_access"):
+            return self.save_block_settings(request)
+        if operation in ("restore_block_settings", "restore_block_access"):
+            return self.write_block_access(read_block_settings(request.get("text", "")))
         if operation == "bundled_csvs":
             return self.bundled_csvs()
         if operation == "preview":
@@ -68,8 +78,8 @@ class SimulationSession:
                                   if branch["yard"] is not None and branch["yard"].blocks_by_id]
             for branch in self.yard_branches:
                 yard = branch["yard"]
-                branch["saved_block_access"] = {
-                    block_id: asdict(yard.border_access_policies.get(block_id, BlockBorderAccessPolicy()))
+                branch["saved_block_settings"] = {
+                    block_id: current_block_settings(yard, block_id)
                     for block_id in yard.blocks_by_id
                 }
             preview = preview_document(scenario)
@@ -122,6 +132,38 @@ class SimulationSession:
         simulation.invalidate_suggestion(code)
         return {block_id: asdict(policy) for block_id, policy in policies.items()}
 
+    def update_block_stacking_start(self, request):
+        simulation = self.simulation
+        code = request.get("branch")
+        if simulation is None or request.get("id") != simulation.id:
+            raise SimulationError("Generate a fresh preview before changing stacking start.")
+        if not isinstance(code, str):
+            raise SimulationError("Select a branch with a yard.")
+        if code in simulation.last_steps:
+            raise SimulationError("Stacking start is locked after this branch starts. Generate a fresh preview to change it.")
+        branch = next((item for item in self.yard_branches if item["branch_code"] == code), None)
+        block_id = request.get("block_id")
+        block = branch["yard"].blocks_by_id.get(block_id) if branch is not None and isinstance(block_id, str) else None
+        if block is None:
+            raise SimulationError("Select a block in this branch.")
+        yard = branch["yard"]
+        raw = request.get("preference")
+        try:
+            preference = StackingStartPreference(**raw) if raw is not None else None
+        except (TypeError, ValueError, OverflowError) as error:
+            raise SimulationError(str(error)) from error
+        error = yard.stackingStartError(block, preference)
+        if error:
+            raise SimulationError(error)
+        previous = yard.stackingStartForBlock(block)
+        if preference is None:
+            yard.stacking_start_by_block.pop(block_id, None)
+        else:
+            yard.stacking_start_by_block[block_id] = preference
+        if yard.stackingStartForBlock(block) != previous:
+            simulation.invalidate_suggestion(code)
+        return stacking_start_view(yard, block)
+
     def block_access_path(self):
         settings = load_input_config(DEFAULT_STACKING_INPUT_CONFIG_FILE)
         path = settings.get("csv_files", {}).get(
@@ -130,9 +172,9 @@ class SimulationSession:
             raise SimulationError("Choose a block accessibility CSV inside the project.")
         return path
 
-    def write_block_access(self, policies):
+    def write_block_access(self, settings):
         path = self.block_access_path()
-        text = policies_csv(policies)
+        text = block_settings_csv(settings)
         path.parent.mkdir(parents=True, exist_ok=True)
         with NamedTemporaryFile(dir=path.parent, encoding="utf-8", mode="w", newline="", delete=False) as stream:
             temporary = Path(stream.name)
@@ -145,22 +187,27 @@ class SimulationSession:
                 temporary.unlink(missing_ok=True)
         return {"name": path.name, "text": text}
 
-    def save_block_access(self, request):
+    def save_block_settings(self, request):
         if self.simulation is None or request.get("id") != self.simulation.id:
-            raise SimulationError("Generate a fresh preview before saving block access.")
+            raise SimulationError("Generate a fresh preview before saving block settings.")
         branch = next((item for item in self.yard_branches if item["branch_code"] == request.get("branch")), None)
         block_id = request.get("block_id")
         if branch is None or not isinstance(block_id, str) or block_id not in branch["yard"].blocks_by_id:
-            raise SimulationError("Select a known block in this branch to save its access.")
+            raise SimulationError("Select a known block in this branch to save its settings.")
         path = self.block_access_path()
-        text = path.read_text(encoding="utf-8") if path.exists() else policies_csv({})
-        policies = read_policies(text)
-        policy = branch["yard"].border_access_policies.get(block_id, BlockBorderAccessPolicy())
-        if asdict(policy) == branch["saved_block_access"][block_id]:
+        text = path.read_text(encoding="utf-8") if path.exists() else block_settings_csv({})
+        current = current_block_settings(branch["yard"], block_id)
+        original = branch["saved_block_settings"][block_id]
+        if current == original:
             return {"name": path.name, "text": text}
-        policies[block_id] = policy
-        saved = self.write_block_access(policies)
-        branch["saved_block_access"][block_id] = asdict(policy)
+        settings = read_block_settings(text)
+        previous = settings.get(block_id)
+        start = current.stacking_start
+        if start is None and (original.stacking_start is not None or (previous and previous.stacking_start is not None)):
+            start = "inherit"
+        settings[block_id] = BlockSettings(current.border_access, start)
+        saved = self.write_block_access(settings)
+        branch["saved_block_settings"][block_id] = current
         return saved
 
     def bundled_csvs(self):
@@ -173,7 +220,7 @@ class SimulationSession:
                     raise SimulationError("Bundled CSV paths must stay inside the project.")
                 name = path.relative_to(PROJECT_ROOT).as_posix()
                 if path == self.block_access_path() and not path.exists():
-                    archive.writestr(name, policies_csv({}))
+                    archive.writestr(name, block_settings_csv({}))
                 else:
                     archive.write(path, name)
         return {"name": "bundled-csvs.zip", "base64": base64.b64encode(buffer.getvalue()).decode("ascii")}

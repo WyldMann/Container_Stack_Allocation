@@ -34,6 +34,7 @@ ignore_stacks_without_legal_next_tier = true
 [heuristic]
 # Break placement ties by scanning each row or each slot first.
 scan_order = "slot_wise"
+# Each block controls stacking-start scoring in Block settings. See block_accessibility.csv.
 # Score multiplier at stacking_safety_maxima. Range: 0 to 1.
 stacking_safety_limit_multiplier = 0.5
 occupied_access_loss_weight = 0.5

@@ -4,7 +4,7 @@ import tomllib
 
 from .feasibility_settings import FeasibilitySettings
 from .application_settings import ApplicationSettings
-from .heuristic_settings import HeuristicSettings
+from .heuristic_settings import HeuristicSettings, StackingStartPreference
 
 
 class ConfigurationError(ValueError):
@@ -90,16 +90,39 @@ def load_config(path: str | Path) -> ApplicationSettings:
     return parse_config(_read_document(path))
 
 
+def _parse_stacking_start_by_block(document: dict) -> dict[str, dict[str, StackingStartPreference]]:
+    section = document.get("stacking_start_by_block", {})
+    if not isinstance(section, dict):
+        raise ConfigurationError("'stacking_start_by_block' must be a table of branches.")
+    preferences = {}
+    for branch, blocks in section.items():
+        if not isinstance(branch, str) or not branch.strip() or not isinstance(blocks, dict):
+            raise ConfigurationError("Each stacking start branch must have a name and a table of blocks.")
+        code = branch.strip().upper()
+        if code in preferences:
+            raise ConfigurationError(f"Duplicate stacking start branch: {code}.")
+        preferences[code] = {}
+        for block_id, settings in blocks.items():
+            if not isinstance(block_id, str) or not block_id.strip() or not isinstance(settings, dict):
+                raise ConfigurationError(f"Each stacking start block in {code} must have an ID and settings.")
+            try:
+                preferences[code][block_id] = StackingStartPreference(**settings)
+            except (TypeError, ValueError, OverflowError) as error:
+                raise ConfigurationError(f"Invalid stacking start for block {block_id} in {code}: {error}") from error
+    return {branch: blocks for branch, blocks in preferences.items() if blocks}
+
+
 def parse_config(document: dict) -> ApplicationSettings:
     """Validate settings from TOML or an interface using the same rules."""
     if not isinstance(document, dict):
         raise ConfigurationError("Stacking configuration must be a table.")
-    unknown = set(document) - {"feasibility", "heuristic"}
+    unknown = set(document) - {"feasibility", "heuristic", "stacking_start_by_block"}
     if unknown:
         raise ConfigurationError(f"Unknown stacking configuration sections: {sorted(unknown)}")
     return ApplicationSettings(
         feasibility=_parse_feasibility(document),
         heuristic=_parse_heuristic(document),
+        stacking_start_by_block=_parse_stacking_start_by_block(document),
     )
 
 

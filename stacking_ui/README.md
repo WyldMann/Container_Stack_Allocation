@@ -59,22 +59,30 @@ includes left and right approaches when side access is enabled and an RS is regi
 The switches lock after the first inbound row is processed.
 Unlisted blocks default to all four borders open.
 
-Each block's **Save block access settings** button is grey until at least one border differs
-from its saved setting. Returning all switches to their saved values disables
-it again, including when the CSV is empty and all borders default to open.
-Saving only writes that block; changes to other blocks stay unsaved.
-The map lists every block with unsaved access changes. The message disappears
-when all changes are saved or reverted.
+The **Start stacking from** section in **Block settings** has a switch labeled
+**Prefer this row or slot**. It starts off for each block. Choose **Row** or
+**Slot** and set the start number while scoring is off. The grey fields remain editable. An empty
+half-score distance uses two rows or slots. Turn the switch on to apply that
+block’s preference immediately.
+**Save block settings** keeps the switch state and the preference. Block settings
+lock after the branch processes its first inbound row.
 
-In the standalone package, **Save block access settings** remembers that block's settings in
-this browser. Generate another bundled preview to reuse them. **Download
-bundled CSVs (ZIP)** includes the saved `block_accessibility.csv` alongside the
-other inputs, preserving access settings for other branches. Share that CSV or
-the downloaded data ZIP to transfer settings to another browser or computer.
-In the desktop launcher, **Save block access settings** updates that block in the configured
-project CSV. The file uses `BLOCK_ID,ABOVE,BELOW,LEFT,RIGHT` with `TRUE` or `FALSE` values.
-An empty or omitted optional CSV uses the default open borders. Uploading a
-replacement accessibility CSV uses that file for the current preview.
+**Save block settings** saves both settings for the selected block. The button
+enables when any setting differs from its saved value. Edits to other blocks
+stay unsaved and the map shows which blocks still have changes.
+
+In the standalone package, the save is restored from browser storage when
+generating a bundled preview. **Download bundled CSVs (ZIP)** includes the
+saved `block_accessibility.csv` for transfer to another browser or computer.
+In the desktop launcher, the same button updates the configured project CSV.
+When using uploaded files, load the exported or updated CSV to reuse its saved settings.
+
+The CSV uses `BLOCK_ID,ABOVE,BELOW,LEFT,RIGHT` with `TRUE` or `FALSE` for each
+border. The optional `STACKING_START_AXIS`, `STACKING_START_POSITION`,
+`STACKING_START_HALF_DISTANCE`, and `STACKING_START_ENABLED` columns store block
+preferences. A missing switch value is off. An axis of `inherit` clears any
+legacy TOML preference for that block. Existing access-only CSVs and legacy
+TOML preferences still load.
 
 **Pyramid stacking** has two independent switches, both on by default:
 **Reduce score as the tier gap grows** applies the declining score curve, and

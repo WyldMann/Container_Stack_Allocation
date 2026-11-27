@@ -10,8 +10,11 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 
+from config.application.heuristic_settings import StackingStartPreference
 from entities.feasibility.equipment_access import BlockBorderAccessPolicy
-from repository.block_accessibility import access_policies, policies_csv, read_policies
+from repository.block_accessibility import (
+    BlockSettings, access_policies, block_settings_csv, policies_csv, read_block_settings, read_policies,
+)
 from stacking_ui.configuration import PROJECT_ROOT, dump_toml
 from stacking_ui.scenario import prepare_scenario, public_preview
 from stacking_ui.session import SimulationSession
@@ -36,6 +39,8 @@ class BlockAccessibilityTests(unittest.TestCase):
         for records in ([row, row], [row | {"above": "maybe"}], [row | {"block_id": ""}]):
             with self.subTest(records=records), self.assertRaises(ValueError):
                 access_policies(records)
+        with self.assertRaisesRegex(ValueError, "STACKING_START_ENABLED must be TRUE or FALSE"):
+            access_policies([row | {"stacking_start_enabled": "maybe"}])
 
     def test_csv_import_reaches_map_and_loader_checks(self):
         fixture = self.fixture()
@@ -47,6 +52,60 @@ class BlockAccessibilityTests(unittest.TestCase):
         self.assertEqual(block["id"], "10")
         self.assertEqual(block["border_access"], dict.fromkeys(("above", "below", "left", "right"), False))
         self.assertEqual(branch["yard"].findCoordsCandidates(SimpleNamespace(getContSize=lambda: "20"))[2], [])
+
+    def test_combined_save_reload_and_inherit_override(self):
+        fixture = self.fixture()
+        fixture.rows["yard_blocks"].append(fixture.rows["yard_blocks"][0] | {"block_id": "11", "block_code": "B"})
+        fixture.write_files()
+        draft = fixture.payload
+        config = tomllib.loads(draft["config_toml"])
+        config["stacking_start_by_block"] = {"JKT74": {"10": {"axis": "slot", "position": 2}}}
+        draft["config_toml"] = dump_toml(config)
+        session = SimulationSession()
+        response = session.request({"op": "preview", "draft": draft})
+        identity = {"id": response["simulation"]["id"], "branch": "JKT74"}
+        session.request({"op": "update_block_access", **identity, "policies": [
+            dict(block_id="10", above=False, below=True, left=True, right=True),
+        ]})
+        desired = {"axis": "row", "position": 2, "half_distance": 1.5, "enabled": True}
+        edit = {"op": "update_block_stacking_start", **identity, "block_id": "10"}
+        session.request(edit | {"preference": desired})
+        session.request(edit | {"block_id": "11", "preference": {"axis": "off"}})
+        other = BlockSettings(BlockBorderAccessPolicy(right=False), StackingStartPreference("slot", 3))
+
+        with TemporaryDirectory(dir=PROJECT_ROOT) as directory:
+            path = Path(directory) / "block_accessibility.csv"
+            with patch.object(session, "block_access_path", return_value=path):
+                session.request({"op": "restore_block_settings", "text": block_settings_csv({"999": other})})
+                save = {"op": "save_block_settings", **identity, "block_id": "10"}
+                saved = session.request(save)
+                self.assertEqual(read_block_settings(saved["text"]), {
+                    "10": BlockSettings(BlockBorderAccessPolicy(above=False), StackingStartPreference(**desired)),
+                    "999": other,
+                })
+                records = draft["files"]["block_accessibility"]
+                records["content"] = saved["text"]
+                branch = public_preview(prepare_scenario(draft))["branches"][0]
+                blocks = {block["id"]: block for block in branch["yard_map"]["blocks"]}
+                self.assertEqual(blocks["10"]["stacking_start"]["override"], desired)
+                self.assertFalse(blocks["10"]["border_access"]["above"])
+                self.assertIsNone(blocks["11"]["stacking_start"]["override"])
+
+                disabled = desired | {"enabled": False}
+                session.request(edit | {"preference": disabled})
+                records["content"] = session.request(save)["text"]
+                block = public_preview(prepare_scenario(draft))["branches"][0]["yard_map"]["blocks"][0]
+                self.assertEqual(block["stacking_start"]["override"], disabled)
+                self.assertEqual(block["stacking_start"]["effective"]["axis"], "off")
+
+                session.request(edit | {"preference": None})
+                saved = session.request(save)
+                self.assertEqual(read_block_settings(saved["text"])["10"].stacking_start, "inherit")
+                records["content"] = saved["text"]
+                branch = public_preview(prepare_scenario(draft))["branches"][0]
+                blocks = {block["id"]: block for block in branch["yard_map"]["blocks"]}
+                self.assertIsNone(blocks["10"]["stacking_start"]["override"])
+                self.assertFalse(blocks["10"]["border_access"]["above"])
 
     def test_legacy_missing_optional_upload_defaults_to_open(self):
         fixture = self.fixture()

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from config import FeasibilitySettings, HeuristicSettings
+from config.application.heuristic_settings import StackingStartPreference
 from entities import Container
 from entities.bad_yard_data import PlacementRejected
 from entities.equipment import RTG
@@ -27,6 +28,38 @@ class YardFeasibilityIntegrationTests(unittest.TestCase):
 
                 yard.getBlockByID('A').setRTG(RTG('RTG', second[:3]))
                 self.assertEqual(yard.assignContainer(container).getBestCoordinate(), second)
+
+    def test_stacking_start_ranks_placements_independently_of_scan_order(self):
+        block = dict(branch_id='B', block_id='A', block_code='A', slot_count='3',
+                     row_count='3', max_tier='1', pos_x='0', pos_y='0')
+        container = make_container(container_size='20')
+        for axis, order, winner, full, half in (
+            ('row', 'slot_wise', ('A', 2, 0, 0), ('A', 2, 2, 0), ('A', 0, 2, 0)),
+            ('slot', 'row_wise', ('A', 0, 2, 0), ('A', 2, 2, 0), ('A', 2, 0, 0)),
+        ):
+            with self.subTest(axis=axis):
+                yard = Yard([block], heuristic_settings=HeuristicSettings(
+                    scan_order=order,
+                    enable_delta_container_mass=False, enable_equipment_distance=False, enable_size_cluster=False,
+                ), stacking_start_by_block={'A': StackingStartPreference(axis, 3, enabled=True)})
+                result = yard.assignContainer(container, trace={})
+                candidates = {candidate.coordinates: candidate for candidate in result.sorted_candidate_evaluations}
+                self.assertEqual(result.getBestCoordinate(), winner)
+                self.assertEqual(candidates[full].stacking_start_multiplier, 1)
+                self.assertEqual(candidates[half].stacking_start_multiplier, 0.5)
+                self.assertEqual(candidates[half].evaluation_score, 0.5)
+
+    def test_stacking_start_slot_uses_the_nearest_cell_of_a_40_foot_placement(self):
+        block = dict(branch_id='B', block_id='A', block_code='A', slot_count='4',
+                     row_count='1', max_tier='1', pos_x='0', pos_y='0')
+        yard = Yard([block], heuristic_settings=HeuristicSettings(
+            enable_delta_container_mass=False, enable_equipment_distance=False, enable_size_cluster=False,
+        ), stacking_start_by_block={'A': StackingStartPreference('slot', 3, enabled=True)})
+        result = yard.assignContainer(make_container(container_size='40'))
+        best, other = result.sorted_candidate_evaluations
+        self.assertEqual(best.coordinates, ('A', 0, 3, 0))
+        self.assertEqual(best.stacking_start_multiplier, 1)
+        self.assertAlmostEqual(other.stacking_start_multiplier, 2 ** -0.5)
 
     def test_candidate_selection_applies_feasibility(self):
         yard = Yard(

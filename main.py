@@ -11,7 +11,7 @@ from config import (
 from config.application.input_filters import branch_input_settings
 from repository import load_yard_inputs
 from repository.branch_repository import BranchDirectory
-from repository.block_accessibility import access_policies
+from repository.block_accessibility import block_settings, stacking_start_overrides
 from entities import Yard, Container
 from entities.bad_yard_data import PlacementRejected
 from presenter import YardPresenter, BadDataPresenter
@@ -20,6 +20,8 @@ from presenter import YardPresenter, BadDataPresenter
 def run_yard(input_settings, settings, *, separate_output=False):
     inputs = load_yard_inputs(input_settings, include_shifting=False)
     inbound_container_records = inputs["inbound_containers"]
+    branch_code = inputs["terminal_branches"][0]["branch_code"].strip().upper() if settings.stacking_start_by_block else None
+    blocks = block_settings(inputs.get("block_accessibility", []))
 
     yard = Yard(
         yard_blocks_input=inputs["yard_blocks"],
@@ -29,9 +31,10 @@ def run_yard(input_settings, settings, *, separate_output=False):
         containers_input=inputs["existing_containers"],
         equipment_input=inputs["master_equipment"],
         equipment_locations_input=inputs["equipment_history"],
-        border_access_policies=access_policies(inputs.get("block_accessibility", [])),
+        border_access_policies={block_id: block.border_access for block_id, block in blocks.items()},
         feasibility_settings=settings.feasibility,
         heuristic_settings=settings.heuristic,
+        stacking_start_by_block=stacking_start_overrides(blocks, settings.stacking_start_by_block.get(branch_code)),
     )
     yard_presenter = YardPresenter()
     yard_presenter.outYard(yard)

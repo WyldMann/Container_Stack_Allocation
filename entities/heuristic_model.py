@@ -1,9 +1,13 @@
 import math
 from config import HeuristicSettings
+from config.application.heuristic_settings import (
+    BLOCK_STACKING_START_HALF_DISTANCE, STACKING_START_OFF, StackingStartPreference,
+)
 
 from .block import Block
 from .container import Container
 from .feasibility.equipment_access import EquipmentAccessResult
+from .feasibility.placement_proposal import PlacementProposal
 from .stack import Stack
 
 class HeuristicModel:
@@ -39,6 +43,16 @@ class HeuristicModel:
         self.hl_size_cluster_penalty_distance = settings.hl_size_cluster_penalty_distance
         self.size_cluster_penalty_prior = settings.size_cluster_penalty_prior
         self.size_cluster_penalty_bias = settings.size_cluster_penalty_bias
+
+    def stackingStartMultiplier(self, proposal: PlacementProposal, start: StackingStartPreference = STACKING_START_OFF) -> float:
+        if not start.enabled:
+            return 1.0
+        start_index = start.position - 1
+        if start.axis == "row":
+            distance = abs(proposal.row_index - start_index)
+        else:
+            distance = min(abs(slot - start_index) for _, _, slot in proposal.footprint)
+        return 2 ** (-distance / (start.half_distance or BLOCK_STACKING_START_HALF_DISTANCE))
 
     def stackingSafetyMultiplier(self, difference: int, penalty_start: int, maxima: int) -> float:
         """Full score up to the soft threshold, then linear decay to the limit."""

@@ -21,6 +21,7 @@ class CandidateEvaluation:
     capacity_multiplier: float = 1.0
     overcapacity_tiers: int = 0
     destination_access_multiplier: float = 1.0
+    stacking_start_multiplier: float = 1.0
 
     def ranking_key(self, prioritize_current_access: bool, prioritize_destination: bool = True) -> tuple[bool, int, float]:
         access = self.equipment_access if prioritize_current_access else None

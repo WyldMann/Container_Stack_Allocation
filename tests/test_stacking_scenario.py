@@ -592,6 +592,60 @@ class ScenarioTests(unittest.TestCase):
             self.assertNotEqual(session.request(suggest)["suggestion_id"], before["suggestion_id"])
         self.assertFalse(session.simulation.last_steps)
 
+    def test_block_stacking_start_applies_live_overrides_and_locks_after_first_step(self):
+        self.rows["yard_blocks"].append(self.rows["yard_blocks"][0] | {"block_id": "11", "block_code": "B"})
+        self.rows["master_equipment"].append(dict(equipment_code="RTG2", equipment_type="RTG"))
+        self.rows["equipment_history"].append(self.rows["equipment_history"][0] | {"equipment_code": "RTG2", "block_code": "B"})
+        self.write_files()
+        config = tomllib.loads(self.payload["config_toml"])
+        config["heuristic"].update(stacking_start_axis="row", stacking_start_position=1, hl_stacking_start_distance=10)
+        config["heuristic"]["enable_block_stacking_start"] = True  # Legacy global switch is ignored.
+        config["stacking_start_by_block"] = {"JKT74": {"11": {"axis": "slot", "position": 3, "half_distance": 1}}}
+        self.payload["config_toml"] = dump_toml(config)
+        session = SimulationSession()
+        preview = session.request({"op": "preview", "draft": self.payload})
+        blocks = {block["id"]: block for block in preview["preview"]["branches"][0]["yard_map"]["blocks"]}
+        saved_b = config["stacking_start_by_block"]["JKT74"]["11"]
+        self.assertEqual(blocks["11"]["stacking_start"]["override"], saved_b | {"enabled": False})
+        self.assertEqual(blocks["11"]["stacking_start"]["effective"]["axis"], "off")
+        request = {"id": preview["simulation"]["id"], "branch": "JKT74"}
+        calculation = session.request({"op": "suggest", **request})["calculation"]
+        self.assertNotIn("stacking_start_multiplier", calculation["enabled_multipliers"])
+        self.assertTrue(all(candidate["stacking_start_multiplier"] == 1 for candidate in calculation["candidates"]))
+        suggest = {"op": "suggest", **request}
+        edit = {"op": "update_block_stacking_start", "block_id": "10", **request}
+        session.request(edit | {"block_id": "11", "preference": saved_b | {"enabled": True}})
+        original = session.request(suggest)
+        self.assertTrue(all(candidate["stacking_start_multiplier"] == 1 for candidate in
+                            original["calculation"]["candidates"] if candidate["block"] == "A"))
+        with self.assertRaisesRegex(SimulationError, "Choose a start from 1 to 2"):
+            session.request(edit | {"preference": {"axis": "row", "position": 3}})
+        self.assertEqual(session.request(suggest), original)
+        stored_a = {"axis": "row", "position": 2, "half_distance": None, "enabled": False}
+        view = session.request(edit | {"preference": stored_a})
+        self.assertEqual(view["override"], stored_a)
+        self.assertEqual(session.request(suggest), original)
+        session.request(edit | {"preference": stored_a | {"enabled": True}})
+        refreshed = session.request(suggest)
+        self.assertNotEqual(refreshed["suggestion_id"], original["suggestion_id"])
+        candidates = {(item["block"], item["row"], item["slot"]): item for item in refreshed["calculation"]["candidates"]}
+        self.assertEqual(candidates["A", 2, 1]["stacking_start_multiplier"], 1)
+        self.assertAlmostEqual(candidates["A", 1, 2]["stacking_start_multiplier"], 2 ** -0.5)
+        self.assertEqual(candidates["B", 1, 1]["stacking_start_multiplier"], 0.25)
+        disabled = session.request(edit | {"preference": stored_a})
+        self.assertEqual(disabled["effective"]["axis"], "off")
+        self.assertEqual(disabled["override"], stored_a)
+        coefficients = {(candidate["block"], candidate["row"], candidate["slot"]): candidate["stacking_start_multiplier"]
+                        for candidate in session.request(suggest)["calculation"]["candidates"]}
+        self.assertEqual(coefficients["A", 1, 2], 1)
+        self.assertEqual(coefficients["B", 1, 1], 0.25)
+        cleared = session.request(edit | {"preference": None})
+        self.assertIsNone(cleared["override"])
+        self.assertEqual(cleared["effective"]["axis"], "off")
+        session.request({"op": "step", "position": 1, **request})
+        with self.assertRaisesRegex(SimulationError, "Stacking start is locked"):
+            session.request(edit | {"preference": {"axis": "off"}})
+
     def test_queue_reordering_preserves_source_rows_placements_and_step_history(self):
         self.rows["inbound_containers"].append(dict(container_id="NEW1", container_size="40"))
         self.write_files()
@@ -787,6 +841,9 @@ class ScenarioTests(unittest.TestCase):
         json.dumps(result, allow_nan=False)
 
     def test_simulation_trace_only_lists_locations_passing_parameter_selection(self):
+        config = tomllib.loads(self.payload["config_toml"])
+        config["stacking_start_by_block"] = {"JKT74": {"10": {"axis": "row", "position": 1, "enabled": True}}}
+        self.payload["config_toml"] = dump_toml(config)
         self.rows["parameters"] = [dict(parameter_id="38", parameter_name="20 ft", container_size="20",
                                          container_size_score="2", terminal_id="1", branch_id="2")]
         self.rows["yard_planning"] = [dict(parameter_id="38", block_id="10", row_no="2", slot_no="3",
@@ -806,8 +863,11 @@ class ScenarioTests(unittest.TestCase):
         candidate, = candidates
         self.assertTrue(candidate["selected"])
         self.assertEqual((candidate["row"], candidate["slot"]), (2, 3))
+        self.assertIn("stacking_start_multiplier", calculation["enabled_multipliers"])
+        self.assertAlmostEqual(candidate["stacking_start_multiplier"], 2 ** -0.5)
         self.assertAlmostEqual(candidate["score"], candidate["mass_multiplier"] *
-                               candidate["distance_multiplier"] * candidate["cluster_multiplier"])
+                               candidate["distance_multiplier"] * candidate["cluster_multiplier"] *
+                               candidate["stacking_start_multiplier"])
 
     def test_simulation_advances_when_no_stack_qualifies(self):
         self.rows["existing_containers"] = []

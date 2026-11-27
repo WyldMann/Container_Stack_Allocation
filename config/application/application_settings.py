@@ -1,13 +1,23 @@
 from dataclasses import asdict, dataclass, field
 
 from .feasibility_settings import FeasibilitySettings
-from .heuristic_settings import HeuristicSettings
+from .heuristic_settings import HeuristicSettings, StackingStartPreference
 
 
 @dataclass(frozen=True)
 class ApplicationSettings:
     feasibility: FeasibilitySettings = field(default_factory=FeasibilitySettings)
     heuristic: HeuristicSettings = field(default_factory=HeuristicSettings)
+    stacking_start_by_block: dict[str, dict[str, StackingStartPreference]] = field(default_factory=dict)
+
+    def stacking_start_document(self) -> dict:
+        return {
+            branch: {
+                block_id: {key: value for key, value in asdict(preference).items() if value is not None}
+                for block_id, preference in blocks.items()
+            }
+            for branch, blocks in self.stacking_start_by_block.items() if blocks
+        }
 
     def to_document(self) -> dict:
         settings = self.feasibility
@@ -31,4 +41,5 @@ class ApplicationSettings:
                 "reach_stacker_20ft_side_access": settings.reach_stacker_20ft_side_access,
             },
             "heuristic": {name: value for name, value in asdict(self.heuristic).items() if value is not None},
+            **({"stacking_start_by_block": self.stacking_start_document()} if self.stacking_start_by_block else {}),
         }

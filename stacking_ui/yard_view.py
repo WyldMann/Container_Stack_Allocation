@@ -3,6 +3,7 @@
 from math import isfinite
 from dataclasses import asdict
 
+from config.application.heuristic_settings import BLOCK_STACKING_START_HALF_DISTANCE
 from entities.container import DummyContainer
 from entities.feasibility.equipment_access import BlockBorderAccessPolicy
 
@@ -76,6 +77,16 @@ def block_equipment_codes(block):
     return codes
 
 
+def stacking_start_view(yard, block):
+    override = yard.stacking_start_by_block.get(block.getId())
+    effective = asdict(yard.stackingStartForBlock(block))
+    if effective["axis"] != "off" and effective["half_distance"] is None:
+        effective["half_distance"] = BLOCK_STACKING_START_HALF_DISTANCE
+    return {"override": asdict(override) if override is not None else None, "effective": effective,
+            "half_distance_if_blank": BLOCK_STACKING_START_HALF_DISTANCE,
+            "error": yard.stackingStartError(block, override)}
+
+
 def yard_view(yard):
     """Build a read-only map with one-based locations and sparse tier contents."""
     parameters = {}
@@ -97,6 +108,7 @@ def yard_view(yard):
         blocks.append({
             "id": block.getId(),
             "border_access": asdict(yard.border_access_policies.get(block.getId(), BlockBorderAccessPolicy())),
+            "stacking_start": stacking_start_view(yard, block),
             "code": block.getCode(), "x": block.getPosX(), "y": block.getPosY(),
             "rtg_code": rtg.getCode() if rtg is not None else None,
             "equipment_codes": block_equipment_codes(block),
