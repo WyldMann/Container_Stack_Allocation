@@ -23,6 +23,7 @@ class FeasibilitySettings:
     stacking_safety_neighbor_left: bool = False
     stacking_safety_neighbor_right: bool = False
     stacking_safety_penalty_start: int | None = None
+    reach_stacker_20ft_side_access: bool = True
 
     def __post_init__(self) -> None:
         if type(self.stacking_safety_maxima) is not int or self.stacking_safety_maxima < 1:
@@ -33,7 +34,7 @@ class FeasibilitySettings:
             raise ValueError("stacking_safety_penalty_start must be a non-negative integer below stacking_safety_maxima.")
         for name in (
             "stacking_safety", "equipment_access", "preserve_future_access",
-            "ignore_stacks_without_legal_next_tier",
+            "ignore_stacks_without_legal_next_tier", "reach_stacker_20ft_side_access",
             "stacking_safety_neighbor_up", "stacking_safety_neighbor_down",
             "stacking_safety_neighbor_left", "stacking_safety_neighbor_right",
         ):

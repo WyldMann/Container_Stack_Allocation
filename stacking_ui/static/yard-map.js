@@ -697,7 +697,7 @@ function createYardMap(branch, branches = [branch], accessOptions = {}) {
         toggle.replaceChildren(direction, el("strong", open ? "Open" : "Closed"));
         const use = side === "above" || side === "below"
           ? "ground equipment entry and exterior working space"
-          : "ground equipment entry and exterior reach stacker working space for 20 ft containers";
+          : "ground equipment entry and, when 20 ft side access is enabled, exterior reach stacker working space";
         toggle.title = label + " border is " + (open ? "open" : "closed") + " for " + use + ".";
       }
       toggle.addEventListener("click", async () => {

@@ -20,6 +20,8 @@ stacking_safety_neighbor_right = false
 
 # Equipment access modes are "feasibility" (reject), "heuristic" (score), and "off" (skip).
 # Loaders and reach stackers use ground access. RTG service bypasses these checks.
+# Allow reach stackers to serve 20 ft containers from the left or right.
+reach_stacker_20ft_side_access = true
 # The shared mode supplies the destination and occupied-stack modes when omitted.
 # Future access inherits the occupied-stack mode when omitted.
 # If the occupied-stack mode is inherited, future access cannot use a stronger mode.

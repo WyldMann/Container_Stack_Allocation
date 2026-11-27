@@ -34,6 +34,12 @@ lose access after placement. Each rule has its own mode and enables its weight
 in **Reduce score** mode. The default unreachable destination multiplier is 0.25.
 Each access loss weight defaults to 1 per location that loses access.
 
+**Allow reach stackers to access 20 ft containers from the side** is on by
+default. Turn it off to require an Above or Below approach for 20 ft containers.
+In TOML, set `reach_stacker_20ft_side_access = false` under `[feasibility]`.
+The setting applies to destination reachability, access preservation, and manual
+equipment selection.
+
 **Ignore stacks that can’t receive another container** exempts occupied stacks
 with no legal next tier for their container size before placement. The check
 uses the hard placement rules, including enforced tier capacity, pyramid
@@ -44,12 +50,12 @@ determine which receiving locations have room. The toggle uses the existing
 Each block has **Above**, **Below**, **Left**, and **Right** border access switches
 around its grid. Set them before starting that branch's simulation. Open borders
 allow loaders and reach stackers to enter. Above and Below also provide exterior
-working space. Reach stackers (`EQUIPMENT_TYPE = RS`) can serve 20 ft containers
-from reachable ground on any of the four sides, including exterior working space
-at an open Left or Right border. Other loaders retain Above/Below service, and
+working space. When side access is enabled, reach stackers (`EQUIPMENT_TYPE = RS`)
+can serve 20 ft containers from reachable ground on any of the four sides, including
+exterior working space at an open Left or Right border. Other loaders use Above/Below service, and
 40 ft containers still need two aligned working positions Above or Below.
 Equipment selection checks the selected unit's capability. Access preservation
-includes RS approaches whenever an RS is registered in the yard.
+includes left and right approaches when side access is enabled and an RS is registered in the yard.
 The switches lock after the first inbound row is processed.
 Unlisted blocks default to all four borders open.
 

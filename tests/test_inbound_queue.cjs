@@ -141,6 +141,38 @@ test("equipment access controls can edit a TOML with legacy loader keys", async 
   assert.match(await page.evaluate(() => buildDraft().config_toml), /loader_destination_access_mode = "heuristic"/);
 });
 
+test("reach stacker side access switch updates the TOML and equipment diagram", async t => {
+  const page = await openPreview(t, 1);
+  await page.waitForFunction(() => !document.getElementById("generate-preview").disabled);
+  const group = page.getByRole("group", {name: "Equipment access", exact: true});
+  const toggle = group.getByRole("switch", {name: "Allow reach stackers to access 20 ft containers from the side"});
+  const sideApproaches = group.locator("[data-side-approach]:visible");
+  const previewToml = () => page.evaluate(() => buildDraft().config_toml);
+  assert.equal(await toggle.isChecked(), true);
+  assert.equal(await sideApproaches.count(), 3);
+  await toggle.uncheck();
+  assert.match(await previewToml(), /^reach_stacker_20ft_side_access = false$/m);
+  assert.equal(await sideApproaches.count(), 0);
+
+  for (const [source, disabled] of [
+    ["[feasibility]\nstacking_safety = false\n",
+      "[feasibility]\nreach_stacker_20ft_side_access = false\nstacking_safety = false\n"],
+    ["feasibility = { stacking_safety = false }\n",
+      "feasibility = { reach_stacker_20ft_side_access = false, stacking_safety = false }\n"]
+  ]) {
+    await page.locator("#load-config").setInputFiles({
+      name: "side-access.toml", mimeType: "application/toml", buffer: Buffer.from(source)
+    });
+    await feedback(page, "Loaded side-access.toml.").waitFor();
+    assert.equal(await toggle.isChecked(), true);
+    assert.equal(await previewToml(), source);
+    await toggle.uncheck();
+    assert.equal(await previewToml(), disabled);
+    await toggle.check();
+    assert.equal(await previewToml(), source);
+  }
+});
+
 test("block access switches show locks once the first inbound row is processed", async t => {
   const page = await openPreview(t, 2);
   const switches = page.getByRole("switch", {name: /border access/});

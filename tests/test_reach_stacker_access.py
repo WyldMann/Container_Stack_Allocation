@@ -6,6 +6,7 @@ from unittest.mock import patch
 from entities import Container, Yard
 from entities.bad_yard_data import PlacementRejected
 from entities.equipment import Loader, RTG
+from entities.feasibility import PlacementProposal
 from entities.feasibility.equipment_access import BlockBorderAccessPolicy, ReceivingLocation
 from entities.feasibility.placement_feasibility import RejectionReason
 from tests.equipment_access_reference import ReferencePlacementFeasibility
@@ -83,6 +84,29 @@ class ReachStackerAccessIntegrationTests(unittest.TestCase):
         self.assertNotIn(rs, self.yard.getBlockByID('B').getLoaders())
         self.assertIn(rs, self.block.getLoaders())
 
+    def test_disabling_rs_side_access_applies_to_search_commit_and_manual_equipment(self):
+        rs = self.register('RS1', 'RS', block_id='B')
+        proposal = PlacementProposal('A', 1, 1, 0, '20')
+        self.assertIs(self.yard.assignContainer(self.incoming).getBestEquipment(), rs)
+        self.assertEqual(self.yard.manualPlacementEquipment(proposal), [rs])
+
+        self.yard.feasibility.settings = replace(
+            self.yard.feasibility.settings, reach_stacker_20ft_side_access=False,
+        )
+        self.assertIsNone(self.yard.assignContainer(self.incoming))
+        self.assertEqual(self.yard.manualPlacementEquipment(proposal), [])
+        with self.assertRaisesRegex(PlacementRejected, 'destination_inaccessible'):
+            self.yard.addContainerByCoords(self.incoming, proposal.coordinates)
+        with self.assertRaisesRegex(PlacementRejected, 'destination_inaccessible'):
+            self.yard.placeContainer(self.incoming, proposal.coordinates, rs)
+        with self.assertRaisesRegex(PlacementRejected, 'cannot reach the selected stack'):
+            self.yard.placeContainerManually(self.incoming, proposal, rs)
+
+        self.set_stack(self.block, 0, 1, 0)
+        self.assertEqual(self.yard.manualPlacementEquipment(proposal), [rs])
+        self.yard.placeContainer(self.incoming, proposal.coordinates, rs)
+        self.assertIs(self.block.getStack(1, 1).getContainer(0), self.incoming)
+
     def test_rs_selection_honors_destination_modes(self):
         sl = self.register('SL1', 'SL', row=1, slot=1)
         rs = self.register('RS1', 'RS', block_id='B')
@@ -150,6 +174,14 @@ class ReachStackerAccessIntegrationTests(unittest.TestCase):
         self.assertIn(ReceivingLocation(1, 2, '20'), candidate.equipment_access.isolated_locations)
         self.assertLess(candidate.occupied_access_multiplier, 1.0)
         self.assertLess(candidate.future_access_multiplier, 1.0)
+
+        self.yard.feasibility.settings = replace(
+            self.yard.feasibility.settings, reach_stacker_20ft_side_access=False,
+        )
+        candidate, = self.yard.bestCoordCandidate(self.incoming, [('A', 1, 1, 0)])
+        self.assertTrue(candidate.equipment_access.destination_accessible)
+        self.assertEqual(candidate.occupied_access_multiplier, 1.0)
+        self.assertEqual(candidate.future_access_multiplier, 1.0)
 
     def test_mixed_fleet_search_matches_independent_reference_and_reuses_contexts(self):
         self.register('SL1', 'SL')

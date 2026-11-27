@@ -28,6 +28,7 @@ class ApplicationSettings:
                    if settings.preserve_occupied_access_mode is not None else {}),
                 "preserve_future_access_mode": settings.effective_future_access_mode,
                 "ignore_stacks_without_legal_next_tier": settings.ignore_stacks_without_legal_next_tier,
+                "reach_stacker_20ft_side_access": settings.reach_stacker_20ft_side_access,
             },
             "heuristic": {name: value for name, value in asdict(self.heuristic).items() if value is not None},
         }

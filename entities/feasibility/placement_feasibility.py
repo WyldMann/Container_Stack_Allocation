@@ -66,8 +66,8 @@ class PlacementFeasibility:
             return None
         if border_policy is None:
             border_policy = BlockBorderAccessPolicy()
-        twenty_foot_side_access = twenty_foot_side_access or any(
-            loader.twenty_foot_side_access for loader in block.getLoaders()
+        twenty_foot_side_access = self.settings.reach_stacker_20ft_side_access and (
+            twenty_foot_side_access or any(loader.twenty_foot_side_access for loader in block.getLoaders())
         )
         return self.equipment_access.prepare_context(
             block, border_policy, twenty_foot_side_access=twenty_foot_side_access,
@@ -98,13 +98,16 @@ class PlacementFeasibility:
         if (loader_selected or loader is not None or block.getRTG() is None) and any(
             mode in active_modes for mode in (destination_mode, occupied_mode, future_mode)
         ):
+            side_access_enabled = self.settings.reach_stacker_20ft_side_access
+            loader_side_access = loader is not None and loader.twenty_foot_side_access
             access = self._evaluate_equipment_access(
                 block, proposal, border_policy, access_context,
                 check_future=future_mode in active_modes,
-                twenty_foot_side_access=(twenty_foot_side_access
-                                        or any(item.twenty_foot_side_access for item in block.getLoaders())
-                                        or (loader is not None and loader.twenty_foot_side_access)),
-                destination_side_access=None if loader is None else loader.twenty_foot_side_access,
+                twenty_foot_side_access=side_access_enabled and (
+                    twenty_foot_side_access or loader_side_access
+                    or any(item.twenty_foot_side_access for item in block.getLoaders())
+                ),
+                destination_side_access=None if loader is None else side_access_enabled and loader_side_access,
             )
         if access is not None:
             reason = self._access_rejection(access, destination_mode, occupied_mode, future_mode)

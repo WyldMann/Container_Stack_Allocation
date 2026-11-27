@@ -558,6 +558,9 @@ class Yard:
     def hasReachStacker(self) -> bool:
         return any(loader.twenty_foot_side_access for loader in self.master_loaders)
 
+    def _hasTwentyFootSideAccess(self) -> bool:
+        return self.feasibility.settings.reach_stacker_20ft_side_access and self.hasReachStacker()
+
     def findCoordsCandidates(
         self, container: Container, *, rejection_counts: dict[str, int] | None = None,
         equipment_access_results: dict[tuple[str, int, int, int], EquipmentAccessResult] | None = None,
@@ -601,7 +604,7 @@ class Yard:
 
         # Contexts belong to this read-only search and are prepared only as needed.
         access_contexts = {}
-        side_access = self.hasReachStacker()
+        side_access = self._hasTwentyFootSideAccess()
         for group_score in sorted(score_groups, reverse=True):
             for block, row_index, slot_index, current_score in score_groups[group_score]:
                 block_id = block.getId()
@@ -686,12 +689,13 @@ class Yard:
         rule = self.feasibility.equipment_access
         reachable = rule._reachable_ground(block, policy)
         location = ReceivingLocation(proposal.row_index, proposal.slot_index, proposal.container_size)
+        side_access_enabled = self.feasibility.settings.reach_stacker_20ft_side_access
         access = {
             side_access: rule._can_serve(block, location, reachable, policy, twenty_foot_side_access=side_access)
-            for side_access in {loader.twenty_foot_side_access for loader in self.master_loaders}
+            for side_access in {side_access_enabled and loader.twenty_foot_side_access for loader in self.master_loaders}
         }
         loaders = sorted(
-            (loader for loader in self.master_loaders if access[loader.twenty_foot_side_access]),
+            (loader for loader in self.master_loaders if access[side_access_enabled and loader.twenty_foot_side_access]),
             key=Equipment.getCode,
         )
         if preferred_first and rtg is None and loaders:
@@ -823,7 +827,7 @@ class Yard:
         # if no RTG is present use loaders
         if block.rtg is None:
             loaders = block.getLoaders()
-            if (container_size == "20" and self.hasReachStacker()
+            if (container_size == "20" and self._hasTwentyFootSideAccess()
                     and self.feasibility.settings.effective_destination_access_mode != "off"):
                 # A local SL must not hide an RS in another block when only the
                 # RS can serve the destination. Prefer reachable equipment even
@@ -882,7 +886,7 @@ class Yard:
         prioritize_current_access = settings.prioritize_current_access
         candidates = []
         access_contexts = {}
-        side_access = self.hasReachStacker()
+        side_access = self._hasTwentyFootSideAccess()
         for coordinate in candidate_coordinates:
             block_id, row, slot, tier = coordinate
             block = self.getBlockByID(block_id)

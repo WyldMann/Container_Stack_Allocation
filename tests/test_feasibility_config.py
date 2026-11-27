@@ -29,12 +29,14 @@ stacking_safety = false
 equipment_access = true
 preserve_future_access = false
 ignore_stacks_without_legal_next_tier = true
+reach_stacker_20ft_side_access = false
 """
         )
         self.assertFalse(settings.stacking_safety)
         self.assertTrue(settings.equipment_access)
         self.assertFalse(settings.preserve_future_access)
         self.assertTrue(settings.ignore_stacks_without_legal_next_tier)
+        self.assertFalse(settings.reach_stacker_20ft_side_access)
 
     def test_omitted_option_uses_default(self):
         settings = self.load_text(
@@ -47,6 +49,15 @@ equipment_access = false
         self.assertFalse(settings.equipment_access)
         self.assertTrue(settings.preserve_future_access)
         self.assertFalse(settings.ignore_stacks_without_legal_next_tier)
+        self.assertTrue(settings.reach_stacker_20ft_side_access)
+
+    def test_reach_stacker_side_access_round_trips(self):
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled):
+                settings = parse_config({"feasibility": {"reach_stacker_20ft_side_access": enabled}})
+                document = settings.to_document()
+                self.assertIs(document["feasibility"]["reach_stacker_20ft_side_access"], enabled)
+                self.assertEqual(parse_config(document).to_document(), document)
 
     def test_stacking_safety_maxima_defaults_and_round_trips(self):
         self.assertEqual(self.load_text("").stacking_safety_maxima, 2)
@@ -160,7 +171,7 @@ loader_acess = false
     def test_non_boolean_options_are_rejected(self):
         for option in (
             "stacking_safety", "equipment_access", "preserve_future_access",
-            "ignore_stacks_without_legal_next_tier",
+            "ignore_stacks_without_legal_next_tier", "reach_stacker_20ft_side_access",
         ):
             for value in ('"false"', "0", "1", "[]"):
                 with self.subTest(option=option, value=value):
