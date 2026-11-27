@@ -3,6 +3,7 @@
 from collections import Counter
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 from time import time
 from urllib.parse import quote
@@ -230,6 +231,40 @@ def build_reports(input_path=DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE):
     return {code: report for code, (report, _) in _build_reports_and_yards(input_path).items()}
 
 
+def _append_report(output, report, serialized):
+    """Append a report only if it differs from the last saved entry."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("a+b") as file:
+        # Hold the lock until close so concurrent runs compare and append in order.
+        file.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(file.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(file.fileno(), fcntl.LOCK_EX)
+
+        last_line = previous_line = b""
+        for last_line in file:
+            if last_line.strip():
+                previous_line = last_line
+
+        if previous_line:
+            previous = json.loads(previous_line)
+            if isinstance(previous, dict):
+                previous.pop("generated_at", None)
+                current = {key: value for key, value in report.items() if key != "generated_at"}
+                if previous == current:
+                    return False
+
+        if last_line and not last_line.endswith(b"\n"):
+            serialized = os.linesep + serialized
+        file.write((serialized + os.linesep).encode("utf-8"))
+    return True
+
+
 def main():
     diagnostics = {}
     reports = _build_reports_and_yards(DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE, diagnostics=diagnostics)
@@ -239,12 +274,15 @@ def main():
     presenter = YardPresenter()
     for code, (report, yard) in reports.items():
         output = OUTPUT_DIR / f"existing_yard_metrics_{quote(code, safe='')}.jsonl"
-        output.parent.mkdir(parents=True, exist_ok=True)
-        with output.open("a", encoding="utf-8") as file:
-            file.write(lines[code] + "\n")
+        recorded = _append_report(output, report, lines[code])
+        future_operations = diagnostics.get(code, {}).get("future_operations", [])
+        if not recorded and not future_operations:
+            continue
 
         print("Branch:", code)
-        presenter.outFutureOperations(diagnostics.get(code, {}).get("future_operations", []))
+        presenter.outFutureOperations(future_operations)
+        if not recorded:
+            continue
         presenter.outRecordedMetrics(report)
         print("Recorded to:", output)
         print()

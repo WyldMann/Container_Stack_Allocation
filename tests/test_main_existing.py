@@ -474,20 +474,27 @@ benchmark_period_start = 1857916800
         with self.assertRaisesRegex(ConfigurationError, "shifting_workbook_file"):
             shifting_report_calculation.build_report(self.input_path)
 
-    def test_main_appends_one_json_record_per_run(self):
+    def test_main_skips_consecutive_duplicate_reports(self):
         self.write_shifting("CY 219 (Lini 2),SL,100,10,,\nCY 219 (Lini 2),SL,,,,\n")
         report = shifting_report_calculation.build_report(self.input_path)
+        duplicate = {**report, "generated_at": report["generated_at"] + 60}
+        revised = {**duplicate, "generated_at": report["generated_at"] + 120,
+                   "avg_parameter_compliance": 42.0}
+        restored = {**report, "generated_at": report["generated_at"] + 180}
         captured = io.StringIO()
         with patch.object(
-            shifting_report_calculation, "_build_reports_and_yards", return_value={"JKT74": (report, Mock())},
+            shifting_report_calculation, "_build_reports_and_yards",
+            side_effect=[{"JKT74": (row, Mock())} for row in (report, duplicate, revised, restored)],
         ), patch.object(shifting_report_calculation.YardPresenter, "outYard"), patch.object(
             shifting_report_calculation, "OUTPUT_DIR", self.root / "output",
         ), redirect_stdout(captured):
-            shifting_report_calculation.main()
-            shifting_report_calculation.main()
+            for _ in range(4):
+                shifting_report_calculation.main()
         output = self.root / "output" / "existing_yard_metrics_JKT74.jsonl"
         records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
-        self.assertEqual(records, [report, report])
+        self.assertEqual(records, [report, revised, restored])
+        self.assertEqual(captured.getvalue().count("JSONL metrics row:"), 3)
+        self.assertEqual(captured.getvalue().count("Recorded to:"), 3)
         self.assertIn("parameter compliance use 0-100", captured.getvalue())
         self.assertIn('"generated_at": ', output.read_text(encoding="utf-8"))
         self.assertIn(', "period_start": ', output.read_text(encoding="utf-8"))

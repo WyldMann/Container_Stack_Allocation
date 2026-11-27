@@ -184,8 +184,10 @@ rows are present, no future-operations section is printed. Library calls to
 
 ## Recorded JSONL format
 
-`shifting_report_calculation.py` appends one record per branch per run to
-`output/existing_yard_metrics_<BRANCH_CODE>.jsonl`, including single-branch runs.
+`shifting_report_calculation.py` records reports in
+`output/existing_yard_metrics_<BRANCH_CODE>.jsonl`, including for single-branch runs.
+It skips saving and displaying a report when all fields except `generated_at`
+match the latest record for that branch. Future-operation diagnostics still appear.
 For the selection above, the files are `existing_yard_metrics_JKT74.jsonl` and
 `existing_yard_metrics_JKT64.jsonl`. Existing unsuffixed files are not migrated.
 Each branch's CSV window ends at its own latest scoped activity; all SQL reports

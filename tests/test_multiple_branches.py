@@ -119,24 +119,33 @@ class MultipleBranchTests(unittest.TestCase):
         self.assert_reports(reports)
         self.assertEqual({report["generated_at"] for report in reports.values()}, {cutoff})
 
-    def test_each_run_appends_only_to_the_matching_branch_file(self):
+    def test_only_branch_with_changed_window_appends_another_record(self):
         output = self.root / "output"
+        cutoff = int(datetime(2026, 10, 31, tzinfo=WIB).timestamp())
         with patch.object(shifting_report_calculation, "DEFAULT_SHIFTING_REPORT_INPUT_CONFIG_FILE", self.path), patch.object(
             shifting_report_calculation, "OUTPUT_DIR", output,
+        ), patch.object(shifting_report_calculation, "time", side_effect=(cutoff, cutoff + 60, cutoff + 120)
         ), patch.object(
             shifting_report_calculation.YardPresenter, "outYard",
         ), redirect_stdout(io.StringIO()):
             shifting_report_calculation.main()
             shifting_report_calculation.main()
+            self.activities.write_text(self.activities.read_text(encoding="utf-8").replace(
+                "30-10-2026 12:00,JKT74", "30-10-2026 12:01,JKT74",
+            ), encoding="utf-8")
+            shifting_report_calculation.main()
         self.assertEqual({path.name for path in output.glob("*.jsonl")}, {
             "existing_yard_metrics_JKT74.jsonl", "existing_yard_metrics_JKT64.jsonl",
         })
         reports = {}
-        for code in ("JKT74", "JKT64"):
+        for code, expected_count in (("JKT74", 2), ("JKT64", 1)):
             lines = (output / f"existing_yard_metrics_{code}.jsonl").read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(lines), 2)
+            self.assertEqual(len(lines), expected_count)
             records = [json.loads(line) for line in lines]
-            self.assertEqual(records[0]["shifting_observations"], records[1]["shifting_observations"])
+            if expected_count == 2:
+                self.assertEqual(records[1]["generated_at"], cutoff + 120)
+                self.assertEqual(records[1]["period_end"] - records[0]["period_end"], 60)
+                self.assertEqual(records[0]["shifting_observations"], records[1]["shifting_observations"])
             reports[code] = records[0]
         self.assert_reports(reports)
 
